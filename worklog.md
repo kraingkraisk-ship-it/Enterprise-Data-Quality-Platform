@@ -69,3 +69,49 @@ Stage Summary:
 - **กู้คืน .env (ถ้าต้องการ)**: `git checkout dd78f81 -- .env`
 - ⚠️ **คำแนะนำด้านความปลอดภัย**: token ที่แชร์ผ่านแชทควรถูก **revoke/rotate** หลังการใช้งานเสร็จ ที่ GitHub → Settings → Developer settings → Fine-grained personal access tokens
 
+---
+
+## Task ID: 2
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: ระบุ version ปัจจุบันของ source code และสร้าง git tag เพื่อใช้เป็นจุด rollback ถาวร
+(Specify current source code version and create a git tag as a permanent rollback point)
+
+Work Log:
+- ตรวจสอบข้อมูล version ปัจจุบันจาก git (SHA, วันที่, จำนวนไฟล์, stack)
+- สร้าง annotated tag `v0.1.0-baseline` ชี้ไปยัง commit `9f1daef`
+- Push tag ขึ้น GitHub สำเร็จ (`* [new tag] v0.1.0-baseline -> v0.1.0-baseline`)
+- ตรวจสอบยืนยันบน remote: `refs/tags/v0.1.0-baseline^{}` = `9f1daef26da3a516a2f4ddb3afb3f92e42a4cbde` ถูกต้อง
+
+Stage Summary:
+- **Version ปัจจุบัน (Current Version Reference)**:
+
+| รายการ | ค่า |
+|---|---|
+| Tag | `v0.1.0-baseline` |
+| Full Commit SHA | `9f1daef26da3a516a2f4ddb3afb3f92e42a4cbde` |
+| Short SHA | `9f1daef` |
+| Commit message | `docs(worklog): record push results and rollback reference` |
+| Commit date (UTC) | `2026-10-18T11:52:17Z` (≈ 18:52 Asia/Bangkok) |
+| Branch | `main` |
+| Remote | `https://github.com/kraingkraisk-ship-it/Enterprise-Data-Quality-Platform.git` |
+| จำนวนไฟล์ที่ track | 85 ไฟล์ |
+| Stack | Next.js `^16.1.1` + TypeScript + Tailwind CSS 4 + shadcn/ui + Prisma (SQLite) |
+
+- **วิธี Rollback กลับมาที่ version นี้ (โดยใช้ tag — จำง่ายกว่า SHA)**:
+  ```bash
+  # ดูโค้ดที่ version นี้ (ไม่กระทบ branch หลัก)
+  git checkout v0.1.0-baseline
+
+  # ย้อน branch local กลับมาที่ version นี้ทั้งหมด
+  git checkout main
+  git reset --hard v0.1.0-baseline
+
+  # ย้อน remote (GitHub) กลับมาที่ version นี้ด้วย
+  git push --force origin main
+
+  # หรือแบบปลอดภัย (สร้าง commit ใหม่ที่ย้อนการเปลี่ยนแปลง — ไม่ต้อง force push)
+  git revert --no-commit 9f1daef..main && git commit -m "revert: back to v0.1.0-baseline"
+  ```
+- **ตรวจสอบว่ากำลังอยู่ที่ version นี้หรือไม่**: `git describe --tags` → ต้องแสดง `v0.1.0-baseline`
+
+
