@@ -320,6 +320,64 @@ Stage Summary:
 - โครงสร้างใหม่: `prisma/schema.prisma` (+5 models), `scripts/seed.ts` (ขยาย), `src/lib/dq.ts`, `src/lib/operator.ts`, `src/app/api/dq/**` (9 routes), `src/components/core-features-console.tsx`, แก้ `src/app/page.tsx` + `src/components/rbac-console.tsx` (แก้ overflow)
 - Version ปัจจุบัน: `v0.4.0` — rollback point ก่อนหน้า: `v0.3.0`
 
+---
+
+## Task ID: 6-result
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: `v0.4.0`
+**Task**: Push commit v0.4.0 (โมดูล Core Features) ขึ้น GitHub ด้วย token ใหม่ + ตรวจสอบยืนยันบน remote
+(Push the v0.4.0 Core Features commit and tag with the fresh token, then verify on remote)
+
+Work Log:
+- สถานการณ์: โมดูล Core Features (Task ID: 6) พัฒนา + ทดสอบ browser และสร้าง commit + tag `v0.4.0` ใน local เรียบร้อยแล้ว แต่ยังไม่ได้ push — ผู้ใช้ส่ง token ใหม่มา (token ลำดับที่ 5 ที่ใช้ในโปรเจกต์นี้)
+- ตรวจสอบสถานะ local ก่อน push:
+  - commit ล่าสุด `567f586` = "v0.4.0: feat Core Features — live Rule Builder, DQ validation with ML signals, exception workflow, role-based dashboard"
+  - tag `v0.4.0` สร้างแล้ว (annotated), `git describe --tags` = `v0.4.0`
+  - `git status`: `main...origin/main [ahead 1]` → ยืนยันว่ายังไม่ถูก push
+  - ไฟล์ใน commit: 18 ไฟล์ (+3,014 บรรทัด) — prisma/schema.prisma, scripts/seed.ts, src/lib/dq.ts, src/lib/operator.ts, src/app/api/dq/** (9 routes), src/components/core-features-console.tsx (1,322 บรรทัด), แก้ page.tsx + rbac-console.tsx + .gitignore + worklog
+- ตรวจสอบ remote ด้วย token ใหม่ (`git ls-remote`): สำเร็จ — token ใหม่มีสิทธิ์อ่าน
+  - ก่อน push: `refs/heads/main` = `010df6a` (worklog Task 5-result), ไม่มี `refs/tags/v0.4.0` → ยืนยัน remote ยังขาด v0.4.0
+- Push ครั้งเดียวครบทั้ง branch + tag:
+  `git push <one-time-url> refs/heads/main:refs/heads/main refs/tags/v0.4.0:refs/tags/v0.4.0`
+  - ผลลัพธ์: `010df6a..567f586  main -> main` + `* [new tag] v0.4.0 -> v0.4.0` ✅
+- ตรวจสอบยืนยันหลัง push (`git ls-remote` อีกครั้ง):
+  - `refs/heads/main` = `567f58674fe11561e0fad38b46688c47108335fb` **ตรงกับ local HEAD ทุกประการ**
+  - `refs/tags/v0.4.0` = `5498f28` (tag object) → `^{}` = `567f58674fe11561e0fad38b46688c47108335fb` ถูกต้อง
+- Sync tracking ref: `git fetch <url> main:refs/remotes/origin/main --force` → สถานะ `main...origin/main` in sync (ไม่มี ahead/behind)
+- Token ไม่ถูกบันทึกลง `.git/config` (remote.origin.url ยังเป็น clean URL — ตรวจสอบแล้ว)
+
+Stage Summary:
+- **สถานะ: Local และ Remote sync สมบูรณ์ที่ version `v0.4.0`** (commit `567f586`)
+- **Token ใหม่ (ลำดับที่ 5) ใช้งานได้ครบทั้ง read + write** (ยืนยันด้วย ls-remote + push)
+- ข้อมูล version สำหรับ rollback:
+
+| รายการ | ค่า |
+|---|---|
+| Version | `v0.4.0` |
+| Tag object SHA | `5498f2825073f8c22364d6cc26d5f1f5996874bf` |
+| Full Commit SHA | `567f58674fe11561e0fad38b46688c47108335fb` |
+| Short SHA | `567f586` |
+| Commit message | `v0.4.0: feat Core Features — live Rule Builder, DQ validation with ML signals, exception workflow, role-based dashboard` |
+| Branch / Remote | `main` → GitHub repo เดิม |
+| จุด rollback ก่อนหน้า | `v0.3.0` = `4aeb834` |
+
+- **วิธี Rollback (tag-based)**:
+  ```bash
+  # ดูโค้ดที่ version นี้ (ไม่กระทบ branch หลัก)
+  git checkout v0.4.0
+
+  # ย้อนกลับไป v0.3.0 (ก่อนโมดูล Core Features)
+  git checkout main
+  git reset --hard v0.3.0
+  git push --force origin main
+  git push origin :refs/tags/v0.4.0   # ลบ tag บน remote ด้วย (ถ้าต้องการ)
+
+  # หรือแบบปลอดภัย (ไม่ force push)
+  git revert --no-commit v0.3.0..main && git commit -m "revert: back to v0.3.0"
+  ```
+- **ตรวจสอบว่าอยู่ที่ version นี้**: `git describe --tags` → ต้องแสดง `v0.4.0`
+- ⚠️ ควร rotate/revoke token หลังใช้งานเสร็จตามขั้นตอนเดิม
+
 
 
 
