@@ -35,3 +35,37 @@ Rollback Reference:
 
 Stage Summary:
 - สถานะ: (อัปเดตหลัง push สำเร็จ — ดู Task ID: 1-result)
+
+---
+
+## Task ID: 1-result
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: บันทึกผลการ push ครั้งที่ 1 และข้อมูล rollback (Record of the first push + rollback data)
+
+Work Log:
+- Push `main` → GitHub สำเร็จ (`* [new branch] main -> main`) เวลาประมาณ 2025-10-18 (Asia/Bangkok)
+- ตรวจสอบยืนยัน: remote `refs/heads/main` = `1d64e372dc862ada2d0bc5a077e6578eb4361c38` ตรงกับ local HEAD ทุกประการ
+- ตั้ง upstream tracking: `main` → `origin/main` (สถานะ in sync)
+- ลบ token ออกจาก `.git/config` แล้ว (`git remote set-url origin` เป็น clean URL) — token ไม่ถูกบันทึกถาวรบนดิสก์
+- ไฟล์ที่ push ทั้งหมด: 85 ไฟล์ (source code, config, worklog)
+
+Stage Summary:
+- **Commit ที่ถูก push**: `1d64e37` — "feat: Enterprise Data Quality Platform — initial source code push"
+- **Commit ก่อนหน้า (จุด rollback เดิม)**: `dd78f81` — "Initial commit"
+- **Remote**: `https://github.com/kraingkraisk-ship-it/Enterprise-Data-Quality-Platform.git` (branch `main`)
+- **ขั้นตอน Rollback บนเครื่อง local**:
+  ```bash
+  # ย้อนกลับไป commit ก่อน push (ล้างทุกอย่างหลังจากนั้น — ใช้ด้วยความระมัดระวัง)
+  git reset --hard dd78f81
+
+  # หรือย้อนกลับแบบปลอดภัย (สร้าง commit ใหม่ที่ย้อนการเปลี่ยนแปลง)
+  git revert 1d64e37
+  ```
+- **ขั้นตอน Rollback บน GitHub (remote)**:
+  ```bash
+  git reset --hard dd78f81
+  git push --force origin main   # ต้องมี token/สิทธิ์ push อีกครั้ง
+  ```
+- **กู้คืน .env (ถ้าต้องการ)**: `git checkout dd78f81 -- .env`
+- ⚠️ **คำแนะนำด้านความปลอดภัย**: token ที่แชร์ผ่านแชทควรถูก **revoke/rotate** หลังการใช้งานเสร็จ ที่ GitHub → Settings → Developer settings → Fine-grained personal access tokens
+
