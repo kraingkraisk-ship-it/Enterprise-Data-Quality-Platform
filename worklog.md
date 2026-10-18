@@ -282,6 +282,44 @@ Stage Summary:
 - **ตรวจสอบว่าอยู่ที่ version นี้**: `git describe --tags` → ต้องแสดง `v0.3.0`
 - ⚠️ ควร rotate/revoke token หลังใช้งานเสร็จตามขั้นตอนเดิม
 
+---
+
+## Task ID: 6
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: `v0.4.0`
+**Task**: พัฒนา Core Features ให้ทำงานจริง (Rule Builder / รันตรวจสอบ & ML Signals / ข้อยกเว้น & อนุมัติ / แดชบอร์ด)
+(Develop the 4 core features as a live, database-backed console)
+
+Work Log:
+- **Database**: เพิ่ม 5 models — `SampleRow` (sandbox rows), `DqRule` (กฎ 7 เงื่อนไข), `DqRun` (ผลรันรายกฎ), `DqSignal` (สัญญาณรอมนุษย์ทบทวน), `DqException` (คำขอข้อยกเว้น) + relation เพิ่มใน Dataset และ DqRule.exceptions → `db:push` สำเร็จ
+- **DQ Engine** (`src/lib/dq.ts`): เงื่อนไข 7 แบบ (NOT_NULL, EMAIL, REGEX, RANGE, IN_LIST, UNIQUE, MAX_AGE_DAYS) ครอบมิติ Completeness/Validity/Accuracy/Consistency/Uniqueness/Timeliness, `buildRuleSentence()` ประกอบประโยคมาตรฐาน 5 ส่วน, `evaluateRule()` ประเมินกฎจริง, `generateMlSignals()` (outlier IQR / near-duplicate / schema drift / volume) — deterministic, `maskRowByRole()`/`maskValueByRole()` ปิดบัง PII ฝั่ง backend
+- **Operator Gate** (`src/lib/operator.ts`): ทุก mutation ต้องระบุ operatorEmail → ตรวจบัญชีจริงใน DB + ACTIVE + บทบาทมีสิทธิ์ตาม RBAC (403 พร้อมระบุบทบาทที่มีสิทธิ์) — ทำให้ RBAC บังคับใช้จริง
+- **API 9 เส้น**: rules (GET/POST/PATCH toggle+delete), run (GET history/POST รันจริง+สร้างสัญญาณ+คะแนนต่อมิติ), signals (GET/PATCH ทบทวน — CONFIRM|DISMISS พร้อม reviewedBy), exceptions (GET/POST/PATCH อนุมัติ|ปฏิเสธ), dashboard (คะแนนรวม/ต่อ dataset/ต่อมิติ), sample-preview (PII masking ตาม role) — ทุก mutation เขียน AuditLog
+- **Seed ใหม่**: ข้อมูลตัวอย่าง sandbox 40 แถว (ลูกค้า 20 + ธุรกรรม 20) มีข้อผิดพลาดแฝงจงใจ (email ผิด/ว่าง, credit_limit เกินช่วง/ติดลบ, phone ผิดรูปแบบ, ชื่อ+email ซ้ำ, วันที่เก่า, currency แปลก, status นอกรายการ, txn_id ซ้ำ) + กฎเริ่มต้น 7 ข้อ + สัญญาณรอทบทวน 2 + คำขอข้อยกเว้น (PENDING 1 / APPROVED 1)
+- **Frontend** (`src/components/core-features-console.tsx`) ฝังใน section `#features` ใต้การ์ด 4 ฟีเจอร์ — 4 แท็บ:
+  1. Rule Builder — ฟอร์มประกอบกฎ + พารามิเตอร์ dynamic + preview ประโยค live (dark block) + รายการกฎ (toggle/ลบ/ผลรันล่าสุด)
+  2. รันตรวจสอบ & สัญญาณ AI — เลือก dataset+ผู้รัน → score รวม + bar ต่อมิติ + ผลรายกฎพร้อมตัวอย่างแถวที่ล้มเหลว (mask PII ตามผู้รัน) + ทบทวนสัญญาณ (ยืนยัน/ปลด พร้อมผู้ทบทวน) + note "ML เป็นเพียงสัญญาณ ต้องมนุษย์ทบทวน ระบบไม่แก้ข้อมูลอัตโนมัติ"
+  3. ข้อยกเว้น — ฟอร์มขอ (เหตุผล ≥10 ตัวอักษร + วันหมดอายุ) + อนุมัติ/ปฏิเสธโดยบทบาทที่มีสิทธิ์ + ประวัติ
+  4. แดชบอร์ด — stat cards + คะแนนต่อ dataset + มิติอ่อนสุด + bar ต่อมิติ + **ตัวอย่าง PII masking live ตามบทบาท** (ประเมินฝั่ง backend)
+- **Bug fix พิเศษ (จาก Agent Browser บน mobile)**: พบ horizontal overflow 973px บนจอ 390px — ต้นตอคือ `span.sr-only` (position:absolute) ใน cell ของตาราง matrix RBAC หลุด clip เพราะ scroll wrapper ไม่ใช่ positioned ancestor → **แก้ด้วยการเพิ่ม `relative` ให้ scroll wrappers** (matrix table, users table, PII preview) → mobile/desktop scrollWidth กลับมาเท่ากับ viewport แล้ว (390/390, 1280/1280)
+- **Bug fix**: relation ที่ลืมประกาศ `DqException.rule → DqRule` (PrismaClientValidationError) + `buildRuleSentence` แสดง `[Dataset]` แทนชื่อจริงในผลรัน/audit
+- **ผลทดสอบ Agent Browser (ผ่านทั้งหมด)**:
+  - สร้างกฎใหม่ผ่านฟอร์ม (segment NOT_NULL) → toast + กฎ 7→8 ใน DB จริง ✅
+  - ประโยค live preview: "For ลูกค้าองค์กร — Master, segment must not be empty, otherwise mark as ปานกลาง (MEDIUM)" ✅
+  - รันตรวจสอบผ่าน UI → score 92.5/100 + bar 3 มิติ + ผลรายกฎ ผ่าน/ล้มเหลว + failedSamples ✅
+  - ทบทวนสัญญาณ: ยืนยันด้วย DQ_ANALYST สำเร็จ (บันทึก reviewer) ✅ / BUSINESS_USER → **403 toast** แสดงบทบาทที่มีสิทธิ์ ✅
+  - ข้อยกเว้น: ส่งคำขอผ่านฟอร์ม → PENDING 1 → อนุมัติด้วย DATA_OWNER → PENDING 0 ✅
+  - PII preview: BUSINESS_USER เห็น "s•••••@acme.co.th" (masked) / DATA_OWNER เห็น "somsri@acme.co.th" (raw) ✅
+  - แดชบอร์ด: 6 สัญญาณรอ / 0 ข้อยกเว้นรอ / 8 กฎ / 1/6 datasets รันแล้ว ✅
+  - RBAC Console เดิมยังทำงาน (แท็บ users 8 แถว) ✅
+  - Mobile 390px ไม่มี overflow แล้ว, desktop 1280px ปกติ, footer ชิดล่าง, ไม่มี console error, lint ผ่าน ✅
+- bump `APP_VERSION` → `v0.4.0` (header + footer), commit + tag `v0.4.0` (push ตามกระบวนการ — ถาม token ก่อนเสมอ)
+
+Stage Summary:
+- **Core Features พร้อมใช้**: 4 ฟีเจอร์หลักทำงานจริงบนข้อมูลจริง — Rule Builder สร้างกฎเก็บ DB, รันตรวจสอบได้จริงบน sandbox rows, สัญญาณ AI ต้องมนุษย์ทบทวนเสมอ (403 ถ้าไม่มีสิทธิ์), ข้อยกเว้นต้องมีผู้อนุมัติ, แดชบอร์ด + PII masking ฝั่ง backend
+- โครงสร้างใหม่: `prisma/schema.prisma` (+5 models), `scripts/seed.ts` (ขยาย), `src/lib/dq.ts`, `src/lib/operator.ts`, `src/app/api/dq/**` (9 routes), `src/components/core-features-console.tsx`, แก้ `src/app/page.tsx` + `src/components/rbac-console.tsx` (แก้ overflow)
+- Version ปัจจุบัน: `v0.4.0` — rollback point ก่อนหน้า: `v0.3.0`
+
 
 
 

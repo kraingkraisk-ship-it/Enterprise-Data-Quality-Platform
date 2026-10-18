@@ -58,3 +58,5 @@ server.log
 /db/*.db-journal
 /upload/
 *.pid
+# persisted tool output (runtime artifact)
+/tool-results/

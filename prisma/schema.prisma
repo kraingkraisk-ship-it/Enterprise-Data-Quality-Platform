@@ -30,7 +30,12 @@ model Dataset {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  grants DatasetAccess[]
+  grants     DatasetAccess[]
+  sampleRows SampleRow[]
+  rules      DqRule[]
+  runs       DqRun[]
+  signals    DqSignal[]
+  exceptions DqException[]
 
   @@index([status])
 }
@@ -50,11 +55,100 @@ model DatasetAccess {
 // บันทึกการตรวจสอบย้อนหลัง — ทุกการเปลี่ยนแปลงสิทธิ์ต้องถูกบันทึก
 model AuditLog {
   id        String   @id @default(cuid())
-  action    String // ASSIGN_ROLE | SUSPEND_USER | ACTIVATE_USER | CREATE_USER | GRANT_ACCESS | REVOKE_ACCESS | SET_ACCESS_LEVEL
-  actor     String // ผู้ดำเนินการ (demo: sys.admin@company.co.th)
-  target    String // ผู้ถูกกระทำ (email หรือชื่อ dataset)
+  action    String // ASSIGN_ROLE | SUSPEND_USER | ACTIVATE_USER | CREATE_USER | GRANT_ACCESS | REVOKE_ACCESS | SET_ACCESS_LEVEL | CREATE_RULE | TOGGLE_RULE | DELETE_RULE | RUN_VALIDATION | CONFIRM_SIGNAL | DISMISS_SIGNAL | REQUEST_EXCEPTION | APPROVE_EXCEPTION | REJECT_EXCEPTION
+  actor     String // ผู้ดำเนินการ (email)
+  target    String // ผู้ถูกกระทำ (email หรือชื่อ dataset / rule)
   detail    String
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// แถวข้อมูลตัวอย่าง (sandbox) สำหรับรันการตรวจสอบ — ไม่แตะข้อมูลต้นทางจริงเสมอ
+model SampleRow {
+  id        String   @id @default(cuid())
+  datasetId String
+  payload   String // JSON object ของแถวข้อมูล (คอลัมน์ → ค่า)
+  createdAt DateTime @default(now())
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([datasetId])
+}
+
+// กฎตรวจสอบคุณภาพข้อมูล — สร้างจาก Rule Builder แบบ no-code
+model DqRule {
+  id         String   @id @default(cuid())
+  datasetId  String
+  column     String
+  condition  String // NOT_NULL | REGEX | EMAIL | RANGE | IN_LIST | UNIQUE | MAX_AGE_DAYS
+  parameters String   @default("{}") // JSON — พารามิเตอร์ของเงื่อนไข
+  filter     String? // ตัวกรองไม่บังคับ (จองไว้)
+  severity   String   @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  runs    DqRun[]
+  exceptions DqException[]
+
+  @@index([datasetId])
+}
+
+// ผลการรันตรวจสอบรายกฎ (ประวัติย้อนหลัง)
+model DqRun {
+  id         String   @id @default(cuid())
+  ruleId     String
+  datasetId  String
+  status     String // PASSED | FAILED
+  totalRows  Int
+  failedRows Int
+  passRate   Float
+  dimension  String // มิติคุณภาพข้อมูลที่กฎนี้ตรวจ
+  createdAt  DateTime @default(now())
+
+  rule    DqRule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([datasetId, createdAt])
+}
+
+// สัญญาณที่ต้องมนุษย์ทบทวนเสมอ — ML เป็นเพียง "สัญญาณ" ไม่มีการแก้ข้อมูลอัตโนมัติ
+model DqSignal {
+  id         String    @id @default(cuid())
+  datasetId  String
+  kind       String // ML_ANOMALY | RULE_VIOLATION
+  dimension  String
+  title      String
+  detail     String
+  severity   String    @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
+  status     String    @default("PENDING_REVIEW") // PENDING_REVIEW | CONFIRMED | DISMISSED
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([datasetId])
+}
+
+// คำขอข้อยกเว้น — ต้องผ่านการอนุมัติโดยมนุษย์ตามบทบาทเสมอ
+model DqException {
+  id          String    @id @default(cuid())
+  datasetId   String
+  ruleId      String?
+  reason      String
+  requestedBy String // email ผู้ขอ
+  status      String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  expiresAt   DateTime // ข้อยกเว้นมีวันหมดอายุเสมอ
+  decidedBy   String?
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  rule    DqRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  @@index([status])
 }

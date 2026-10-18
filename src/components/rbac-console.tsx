@@ -294,7 +294,7 @@ export default function RbacConsole() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="max-h-[28rem] overflow-auto rounded-lg border [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-slate-100">
+            <div className="relative max-h-[28rem] overflow-auto rounded-lg border [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-slate-100">
               <table className="w-full min-w-[760px] border-collapse text-sm">
                 <caption className="sr-only">ตารางแสดงสิทธิ์ของแต่ละบทบาทผู้ใช้</caption>
                 <thead>
@@ -442,7 +442,7 @@ export default function RbacConsole() {
 
         <Card>
           <CardContent className="p-0">
-            <div className="max-h-[30rem] overflow-y-auto [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-slate-100">
+            <div className="relative max-h-[30rem] overflow-auto [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-slate-100">
               <table className="w-full min-w-[720px] text-sm">
                 <caption className="sr-only">รายชื่อผู้ใช้ในระบบพร้อมบทบาทและสถานะ</caption>
                 <thead className="sticky top-0 z-10">

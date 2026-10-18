@@ -43,8 +43,9 @@ import {
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import RbacConsole from '@/components/rbac-console'
+import CoreFeaturesConsole from '@/components/core-features-console'
 
-export const APP_VERSION = 'v0.3.0'
+export const APP_VERSION = 'v0.4.0'
 
 /* ---------------------------------- data ---------------------------------- */
 
@@ -381,12 +382,13 @@ export default function Home() {
         <section id="features" aria-labelledby="features-title" className="border-y bg-emerald-50/40">
           <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-18">
             <div className="mb-8 max-w-2xl">
-              <Badge variant="outline" className="mb-3 border-emerald-300 bg-emerald-50 text-emerald-800">Core Features</Badge>
+              <Badge variant="outline" className="mb-3 border-emerald-300 bg-emerald-50 text-emerald-800">Core Features — Live</Badge>
               <h2 id="features-title" className="text-2xl font-bold tracking-tight sm:text-3xl">
                 ฟีเจอร์หลักของแพลตฟอร์ม
               </h2>
               <p className="mt-2 text-muted-foreground">
                 ออกแบบตามหลัก Data Governance — มนุษย์คือผู้ตัดสินใจสุดท้าย ระบบช่วยตรวจสอบและแจ้งเตือน
+                (คอนโซลด้านล่างควบคุมข้อมูลจริง — ทุกการเปลี่ยนแปลงตรวจสอบย้อนหลังได้)
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -409,6 +411,8 @@ export default function Home() {
                 </Card>
               ))}
             </div>
+
+            <CoreFeaturesConsole />
 
             <div className="mt-6 rounded-xl border bg-card p-4 sm:p-6">
               <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
