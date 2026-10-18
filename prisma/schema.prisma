@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +7,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ผู้ใช้งานระบบ — แต่ละคนมีบทบาทเดียวตามหลัก RBAC
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  name      String?
+  name      String
+  role      String // DATA_OWNER | DATA_STEWARD | DQ_ANALYST | DATA_ENGINEER | COMPLIANCE_OFFICER | BUSINESS_USER | EXECUTIVE | SYS_ADMIN
+  status    String   @default("ACTIVE") // ACTIVE | SUSPENDED
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([role])
 }
 
-model Post {
+// ชุดข้อมูลในระบบ (ระดับ Dataset ใช้สำหรับการแยกการเข้าถึง)
+model Dataset {
+  id         String   @id @default(cuid())
+  name       String
+  sourceType String // CSV | EXCEL | POSTGRESQL | MSSQL | REST_API
+  piiEnabled Boolean  @default(true) // PII masking by default
+  status     String   @default("ACTIVE") // ACTIVE | ARCHIVED
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  grants DatasetAccess[]
+
+  @@index([status])
+}
+
+// สิทธิ์การเข้าถึงชุดข้อมูลรายบทบาท (dataset-level isolation)
+model DatasetAccess {
+  id        String  @id @default(cuid())
+  datasetId String
+  roleId    String // role key เดียวกับ User.role
+  level     String @default("VIEW") // VIEW | MANAGE
+  dataset   Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetId, roleId])
+  @@index([roleId])
+}
+
+// บันทึกการตรวจสอบย้อนหลัง — ทุกการเปลี่ยนแปลงสิทธิ์ต้องถูกบันทึก
+model AuditLog {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  action    String // ASSIGN_ROLE | SUSPEND_USER | ACTIVATE_USER | CREATE_USER | GRANT_ACCESS | REVOKE_ACCESS | SET_ACCESS_LEVEL
+  actor     String // ผู้ดำเนินการ (demo: sys.admin@company.co.th)
+  target    String // ผู้ถูกกระทำ (email หรือชื่อ dataset)
+  detail    String
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
 }

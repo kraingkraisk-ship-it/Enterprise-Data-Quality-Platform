@@ -185,6 +185,46 @@ Stage Summary:
 - ไฟล์ที่แก้: `src/app/page.tsx` (ใหม่ทั้งหมด), `src/app/layout.tsx` (metadata/lang), `next.config.ts` (allowedDevOrigins)
 - ผ่านการตรวจสอบ browser ทั้ง desktop/mobile + interaction + lint แล้ว
 
+---
+
+## Task ID: 5
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: `v0.3.0`
+**Task**: พัฒนาโมดูล "บทบาทผู้ใช้และสิทธิ์การเข้าถึง" (RBAC) แบบมีฐานข้อมูลจริง
+(Develop the RBAC module with a real database-backed console)
+
+Work Log:
+- **Database (Prisma + SQLite)**: ออกแบบ schema 4 models — `User` (role/status), `Dataset` (sourceType/PII), `DatasetAccess` (dataset-level grants VIEW|MANAGE, unique datasetId+roleId), `AuditLog` (action/actor/target/detail) → `db:push` สำเร็จ
+- **Seed**: `scripts/seed.ts` สร้างข้อมูลตัวอย่าง 10 users, 6 datasets, 27 grants, 2 audit entries
+- **RBAC Config กลาง** (`src/lib/rbac.ts`): คำนิยาม 8 บทบาท (TH/EN), 8 กลุ่มสิทธิ์, permission matrix, helper `hasPermission()` — ใช้ร่วม backend + frontend เป็น single source of truth
+- **Backend API (6 เส้น)**:
+  - `GET /api/rbac/roles` — role definitions + permission labels
+  - `GET/POST /api/rbac/users` — รายชื่อผู้ใช้ / สร้างบัญชี (validate email ซ้ำ, รูปแบบอีเมล, บทบาท)
+  - `PATCH /api/rbac/users/[id]` — เปลี่ยนบทบาท/สถานะ + **กฎธุรกิจ: ห้ามเปลี่ยนบทบาท/ระงับ SYS_ADMIN ACTIVE บัญชีสุดท้าย (409)**
+  - `GET /api/rbac/datasets` — datasets พร้อม grants
+  - `POST /api/rbac/datasets/[id]/access` — GRANT / REVOKE / SET_LEVEL
+  - `GET /api/rbac/audit` — audit trail (limit สูงสุด 200)
+  - ทุก mutation เขียน AuditLog อัตโนมัติ (actor: sys.admin@company.co.th — demo mode)
+- **Frontend RBAC Console** (`src/components/rbac-console.tsx`) ฝังใน section `#roles` ของหน้าแรก 4 แท็บ:
+  1. สิทธิ์ตามบทบาท — ตาราง matrix 8×8 (scroll แนวนอน, sticky header/first column, sr-only descriptions)
+  2. ผู้ใช้ในระบบ — ตาราง users + เปลี่ยนบทบาทผ่าน Select + ระงับ/เปิดบัญชี + Dialog เพิ่มผู้ใช้ (max-h + scroll)
+  3. เข้าถึงชุดข้อมูล — การ์ดราย dataset แสดง grants chips, มอบสิทธิ์ (เลือกบทบาท+ระดับ), ยกเลิกสิทธิ์, ลดระดับสิทธิ์
+  4. บันทึกตรวจสอบ — Audit Trail (max-h-96 overflow, badge แยกสีตาม action, เวลาแบบ th-TH)
+- **ผลทดสอบด้วย Agent Browser (ผ่านทั้งหมด)**:
+  - Matrix: แสดง 8 บทบาท × 8 สิทธิ์ครบ, table semantics ถูกต้อง
+  - เปลี่ยนบทบาท นิกร ขายดี: BUSINESS_USER → DATA_OWNER — persist ลง DB จริง ✅
+  - ระงับ SYS_ADMIN บัญชีสุดท้าย → **ถูกบล็อก (409)** toast แสดงข้อความกฎธุรกิจ, DB ยัง ACTIVE ✅
+  - มอบสิทธิ์ EXECUTIVE ให้ "ลูกค้าองค์กร — Master" (VIEW) → ปรากฏ chip แล้วยกเลิก → chip หาย ✅
+  - Audit Trail บันทึกครบ: ASSIGN_ROLE, GRANT_ACCESS, REVOKE_ACCESS พร้อม actor + เวลา ✅
+  - ไม่มี console error / page error / error ใน dev.log, lint ผ่าน
+- bump `APP_VERSION` → `v0.3.0` (แสดงบน header + footer), commit + tag `v0.3.0` + push (main + tag) ตามกระบวนการทำงานใหม่
+
+Stage Summary:
+- **โมดูล RBAC พร้อมใช้**: RBAC Console บนหน้าแรกควบคุมข้อมูลจริงใน SQLite ผ่าน 6 API — ไม่ใช่ mock UI
+- โครงสร้างใหม่: `prisma/schema.prisma` (4 models), `scripts/seed.ts`, `src/lib/rbac.ts`, `src/app/api/rbac/**` (6 routes), `src/components/rbac-console.tsx`, แก้ `src/app/page.tsx` (แทนที่ section บทบาทแบบ static)
+- Version ปัจจุบัน: `v0.3.0` — rollback point ก่อนหน้า: `v0.2.0`
+
+
 
 
 

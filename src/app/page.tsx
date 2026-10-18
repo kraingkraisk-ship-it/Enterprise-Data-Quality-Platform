@@ -14,8 +14,6 @@ import {
   Table2,
   CheckCircle2,
   AlertTriangle,
-  UserCog,
-  Users,
   BarChart3,
   Lock,
   EyeOff,
@@ -44,8 +42,9 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import RbacConsole from '@/components/rbac-console'
 
-export const APP_VERSION = 'v0.2.0'
+export const APP_VERSION = 'v0.3.0'
 
 /* ---------------------------------- data ---------------------------------- */
 
@@ -172,17 +171,6 @@ const WORKFLOW = [
     en: 'Approve / Exception',
     desc: 'ผู้อนุมัติตัดสินใจต่อผลลัพธ์ ข้อยกเว้นถูกบันทึกพร้อมเหตุผลและวันหมดอายุ',
   },
-]
-
-const ROLES = [
-  { icon: Database, th: 'เจ้าของข้อมูล', en: 'Data Owner', desc: 'กำกับนโยบายข้อมูลและอนุมัติในความรับผิดชอบ' },
-  { icon: UserCog, th: 'ผู้ดูแลข้อมูล', en: 'Data Steward', desc: 'ดูแลกฎ คุณภาพข้อมูล และข้อยกเว้นประจำวัน' },
-  { icon: FileSearch, th: 'นักวิเคราะห์คุณภาพข้อมูล', en: 'DQ Analyst', desc: 'ทบทวนผลตรวจและสัญญาณ AI วิเคราะห์สาเหตุ' },
-  { icon: Server, th: 'วิศวกรข้อมูล', en: 'Data Engineer', desc: 'จัดการแหล่งข้อมูล การนำเข้า และประสิทธิภาพ' },
-  { icon: Scale, th: 'เจ้าหน้าที่กำกับดูแล', en: 'Compliance Officer', desc: 'ตรวจสอบการปฏิบัติตาม PDPA และข้อกำหนด' },
-  { icon: Users, th: 'ผู้ใช้งานทั่วไป', en: 'Business User', desc: 'ใช้ข้อมูลที่ผ่านการตรวจสอบแล้วในงานของตน' },
-  { icon: BarChart3, th: 'ผู้บริหาร', en: 'Executive', desc: 'ติดตามภาพรวมคุณภาพข้อมูลขององค์กร' },
-  { icon: Lock, th: 'ผู้ดูแลระบบ', en: 'System Administrator', desc: 'จัดการผู้ใช้ สิทธิ์การเข้าถึง และการตั้งค่าระบบ' },
 ]
 
 const SECURITY = [
@@ -485,34 +473,16 @@ export default function Home() {
         <section id="roles" aria-labelledby="roles-title" className="border-y bg-emerald-50/40">
           <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-18">
             <div className="mb-8 max-w-2xl">
-              <Badge variant="outline" className="mb-3 border-emerald-300 bg-emerald-50 text-emerald-800">8 User Roles</Badge>
+              <Badge variant="outline" className="mb-3 border-emerald-300 bg-emerald-50 text-emerald-800">RBAC Console — Live</Badge>
               <h2 id="roles-title" className="text-2xl font-bold tracking-tight sm:text-3xl">
                 บทบาทผู้ใช้และสิทธิ์การเข้าถึง
               </h2>
               <p className="mt-2 text-muted-foreground">
-                แต่ละบทบาทมีหน้าจอเฉพาะของตนเอง (Role-based Workspace) ตามหลักการให้สิทธิ์น้อยที่สุด
+                คอนโซลจัดการ RBAC จริง — ทดลองเปลี่ยนบทบาท มอบ/ยกเลิกสิทธิ์รายชุดข้อมูล และตรวจ Audit Trail ได้ทันที
+                (ข้อมูลบันทึกลงฐานข้อมูลจริง · ทุกการเปลี่ยนแปลงถูกตรวจสอบย้อนหลังได้)
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {ROLES.map((r) => (
-                <Card key={r.en} className="h-full transition-shadow hover:shadow-md">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center gap-2.5">
-                      <span className="flex size-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-                        <r.icon className="size-4.5" aria-hidden="true" />
-                      </span>
-                      <div>
-                        <CardTitle className="text-sm">{r.th}</CardTitle>
-                        <CardDescription className="text-xs">{r.en}</CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <p className="text-sm text-muted-foreground">{r.desc}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <RbacConsole />
           </div>
         </section>
 
