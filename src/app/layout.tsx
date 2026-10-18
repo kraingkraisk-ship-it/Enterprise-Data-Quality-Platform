@@ -14,24 +14,28 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
+  title: "Enterprise Data Quality Platform — แพลตฟอร์มบริหารคุณภาพข้อมูลองค์กร",
+  description:
+    "ตรวจสอบคุณภาพข้อมูลครบ 9 มิติ สร้างกฎแบบ No-code พร้อม AI ช่วยแจ้งเตือนที่ต้องมนุษย์ทบทวน ปฏิบัติตาม PDPA และมาตรฐาน ISO 8000 / DAMA-DMBOK (DQ validation, no-code rule builder, ML-assisted signals, PDPA compliant)",
+  keywords: [
+    "Data Quality",
+    "Data Governance",
+    "DQ Platform",
+    "PDPA",
+    "ISO 8000",
+    "DAMA-DMBOK",
+    "คุณภาพข้อมูล",
+    "ธรรมาภิบาลข้อมูล",
+  ],
+  authors: [{ name: "Enterprise Data Quality Platform Team" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.svg",
   },
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "Enterprise Data Quality Platform",
+    description: "บริหารคุณภาพข้อมูลองค์กรอย่างถูกต้อง ตรวจสอบได้ ปลอดภัย (Data Quality validation & governance)",
+    siteName: "Enterprise Data Quality Platform",
     type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
   },
 };
 
@@ -41,7 +45,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="th" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

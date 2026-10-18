@@ -137,5 +137,54 @@ Stage Summary:
 - Token ไม่ถูกบันทึกลง `.git/config` (ใช้แบบ one-time URL เช่นเดิม)
 - ⚠️ หาก token นี้รั่วไหล ให้ revoke ทันทีและ rotate เป็น token ใหม่ตามขั้นตอนเดิม
 
+---
+
+## 🔄 กระบวนการทำงานที่บังคับใช้ (Enforced Workflow — ตั้งแต่ Task ID: 4)
+
+> ผู้ใช้กำหนดเมื่อ 2026-10-18 — ทุก Task ถัดไปต้องปฏิบัติตาม
+
+1. **ระบุ version ทุกครั้งที่ update code** — ใช้ Semantic Versioning (เช่น `v0.2.0`) แสดงบนหน้าเว็บ (header/footer) ระบุใน commit message และสร้าง git tag ทุกครั้ง
+2. **Push ไปยัง GitHub ทุกครั้งที่ update code** — รวม tag ด้วย และต้อง verify ผลบน remote เสมอ
+3. **ถ้าผู้ใช้ลืมแนบ token** — ผู้ช่วยต้อง**เรียกถาม token จากผู้ใช้ก่อน push** ห้ามดำเนินการโดยไม่มี token
+4. Token ใช้แบบ one-time URL เท่านั้น ห้ามบันทึกลง `.git/config` หรือไฟล์ใด ๆ และแนะนำให้ rotate หลังใช้งาน
+
+---
+
+## Task ID: 4
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: `v0.2.0`
+**Task**: แก้ไข issue "ไม่มีหน้าจอขึ้นเลย ทดสอบ Web App ไม่ได้" พร้อมบันทึกกระบวนการทำงานใหม่
+(Fix blank-screen issue — web app had no UI — and record the new enforced workflow)
+
+Work Log:
+- **วินิจฉัยปัญหา**: ตรวจสอบ dev server (ทำงานปกติ HTTP 200, ไม่มี error) และ `src/app/page.tsx`
+  → พบว่าหน้าเว็บเป็น scaffold placeholder ของ Z.ai มีเพียงโลโก้เดี่ยวบนหน้าขาว (ยืนยันด้วย agent-browser screenshot)
+  → สาเหตุ: UI ของแพลตฟอร์ม Data Quality ยังไม่เคยถูกสร้าง — ผู้ใช้จึงเห็นหน้าว่าง
+- **แก้ไข**: สร้างหน้าจอหลักของ Enterprise Data Quality Platform (`src/app/page.tsx`) ประกอบด้วย
+  - Header sticky พร้อม nav anchor 5 หมวด + badge version
+  - Hero section (ภาษาไทยหลัก + อังกฤษกำกับ) พร้อมสถิติภาพรวม 9/8/23/5
+  - การ์ดตัวอย่าง Rule Builder แบบ no-code (ประโยคมาตรฐาน 5 ส่วน)
+  - Section มิติคุณภาพข้อมูล 9 มิติ, ฟีเจอร์หลัก 4 รายการ, แหล่งข้อมูล 5 แบบ,
+    ขั้นตอนการใช้งาน 5 ขั้น, บทบาทผู้ใช้ 8 บทบาท, ความปลอดภัย+มาตรฐาน 6 รายการ
+  - Footer แบบ sticky (mt-auto) พร้อม version และ PDPA Ready
+- อัปเดต `layout.tsx`: metadata ใหม่ (title/description ภาษาไทย+อังกฤษ), `lang="th"`, favicon เป็น /logo.svg
+- อัปเดต `next.config.ts`: เพิ่ม `allowedDevOrigins: ["*.space-z.ai", "*.z.ai"]` แก้เตือน cross-origin ของ preview
+- `bun run lint` ผ่าน ไม่มี error
+- **ตรวจสอบด้วย agent-browser ครบถ้วน**:
+  - Desktop 1280px: ทุก section render ถูกต้อง, title ใหม่แสดง, nav 5 ลิงก์
+  - Mobile 390px: layout ตอบสนองถูกต้อง ไม่มี overflow
+  - Nav click "ขั้นตอนการใช้งาน" → scroll ไปตำแหน่ง 2361px สำเร็จ
+  - Footer: ติดล่างจอจริง (`footerAtBottom: true`) เมื่อเนื้อหาเกิน 1 จอ
+  - ไม่มี console error และไม่มี warning ใน dev.log ล่าสุด
+- **บันทึกกระบวนการทำงานใหม่** (Enforced Workflow) ไว้ในไฟล์นี้ตามที่ผู้ใช้กำหนด
+- Commit + tag `v0.2.0` + push ขึ้น GitHub ด้วย token ใหม่ (one-time URL) และ verify ผลบน remote
+
+Stage Summary:
+- **สาเหตุปัญหา**: หน้าเว็บเป็น scaffold placeholder ไม่มี UI แอปจริง → **แก้แล้ว** ด้วยการสร้างหน้าจอหลัก DQ Platform ครบ 6 sections
+- **Version นี้**: `v0.2.0` (แสดงบน header + footer ของเว็บ, ผูก git tag `v0.2.0`)
+- ไฟล์ที่แก้: `src/app/page.tsx` (ใหม่ทั้งหมด), `src/app/layout.tsx` (metadata/lang), `next.config.ts` (allowedDevOrigins)
+- ผ่านการตรวจสอบ browser ทั้ง desktop/mobile + interaction + lint แล้ว
+
+
 
 
