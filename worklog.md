@@ -114,4 +114,28 @@ Stage Summary:
   ```
 - **ตรวจสอบว่ากำลังอยู่ที่ version นี้หรือไม่**: `git describe --tags` → ต้องแสดง `v0.1.0-baseline`
 
+---
+
+## Task ID: 3
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: Push ด้วย token ใหม่ (token rotation) และตรวจสอบสถานะ sync ระหว่าง local กับ remote
+(Push with the rotated token and verify local–remote sync status)
+
+Work Log:
+- ผู้ใช้ rotate token ใหม่ตามคำแนะนำด้านความปลอดภัย (token เดิมจาก Task ID: 1 ควรถูก revoke แล้ว)
+- ตรวจสอบ remote ด้วย token ใหม่ (`git ls-remote`): สำเร็จ — token ใหม่มีสิทธิ์อ่าน
+  - `refs/heads/main` = `df191353b9aa33cf3ee67a84b288b7e73874c86f` (ตรงกับ local HEAD)
+  - `refs/tags/v0.1.0-baseline` ยังอยู่บน remote ชี้ไปยัง `9f1daef` ถูกต้อง
+- ตรวจสอบ local: working tree สะอาด ไม่มีไฟล์ค้าง commit
+- ทดสอบ push ด้วย token ใหม่: ได้ผล `Everything up-to-date` — **ยืนยันว่า token ใหม่มีสิทธิ์เขียน (write) และไม่มี commit ใหม่ต้อง push**
+- บันทึกเหตุการณ์นี้ลง worklog และ push ด้วย token ใหม่ (commit นี้แหละคือสิ่งที่ถูก push รอบนี้)
+
+Stage Summary:
+- **สถานะ: Local และ Remote อยู่ในสถานะ sync สมบูรณ์** (ก่อน commit นี้: ทั้งคู่ที่ `df19135`)
+- **Token ใหม่ใช้งานได้ครบทั้ง read + write** (ยืนยันด้วย ls-remote + push test)
+- **จุด rollback ยังคงเดิม**: tag `v0.1.0-baseline` → `9f1daef` (ดูรายละเอียดใน Task ID: 2)
+- Token ไม่ถูกบันทึกลง `.git/config` (ใช้แบบ one-time URL เช่นเดิม)
+- ⚠️ หาก token นี้รั่วไหล ให้ revoke ทันทีและ rotate เป็น token ใหม่ตามขั้นตอนเดิม
+
+
 
