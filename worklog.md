@@ -224,6 +224,64 @@ Stage Summary:
 - โครงสร้างใหม่: `prisma/schema.prisma` (4 models), `scripts/seed.ts`, `src/lib/rbac.ts`, `src/app/api/rbac/**` (6 routes), `src/components/rbac-console.tsx`, แก้ `src/app/page.tsx` (แทนที่ section บทบาทแบบ static)
 - Version ปัจจุบัน: `v0.3.0` — rollback point ก่อนหน้า: `v0.2.0`
 
+---
+
+## Task ID: 5-result
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: `v0.3.0`
+**Task**: Push commit v0.3.0 (โมดูล RBAC) ขึ้น GitHub ด้วย token ใหม่ + ตรวจสอบยืนยันบน remote
+(Push the v0.3.0 RBAC commit and tag with the fresh token, then verify on remote)
+
+Work Log:
+- สถานการณ์: เซสชันก่อนหน้าพัฒนาโมดูล RBAC เสร็จและสร้าง commit + tag `v0.3.0` ใน local ไว้แล้ว แต่ **push ยังไม่สำเร็จ** (token รอบก่อนไม่ทำงาน) — ผู้ใช้ส่ง token ใหม่มา (token ลำดับที่ 4 ที่ใช้ในโปรเจกต์นี้)
+- ตรวจสอบสถานะ local ก่อน push:
+  - commit ล่าสุด `4aeb834` = "v0.3.0: feat RBAC module — user roles & access permissions console"
+  - tag `v0.3.0` สร้างแล้ว (annotated), `git describe --tags` = `v0.3.0`
+  - `git status`: `main...origin/main [ahead 1]` → ยืนยันว่ายังไม่ถูก push
+  - ไฟล์โมดูล RBAC ครบ: `src/components/rbac-console.tsx`, `src/lib/rbac.ts`, `scripts/seed.ts`, `src/app/api/rbac/**` (6 routes)
+- ตรวจสอบ remote ด้วย token ใหม่ (`git ls-remote`): สำเร็จ — token ใหม่มีสิทธิ์อ่าน
+  - ก่อน push: `refs/heads/main` = `604b5b8` (ยังอยู่ที่ v0.2.0), ไม่มี `refs/tags/v0.3.0` → ยืนยัน remote ยังขาด v0.3.0
+- Push ครั้งเดียวครบทั้ง branch + tag:
+  `git push <one-time-url> refs/heads/main:refs/heads/main refs/tags/v0.3.0:refs/tags/v0.3.0`
+  - ผลลัพธ์: `604b5b8..4aeb834  main -> main` + `* [new tag] v0.3.0 -> v0.3.0` ✅
+- ตรวจสอบยืนยันหลัง push (`git ls-remote` อีกครั้ง):
+  - `refs/heads/main` = `4aeb8342630aeca66b85df45cbcb9d29e5c31d89` **ตรงกับ local HEAD ทุกประการ**
+  - `refs/tags/v0.3.0` = `b158ffb` (tag object) → `^{}` = `4aeb8342630aeca66b85df45cbcb9d29e5c31d89` ถูกต้อง
+- Sync tracking ref: `git fetch <url> main:refs/remotes/origin/main --force` → สถานะ `main...origin/main` in sync (ไม่มี ahead/behind)
+- Token ไม่ถูกบันทึกลง `.git/config` (remote.origin.url ยังเป็น clean URL — ตรวจสอบแล้ว)
+
+Stage Summary:
+- **สถานะ: Local และ Remote sync สมบูรณ์ที่ version `v0.3.0`** (commit `4aeb834`)
+- **Token ใหม่ (ลำดับที่ 4) ใช้งานได้ครบทั้ง read + write** (ยืนยันด้วย ls-remote + push สองครั้ง: main+tag และ worklog ตามลำดับ)
+- ข้อมูล version สำหรับ rollback:
+
+| รายการ | ค่า |
+|---|---|
+| Version | `v0.3.0` |
+| Tag object SHA | `b158ffb2ad0a8ea7f913dfd0519d688a6583e5e5` |
+| Full Commit SHA | `4aeb8342630aeca66b85df45cbcb9d29e5c31d89` |
+| Short SHA | `4aeb834` |
+| Commit message | `v0.3.0: feat RBAC module — user roles & access permissions console` |
+| Branch / Remote | `main` → GitHub repo เดิม |
+| จุด rollback ก่อนหน้า | `v0.2.0` = `604b5b8` |
+
+- **วิธี Rollback (tag-based)**:
+  ```bash
+  # ดูโค้ดที่ version นี้ (ไม่กระทบ branch หลัก)
+  git checkout v0.3.0
+
+  # ย้อนกลับไป v0.2.0 (ก่อนโมดูล RBAC)
+  git checkout main
+  git reset --hard v0.2.0
+  git push --force origin main
+  git push origin :refs/tags/v0.3.0   # ลบ tag บน remote ด้วย (ถ้าต้องการ)
+
+  # หรือแบบปลอดภัย (ไม่ force push)
+  git revert --no-commit v0.2.0..main && git commit -m "revert: back to v0.2.0"
+  ```
+- **ตรวจสอบว่าอยู่ที่ version นี้**: `git describe --tags` → ต้องแสดง `v0.3.0`
+- ⚠️ ควร rotate/revoke token หลังใช้งานเสร็จตามขั้นตอนเดิม
+
 
 
 
