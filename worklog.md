@@ -374,3 +374,23 @@ Stage Summary:
 - **v0.5.0 ครบ 3 ความต้องการ**: (1) Dataset preview + เลือกคอลัมน์จากข้อมูลจริง (2) กฎใช้ร่วมหลายชุดข้อมูลผ่านตาราง RuleDataset (3) คลังเงื่อนไขส่วนกลาง — สร้าง/ใช้/ปิด/ลบได้ พร้อม guard ตามหลัก RBAC + audit log ทุกเหตุการณ์
 - Rollback Reference: ก่อนงานนี้ local อยู่ที่ `2b74029` (= v0.4.0 `567f586` + worklog) — กู้คืนด้วย `git reset --hard 2b74029 && bun run db:push && bunx tsx scripts/seed.ts`
 - Commit นี้: v0.5.0 (tag `v0.5.0`) — รอ push ขึ้น GitHub เมื่อผู้ใช้แนบ token (one-time URL ตาม workflow)
+
+---
+## Task ID: 11
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: Push v0.5.0 ขึ้น GitHub ด้วย token ที่ผู้ใช้แนบ (one-time URL ตาม workflow) + verify remote
+
+Work Log:
+- สถานะก่อน push: local main = `d0c979e` (v0.5.0) นำ remote (1d64e37) อยู่ 9 commits, tag `v0.5.0` ยังไม่อยู่บน remote, dev server รัน v0.5.0 (HTTP 200) อยู่แล้ว
+- Push ด้วย one-time token URL (`https://<token>@github.com/...` ตรงในคำสั่ง push — ไม่แก้ origin, ไม่บันทึกลง git config ทุกรูปแบบ) พร้อม redact token ออกจาก output ทุกขั้น
+- `git push <url> main` → `1d64e37..d0c979e main -> main` (fast-forward ตามคาด, EXIT=0)
+- `git push <url> tag v0.5.0` → `* [new tag] v0.5.0 -> v0.5.0` (EXIT=0)
+- Verify remote ด้วย `git ls-remote origin` (public read ไม่ต้องใช้ token): `refs/heads/main` = `d0c979e` และ `refs/tags/v0.5.0` = `d0c979e` — ตรงกับ local เป๊ะทุก hash
+- ตรวจ token ไม่ตกค้าง: `git config --list | rg -i "github_pat|token"` = ไม่พบ, `git remote get-url origin` = URL ปกติไม่มี token
+- `git fetch origin` อัปเดต tracking ref → `main...origin/main` ไม่มี ahead/behind = sync สมบูรณ์
+
+Stage Summary:
+- **Remote main ปัจจุบัน = `d0c979e` (v0.5.0)** — ครอบคลุม 9 commits: v0.2.0 (แก้หน้าขาว) → v0.3.0 (RBAC) → v0.4.0 (Core Features ตรงคู่มือ) → worklog Task 9 (restore v0.4.0) → **v0.5.0 (Rule Builder 3 requirement)** + worklog commit ระหว่างทาง
+- Tags บน remote ครบ 9 ตัว รวม `v0.5.0` — rollback point ล่าสุดก่อนหน้า: `v0.4.0` (567f586)
+- Token ถูกใช้เฉพาะใน push command (one-time URL) ไม่มีการบันทึกลงไฟล์/config ใดๆ
+- Commit นี้ (worklog Task 11) จะถูก push ตามด้วยเพื่อให้ remote สะท้อนบันทึกฉบับเต็ม
