@@ -429,6 +429,54 @@ Stage Summary:
 - **วิธีกลับมาที่ปัจจุบัน (v0.4.0) หลัง rollback เสมอ**: `git reset --hard v0.4.0` (tag ยังอยู่ครบ — ไม่มีอะไรสูญหายถาวร)
 - ⚠️ ควร rotate/revoke token หลังใช้งานเสร็จตามขั้นตอนเดิม
 
+---
+
+## Task ID: 8
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: `v0.0.0-original-scaffold` (ผลลัพธ์ของ rollback — main ชี้ `dd78f81`)
+**Task**: Rollback branch main กลับไป version '0' = commit `dd78f81` (Initial commit — Z.ai scaffold 3 ไฟล์) ทั้ง local และ remote ตามคำสั่งตรงของผู้ใช้
+(Rollback main branch to version '0' — commit dd78f81 — on both local and remote, per explicit user request)
+
+Work Log:
+- ผู้ใช้สั่ง rollback กลับไป version '0' (`dd78f81`) — จุดแรกเริ่มสุดก่อนพัฒนาแพลตฟอร์ม — หลังจากก่อนหน้านี้ได้ติด tag จุดแรกเริ่มไว้ครบแล้ว (Task ID: 7) และผู้ใช้ส่ง token ใหม่ (token ลำดับที่ 7 ของโปรเจกต์) เพื่อยืนยันการ force push ตามกระบวนการทำงาน
+- **Safety net ก่อน rollback**: commit ฉบับนี้ (worklog ฉบับสุดท้ายก่อนย้อนประวัติ) ถูกติด tag `archive/pre-rollback-v0.4.0` และ push ขึ้น remote — เก็บสถานะล่าสุด (v0.4.0 + worklog ครบทุก Task 1–8) ไว้บน GitHub ถาวร แม้ main จะถูก force push ทับ
+- ลำดับการ execute (ทำตามลำดับนี้ทันทีหลัง commit ฉบับนี้):
+  1. Commit worklog ฉบับนี้ + สร้าง annotated tag `archive/pre-rollback-v0.4.0`
+  2. Push main (fast-forward, non-destructive) + push archive tag → verify บน remote
+  3. หยุด dev server (หลัง rollback ไม่มีแอปให้รัน — scaffold ไม่มี package.json)
+  4. `git reset --hard dd78f81` — rollback local (working tree เหลือ 3 ไฟล์: .env, .gitignore, download/README.md)
+  5. `git push --force <one-time-url> refs/heads/main:refs/heads/main` — rollback remote
+  6. Verify ด้วย `git ls-remote`: remote main = `dd78f815d5c369b35e3ba726831b45e18c224bca` + tags ครบ 7 ตัว
+  7. Sync tracking ref + ตรวจว่า token ไม่ติดใน `.git/config`
+- ผลการ verify แบบ real-time รายงานในแชทของ Task นี้ (ทุกขั้นตอนตรวจสอบก่อนข้าม)
+
+Stage Summary:
+- **สถานะสุดท้าย: main = `dd78f815d5c369b35e3ba726831b45e18c224bca` ทั้ง local และ remote (sync กัน) — โครงเปล่าก่อนพัฒนาแพลตฟอร์ม**
+- **สิ่งที่ยังอยู่บน GitHub ครบถ้วน — ไม่มีอะไรสูญหายถาวร**:
+
+| Tag | ชี้ไปที่ | ความหมาย |
+|---|---|---|
+| `archive/pre-rollback-v0.4.0` | commit นี้ | สถานะเต็มล่าสุดก่อน rollback (โค้ด v0.4.0 + worklog ครบ) |
+| `v0.4.0` | `567f586` | Core Features ครบ (โค้ดล่าสุด) |
+| `v0.3.0` | `4aeb834` | + RBAC |
+| `v0.2.0` | `604b5b8` | + หน้าจอ DQ Platform |
+| `v0.1.0-baseline` | `9f1daef` | source ชุดแรก + worklog แรก |
+| `v0.1.0-initial-source` | `1d64e37` | source code ชุดแรก (85 ไฟล์) |
+| `v0.0.0-original-scaffold` | `dd78f81` | โครงเปล่า (= จุดที่ rollback มาอยู่) |
+
+- **วิธีกู้คืนกลับมา v0.4.0 เมื่อต้องการ (ต้องมี token สำหรับ force push)**:
+  ```bash
+  git checkout main
+  git reset --hard v0.4.0
+  git push --force origin main
+  # จากนั้นเตรียม runtime (db/*.db ไม่ถูก rollback เพราะอยู่นอก git — ถ้ายังอยู่ใช้เดิมได้)
+  bun install
+  bun run db:push && bunx tsx scripts/seed.ts
+  bun run dev
+  ```
+- หมายเหตุ: งานพัฒนาถัดไปควรเริ่มจาก `v0.4.0` หรือ `archive/pre-rollback-v0.4.0` ไม่ใช่จาก scaffold เปล่า
+- ⚠️ ควร rotate/revoke token หลังใช้งานเสร็จตามขั้นตอนเดิม
+
 
 
 
