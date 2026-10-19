@@ -324,3 +324,31 @@ Stage Summary:
 
 
 
+
+---
+## Task ID: 9
+**Agent**: Z.ai Code (main)
+**Version**: v0.4.0 (restore — ไม่มีการเปลี่ยนเวอร์ชัน, ไม่มีการแก้ source code)
+**Task**: ผู้ใช้ขอ "Run version ที่ทำคู่มือให้ ของวันที่ 15 ตุลาคม 2569" — คู่มือฉบับ v1.0 ถูกอัปโหลดที่ `upload/dq-platform-user-guide.pdf|.html` → mapping: คู่มือ v1.0 (ฟีเจอร์ครบ 8 บทบาท/9 มิติ/10 เทมเพลต/5 แดชบอร์ด) = โค้ด **v0.4.0** → restore และรันให้ทดสอบ
+
+Work Log:
+- ก่อนหน้า (งานวินิจฉัย "หน้าจอสีขาว" — ไม่มี commit): พบ 2 สาเหตุซ้อนกัน ① dev server ดับ (sandbox rebuild ~11:49 สตาร์ท server ตอน boot เท่านั้น ไม่มี supervisor รีสตาร์ท) ② ตอนนั้น HEAD = 1d64e37 (v0.1.0-initial-source) ซึ่ง page.tsx เป็น placeholder โลโก้เดียวบนพื้นขาว (by design ของ version '1')
+- บทเรียน sandbox: สตาร์ท server ด้วย `nohup ... &` หรือ `setsid ... &` เปล่าๆ ถูกเก็บทิ้งหลังจบ Bash session → ใช้ `(setsid nohup bun run dev > /dev/null 2>&1 < /dev/null &)` (double-detach ใน subshell) รอดข้าม session ยืนยันแล้ว
+- Pre-flight: tags ครบ 8 ตัวในเครื่อง, v0.4.0 → commit 567f586 (มี core-features-console.tsx, rbac-console.tsx, api/dq+rbac, seed.ts)
+- `git reset --hard v0.4.0` → HEAD = 567f586, tree สะอาด (untracked: upload/, db/, dev.log ไม่ถูกแตะ)
+- `bun install` (no changes) → `bun run db:push` (schema sync อยู่แล้ว — db file คงอยู่จากยุค v0.4.0) → `bunx tsx scripts/seed.ts` สำเร็จ (users 10, datasets 6, grants 27, sampleRows 40, rules 7, signals 2, exceptions 2)
+- pkill server เก่า → สตาร์ทใหม่แบบ persistent → HTTP 200 (next-server pid 4580)
+- **ทดสอบ Agent Browser ผ่านทั้งหมด**:
+  - หน้าแรก render เต็ม: hero + nav 5 หมวด + badge v0.4.0 + Rule Grammar "For [Dataset], [Column] must [Condition] using [Parameters] when [Optional filter], otherwise mark as [Severity]" ตรงคู่มือบทที่ 5 ✅
+  - แท็บ Rule Builder: ฟอร์มครบ + ผู้ดำเนินการ "สมชาย วิชาการดี — เจ้าของข้อมูล" (seed) + รายการกฎ 7 ข้อ ✅
+  - แท็บรันตรวจสอบ & สัญญาณ AI: ผู้รัน "มาลี รักษาข้อมูล" (RUN_VALIDATION) / ผู้ทบทวน (REVIEW_SIGNALS) — ปุ่มรัน disabled จนเลือกครบ = RBAC gating ทำงาน ✅
+  - แท็บแดชบอร์ด: "สวมบทบาท" + 6 datasets พร้อมป้าย (มี/ไม่มี PII) ✅
+  - PII masking live: "ค••••••••", "ร••••@acme.co.th", "081••••••" — ตรงคู่มือบทที่ 10.2 ✅
+  - **รัน validation จริง**: toast "รันตรวจสอบสำเร็จ — ตรวจ 4 กฎ จาก 20 แถว — สัญญาณใหม่ 5 รายการ (รอมนุษย์ทบทวน)" + badge สัญญาณ 2→7 + ผลรายกฎ ผ่าน/ล้มเหลว 3/20 + คะแนนรวม ✅
+  - ไม่มี console error / page error ✅
+- หมายเหตุ push: remote main ชี้ 1d64e37 ซึ่ง**เป็นบรรพบุรุษของ 567f586** → push แบบ fast-forward ได้ (ไม่ต้อง force) — รอ token ตาม workflow
+
+Stage Summary:
+- แพลตฟอร์มกลับมารันฉบับเต็ม **v0.4.0** = ฉบับที่คู่มือ "เวอร์ชัน 1.0 · 15 ตุลาคม 2569" อธิบายครบทุกฟีเจอร์ — ไม่มีการแก้ source code (tree = v0.4.0 เป๊ะ)
+- Rollback Reference: สถานะก่อน restore นี้ = 1d64e37 (tag `v0.1.0-initial-source`) — กลับได้ด้วย `git reset --hard v0.1.0-initial-source`
+- สถานะ push: **รอ token** จากผู้ใช้เพื่อ push commit worklog นี้ (fast-forward, sync remote main กลับสู่แนว v0.4.0)
