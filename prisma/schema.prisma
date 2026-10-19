@@ -32,7 +32,7 @@ model Dataset {
 
   grants     DatasetAccess[]
   sampleRows SampleRow[]
-  rules      DqRule[]
+  rules      RuleDataset[]
   runs       DqRun[]
   signals    DqSignal[]
   exceptions DqException[]
@@ -76,12 +76,43 @@ model SampleRow {
   @@index([datasetId])
 }
 
-// กฎตรวจสอบคุณภาพข้อมูล — สร้างจาก Rule Builder แบบ no-code
+// คลังเงื่อนไข (must) ส่วนกลาง — ระบบมีชุดมาตรฐานให้ (isSystem) + ผู้ใช้สร้างเพิ่มได้ และใช้ร่วมกันทั้งระบบ
+model ConditionTemplate {
+  id         String   @id @default(cuid())
+  key        String   @unique // รหัสอ้างอิง เช่น NOT_NULL (ระบบ) หรือ CUSTOM_xxx (ผู้ใช้สร้าง)
+  name       String // ชื่อแสดง (ไทย)
+  nameEn     String   @default("") // ชื่อแสดง (อังกฤษ — ไม่บังคับ)
+  sentence   String // ข้อความ "must ..." ภาษาอังกฤษ เช่น "match the pattern"
+  dimension  String // มิติคุณภาพข้อมูล (DimensionKey)
+  engineType String // เอนจินประเมินผล: NOT_NULL | EMAIL | REGEX | RANGE | IN_LIST | UNIQUE | MAX_AGE_DAYS
+  params     String   @default("[]") // JSON array — นิยามพารามิเตอร์ [{key,label,type,placeholder}]
+  isSystem   Boolean  @default(false) // เงื่อนไขมาตรฐานของระบบ — ลบไม่ได้
+  enabled    Boolean  @default(true)
+  createdBy  String? // email ผู้สร้าง (เฉพาะของผู้ใช้)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isSystem, enabled])
+}
+
+// ความสัมพันธ์กฎ ↔ ชุดข้อมูลแบบ many-to-many — กฎ 1 ข้อใช้ร่วมกับหลายชุดข้อมูลได้
+model RuleDataset {
+  id        String  @id @default(cuid())
+  ruleId    String
+  datasetId String
+
+  rule    DqRule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, datasetId])
+  @@index([datasetId])
+}
+
+// กฎตรวจสอบคุณภาพข้อมูล — สร้างจาก Rule Builder แบบ no-code และใช้ร่วมกับหลายชุดข้อมูลได้
 model DqRule {
   id         String   @id @default(cuid())
-  datasetId  String
   column     String
-  condition  String // NOT_NULL | REGEX | EMAIL | RANGE | IN_LIST | UNIQUE | MAX_AGE_DAYS
+  condition  String // รหัสเงื่อนไขจากคลังเงื่อนไขส่วนกลาง (ConditionTemplate.key)
   parameters String   @default("{}") // JSON — พารามิเตอร์ของเงื่อนไข
   filter     String? // ตัวกรองไม่บังคับ (จองไว้)
   severity   String   @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
@@ -89,11 +120,9 @@ model DqRule {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
-  runs    DqRun[]
+  datasets   RuleDataset[]
+  runs       DqRun[]
   exceptions DqException[]
-
-  @@index([datasetId])
 }
 
 // ผลการรันตรวจสอบรายกฎ (ประวัติย้อนหลัง)

@@ -4,21 +4,25 @@ import { resolveOperator } from '@/lib/operator'
 
 export async function GET() {
   try {
-    const exceptions = await db.dqException.findMany({
-      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-      take: 100,
-      include: {
-        dataset: { select: { name: true } },
-        rule: { select: { column: true, condition: true } },
-      },
-    })
+    const [exceptions, templates] = await Promise.all([
+      db.dqException.findMany({
+        orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+        take: 100,
+        include: {
+          dataset: { select: { name: true } },
+          rule: { select: { column: true, condition: true } },
+        },
+      }),
+      db.conditionTemplate.findMany({ select: { key: true, name: true } }),
+    ])
+    const conditionNames = new Map(templates.map((t) => [t.key, t.name]))
     return NextResponse.json({
       exceptions: exceptions.map((x) => ({
         id: x.id,
         datasetId: x.datasetId,
         datasetName: x.dataset.name,
         ruleId: x.ruleId,
-        ruleLabel: x.rule ? `${x.rule.column} (${x.rule.condition})` : null,
+        ruleLabel: x.rule ? `${x.rule.column} (${conditionNames.get(x.rule.condition) ?? x.rule.condition})` : null,
         reason: x.reason,
         requestedBy: x.requestedBy,
         status: x.status,
@@ -71,9 +75,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (ruleId) {
-      const rule = await db.dqRule.findUnique({ where: { id: ruleId } })
-      if (!rule || rule.datasetId !== datasetId) {
-        return NextResponse.json({ error: 'กฎที่เลือกไม่อยู่ในชุดข้อมูลนี้' }, { status: 400 })
+      const rule = await db.dqRule.findUnique({
+        where: { id: ruleId },
+        include: { datasets: { select: { datasetId: true } } },
+      })
+      if (!rule || !rule.datasets.some((rd) => rd.datasetId === datasetId)) {
+        return NextResponse.json({ error: 'กฎที่เลือกไม่ได้ใช้กับชุดข้อมูลนี้' }, { status: 400 })
       }
     }
 

@@ -141,28 +141,143 @@ const TXN_ROWS: Record<string, unknown>[] = [
   { txn_id: 'T-90001', account_no: 'ACC-77020', amount: 7100, currency: 'THB', status: 'COMPLETED', txn_date: daysAgo(10) },
 ]
 
-/* --------------------------- กฎเริ่มต้น 7 ข้อ ----------------------------- */
+/* ------------------- คลังเงื่อนไขส่วนกลาง (must) ------------------------- */
+
+const CONDITION_TEMPLATES: Array<{
+  key: string
+  name: string
+  nameEn?: string
+  sentence: string
+  dimension: string
+  engineType: string
+  params?: string
+  isSystem: boolean
+}> = [
+  // เงื่อนไขมาตรฐานของระบบ 7 แบบ (ลบ/แก้ไม่ได้)
+  { key: 'NOT_NULL', name: 'ไม่มีค่าว่าง', nameEn: 'Not empty', sentence: 'not be empty', dimension: 'COMPLETENESS', engineType: 'NOT_NULL', params: '[]', isSystem: true },
+  { key: 'EMAIL', name: 'รูปแบบอีเมลถูกต้อง', nameEn: 'Valid email', sentence: 'be a valid email address', dimension: 'VALIDITY', engineType: 'EMAIL', params: '[]', isSystem: true },
+  {
+    key: 'REGEX',
+    name: 'ตรงตามรูปแบบที่กำหนด',
+    nameEn: 'Matches pattern',
+    sentence: 'match the pattern',
+    dimension: 'VALIDITY',
+    engineType: 'REGEX',
+    params: '[{"key":"pattern","label":"รูปแบบ (Regular Expression)","type":"text","placeholder":"^0[0-9]{9}$"}]',
+    isSystem: true,
+  },
+  {
+    key: 'RANGE',
+    name: 'อยู่ในช่วงตัวเลขที่กำหนด',
+    nameEn: 'Within range',
+    sentence: 'be within the range',
+    dimension: 'ACCURACY',
+    engineType: 'RANGE',
+    params: '[{"key":"min","label":"ค่าต่ำสุด","type":"number"},{"key":"max","label":"ค่าสูงสุด","type":"number"}]',
+    isSystem: true,
+  },
+  {
+    key: 'IN_LIST',
+    name: 'อยู่ในรายการค่าที่อนุญาต',
+    nameEn: 'In allowed list',
+    sentence: 'be one of the allowed values',
+    dimension: 'CONSISTENCY',
+    engineType: 'IN_LIST',
+    params: '[{"key":"values","label":"ค่าที่อนุญาต (คั่นด้วยเครื่องหมาย ,)","type":"text","placeholder":"ACTIVE, INACTIVE"}]',
+    isSystem: true,
+  },
+  { key: 'UNIQUE', name: 'ไม่ซ้ำกันในชุดข้อมูล', nameEn: 'Unique', sentence: 'be unique across the dataset', dimension: 'UNIQUENESS', engineType: 'UNIQUE', params: '[]', isSystem: true },
+  {
+    key: 'MAX_AGE_DAYS',
+    name: 'ข้อมูลไม่เก่าเกินกี่วัน',
+    nameEn: 'Max age in days',
+    sentence: 'not be older than',
+    dimension: 'TIMELINESS',
+    engineType: 'MAX_AGE_DAYS',
+    params: '[{"key":"days","label":"จำนวนวันที่ยอมรับได้","type":"number","placeholder":"7"}]',
+    isSystem: true,
+  },
+  // ตัวอย่างเงื่อนไขส่วนกลางที่ผู้ใช้สร้าง — ใช้ร่วมกันทั้งระบบได้
+  {
+    key: 'CUSTOM_TH_PHONE',
+    name: 'หมายเลขโทรศัพท์ไทย 10 หลัก',
+    nameEn: 'Thai mobile number',
+    sentence: 'match the Thai mobile number pattern (10 digits, starting with 0)',
+    dimension: 'VALIDITY',
+    engineType: 'REGEX',
+    params: '[{"key":"pattern","label":"รูปแบบ (Regular Expression)","type":"text","placeholder":"^0\\\\d{9}$"}]',
+    isSystem: false,
+  },
+  {
+    key: 'CUSTOM_NON_NEGATIVE',
+    name: 'จำนวนไม่ติดลบ',
+    nameEn: 'Non-negative number',
+    sentence: 'be a non-negative number within the allowed range',
+    dimension: 'ACCURACY',
+    engineType: 'RANGE',
+    params: '[{"key":"min","label":"ค่าต่ำสุด","type":"number","placeholder":"0"},{"key":"max","label":"ค่าสูงสุด","type":"number"}]',
+    isSystem: false,
+  },
+  {
+    key: 'CUSTOM_SUPPORTED_CURRENCY',
+    name: 'สกุลเงินที่ระบบรองรับ',
+    nameEn: 'Supported currency',
+    sentence: 'be one of the currencies supported by the treasury system',
+    dimension: 'CONSISTENCY',
+    engineType: 'IN_LIST',
+    params: '[{"key":"values","label":"ค่าที่อนุญาต (คั่นด้วยเครื่องหมาย ,)","type":"text","placeholder":"THB, USD, EUR"}]',
+    isSystem: false,
+  },
+  {
+    key: 'CUSTOM_FRESH_DATA',
+    name: 'ข้อมูลสด (ไม่เก่าเกิน 7 วัน)',
+    nameEn: 'Fresh data (7 days)',
+    sentence: 'not be older than the freshness window',
+    dimension: 'TIMELINESS',
+    engineType: 'MAX_AGE_DAYS',
+    params: '[{"key":"days","label":"จำนวนวันที่ยอมรับได้","type":"number","placeholder":"7"}]',
+    isSystem: false,
+  },
+]
+
+/* ------------------- กฎเริ่มต้น (ใช้ร่วมหลายชุดข้อมูลได้) ------------------- */
 
 const RULES: Array<{
-  dataset: string
+  datasets: string[]
   column: string
   condition: string
   parameters: string
   severity: string
 }> = [
-  { dataset: 'ลูกค้าองค์กร — Master', column: 'customer_id', condition: 'NOT_NULL', parameters: '{}', severity: 'CRITICAL' },
-  { dataset: 'ลูกค้าองค์กร — Master', column: 'email', condition: 'EMAIL', parameters: '{}', severity: 'HIGH' },
-  { dataset: 'ลูกค้าองค์กร — Master', column: 'credit_limit', condition: 'RANGE', parameters: '{"min":0,"max":1000000}', severity: 'HIGH' },
-  { dataset: 'ลูกค้าองค์กร — Master', column: 'phone', condition: 'REGEX', parameters: '{"pattern":"^0\\\\d{9}$"}', severity: 'MEDIUM' },
-  { dataset: 'รายการธุรกรรมรายวัน', column: 'txn_id', condition: 'UNIQUE', parameters: '{}', severity: 'HIGH' },
-  { dataset: 'รายการธุรกรรมรายวัน', column: 'currency', condition: 'IN_LIST', parameters: '{"values":"THB, USD, EUR"}', severity: 'MEDIUM' },
-  { dataset: 'รายการธุรกรรมรายวัน', column: 'txn_date', condition: 'MAX_AGE_DAYS', parameters: '{"days":30}', severity: 'LOW' },
+  { datasets: ['ลูกค้าองค์กร — Master'], column: 'customer_id', condition: 'NOT_NULL', parameters: '{}', severity: 'CRITICAL' },
+  { datasets: ['ลูกค้าองค์กร — Master'], column: 'email', condition: 'EMAIL', parameters: '{}', severity: 'HIGH' },
+  { datasets: ['ลูกค้าองค์กร — Master'], column: 'credit_limit', condition: 'RANGE', parameters: '{"min":0,"max":1000000}', severity: 'HIGH' },
+  // กฎที่ใช้ร่วม 2 ชุดข้อมูล — ใช้เงื่อนไขส่วนกลาง CUSTOM_TH_PHONE
+  {
+    datasets: ['ลูกค้าองค์กร — Master', 'ข้อมูลพนักงาน HR'],
+    column: 'phone',
+    condition: 'CUSTOM_TH_PHONE',
+    parameters: '{"pattern":"^0\\\\d{9}$"}',
+    severity: 'MEDIUM',
+  },
+  { datasets: ['รายการธุรกรรมรายวัน'], column: 'txn_id', condition: 'UNIQUE', parameters: '{}', severity: 'HIGH' },
+  {
+    datasets: ['รายการธุรกรรมรายวัน'],
+    column: 'currency',
+    condition: 'CUSTOM_SUPPORTED_CURRENCY',
+    parameters: '{"values":"THB, USD, EUR"}',
+    severity: 'MEDIUM',
+  },
+  { datasets: ['รายการธุรกรรมรายวัน'], column: 'txn_date', condition: 'MAX_AGE_DAYS', parameters: '{"days":30}', severity: 'LOW' },
+  { datasets: ['รายการธุรกรรมรายวัน'], column: 'amount', condition: 'CUSTOM_NON_NEGATIVE', parameters: '{"min":0,"max":1000000}', severity: 'HIGH' },
 ]
 
 async function main() {
-  await db.dqSignal.deleteMany()
   await db.dqRun.deleteMany()
+  await db.ruleDataset.deleteMany()
   await db.dqRule.deleteMany()
+  await db.conditionTemplate.deleteMany()
+  await db.dqSignal.deleteMany()
   await db.dqException.deleteMany()
   await db.sampleRow.deleteMany()
   await db.auditLog.deleteMany()
@@ -200,18 +315,36 @@ async function main() {
     }
   }
 
-  // กฎเริ่มต้น 7 ข้อ
+  // คลังเงื่อนไขส่วนกลาง (ของระบบ + ตัวอย่างที่ผู้ใช้สร้าง)
+  for (const t of CONDITION_TEMPLATES) {
+    await db.conditionTemplate.create({
+      data: {
+        key: t.key,
+        name: t.name,
+        nameEn: t.nameEn ?? '',
+        sentence: t.sentence,
+        dimension: t.dimension,
+        engineType: t.engineType,
+        params: t.params ?? '[]',
+        isSystem: t.isSystem,
+        enabled: true,
+        createdBy: t.isSystem ? null : 'anucha.analyst@company.co.th',
+      },
+    })
+  }
+
+  // กฎเริ่มต้น — เชื่อมกับหลายชุดข้อมูลผ่าน RuleDataset (many-to-many)
   for (const r of RULES) {
-    const datasetId = datasetMap.get(r.dataset)
-    if (!datasetId) continue
+    const datasetIds = r.datasets.map((name) => datasetMap.get(name)).filter((id): id is string => Boolean(id))
+    if (datasetIds.length === 0) continue
     await db.dqRule.create({
       data: {
-        datasetId,
         column: r.column,
         condition: r.condition,
         parameters: r.parameters,
         severity: r.severity,
         enabled: true,
+        datasets: { create: datasetIds.map((datasetId) => ({ datasetId })) },
       },
     })
   }
@@ -284,10 +417,18 @@ async function main() {
   })
   await db.auditLog.create({
     data: {
+      action: 'CREATE_CONDITION',
+      actor: 'system@seed',
+      target: `${CONDITION_TEMPLATES.length} conditions`,
+      detail: 'Seed เริ่มต้นระบบ: ตั้งค่าคลังเงื่อนไขส่วนกลาง (เงื่อนไขมาตรฐาน 7 รายการ + ตัวอย่างที่ผู้ใช้สร้าง 4 รายการ)',
+    },
+  })
+  await db.auditLog.create({
+    data: {
       action: 'CREATE_RULE',
       actor: 'system@seed',
       target: `${RULES.length} rules`,
-      detail: 'Seed เริ่มต้นระบบ: สร้างกฎคุณภาพข้อมูลเริ่มต้น 7 ข้อ + ข้อมูลตัวอย่าง sandbox',
+      detail: 'Seed เริ่มต้นระบบ: สร้างกฎคุณภาพข้อมูลเริ่มต้น 8 ข้อ (มีกฎที่ใช้ร่วมหลายชุดข้อมูล) + ข้อมูลตัวอย่าง sandbox',
     },
   })
 
@@ -296,7 +437,9 @@ async function main() {
     datasets: await db.dataset.count(),
     grants: await db.datasetAccess.count(),
     sampleRows: await db.sampleRow.count(),
+    conditionTemplates: await db.conditionTemplate.count(),
     rules: await db.dqRule.count(),
+    ruleDatasetLinks: await db.ruleDataset.count(),
     signals: await db.dqSignal.count(),
     exceptions: await db.dqException.count(),
   })

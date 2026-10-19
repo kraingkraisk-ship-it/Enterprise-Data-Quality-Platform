@@ -9,7 +9,11 @@ export async function GET() {
         where: { status: 'ACTIVE' },
         orderBy: { createdAt: 'asc' },
         include: {
-          rules: { where: { enabled: true }, include: { runs: { orderBy: { createdAt: 'desc' }, take: 1 } } },
+          rules: {
+            where: { rule: { enabled: true } },
+            include: { rule: { include: { runs: { orderBy: { createdAt: 'desc' }, take: 1 } } } },
+            orderBy: { ruleId: 'asc' },
+          },
           _count: { select: { signals: { where: { status: 'PENDING_REVIEW' } } } },
         },
       }),
@@ -24,7 +28,8 @@ export async function GET() {
       const byDimension = new Map<DimensionKey, number[]>()
       let lastRunAt: string | null = null
 
-      for (const rule of d.rules) {
+      for (const rd of d.rules) {
+        const rule = rd.rule
         const run = rule.runs[0]
         if (!run) continue
         if (!lastRunAt || run.createdAt > new Date(lastRunAt)) lastRunAt = run.createdAt.toISOString()

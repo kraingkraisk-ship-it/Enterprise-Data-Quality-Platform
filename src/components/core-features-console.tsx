@@ -16,6 +16,10 @@ import {
   EyeOff,
   Sparkles,
   Send,
+  Library,
+  Table2,
+  Plus,
+  Lock,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,10 +30,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -42,8 +49,10 @@ import {
   CONDITIONS,
   CONDITION_KEYS,
   DIMENSION_LABELS,
+  ENGINE_DESCRIPTIONS,
   SEVERITY_KEYS,
   SEVERITY_LABELS,
+  type TemplateParamDef,
 } from '@/lib/dq'
 import { ROLE_KEYS, ROLE_LIST, type PermissionKey, type RoleKey } from '@/lib/rbac'
 
@@ -64,12 +73,36 @@ interface ApiDataset {
   piiEnabled: boolean
 }
 
+interface ApiCondition {
+  id: string
+  key: string
+  name: string
+  nameEn: string
+  sentence: string
+  dimension: string
+  dimensionTh: string
+  engineType: string
+  engineLabel: string
+  params: TemplateParamDef[]
+  isSystem: boolean
+  enabled: boolean
+  createdBy: string | null
+  createdAt: string
+  usageCount: number
+}
+
 interface ApiRule {
   id: string
-  datasetId: string
+  datasetIds: string[]
+  datasetNames: string[]
   datasetName: string
   column: string
   condition: string
+  conditionName: string
+  isSystemCondition: boolean
+  conditionSentence: string | null
+  engineType: string | null
+  dimension: string | null
   parameters: string
   filter: string | null
   severity: string
@@ -109,6 +142,7 @@ interface RunResponse {
   datasetName: string
   rowsCount: number
   rulesCount: number
+  skipped?: number
   newSignals: number
   overallScore: number | null
   dimensionScores: Array<{ dimension: string; th: string; en: string; score: number }>
@@ -116,6 +150,7 @@ interface RunResponse {
     ruleId: string
     column: string
     condition: string
+    conditionName: string
     severity: string
     dimensionTh: string
     sentence: string
@@ -143,10 +178,24 @@ interface DashboardData {
 }
 
 interface PreviewData {
+  datasetId: string
   datasetName: string
   columns: string[]
   rows: Record<string, unknown>[]
   piiMasked: boolean
+  hasSample: boolean
+}
+
+interface ColumnInfo {
+  name: string
+  availableIn: string[]
+  missingIn: string[]
+}
+
+interface MultiPreviewData {
+  previews: PreviewData[]
+  columns: ColumnInfo[]
+  datasetsWithSampleCount: number
 }
 
 /* ------------------------------ helpers ---------------------------------- */
@@ -204,6 +253,7 @@ export default function CoreFeaturesConsole() {
   const [users, setUsers] = useState<ApiUser[]>([])
   const [datasets, setDatasets] = useState<ApiDataset[]>([])
   const [rules, setRules] = useState<ApiRule[] | null>(null)
+  const [conditions, setConditions] = useState<ApiCondition[]>([])
   const [signals, setSignals] = useState<ApiSignal[]>([])
   const [signalStats, setSignalStats] = useState({ pending: 0, confirmed: 0, dismissed: 0 })
   const [exceptions, setExceptions] = useState<ApiException[]>([])
@@ -212,21 +262,35 @@ export default function CoreFeaturesConsole() {
   const [reloadTick, setReloadTick] = useState(0)
 
   // tab 1 — rule builder form
-  const [rbDataset, setRbDataset] = useState('')
+  const [rbDatasets, setRbDatasets] = useState<string[]>([])
+  const [rbPreviewDataset, setRbPreviewDataset] = useState('')
+  const [rbPreview, setRbPreview] = useState<MultiPreviewData | null>(null)
   const [rbColumn, setRbColumn] = useState('')
-  const [rbCondition, setRbCondition] = useState('NOT_NULL')
+  const [rbCondition, setRbCondition] = useState('')
   const [rbSeverity, setRbSeverity] = useState('MEDIUM')
   const [rbFilter, setRbFilter] = useState('')
   const [rbParams, setRbParams] = useState<Record<string, string>>({})
   const [rbOperator, setRbOperator] = useState('somchai.owner@company.co.th')
 
-  // tab 2 — run + review
+  // tab 2 — condition library
+  const [cnName, setCnName] = useState('')
+  const [cnNameEn, setCnNameEn] = useState('')
+  const [cnSentence, setCnSentence] = useState('')
+  const [cnDimension, setCnDimension] = useState('VALIDITY')
+  const [cnEngine, setCnEngine] = useState('REGEX')
+  // เติมนิยามพารามิเตอร์ของเอนจินเริ่มต้น (REGEX) ให้พร้อมแก้ไขทันที
+  const [cnParams, setCnParams] = useState<Array<{ key: string; label: string; type: 'number' | 'text'; placeholder: string }>>(
+    CONDITIONS.REGEX.params.map((p) => ({ key: p.key, label: p.label, type: p.type, placeholder: p.placeholder ?? '' })),
+  )
+  const [cnOperator, setCnOperator] = useState('anucha.analyst@company.co.th')
+
+  // tab 3 — run + review
   const [runDataset, setRunDataset] = useState('')
   const [runOperator, setRunOperator] = useState('malee.steward@company.co.th')
   const [runResult, setRunResult] = useState<RunResponse | null>(null)
   const [reviewerEmail, setReviewerEmail] = useState('anucha.analyst@company.co.th')
 
-  // tab 3 — exceptions
+  // tab 4 — exceptions
   const [exDataset, setExDataset] = useState('')
   const [exRule, setExRule] = useState('')
   const [exReason, setExReason] = useState('')
@@ -234,7 +298,7 @@ export default function CoreFeaturesConsole() {
   const [exRequester, setExRequester] = useState('malee.steward@company.co.th')
   const [exApprover, setExApprover] = useState('somchai.owner@company.co.th')
 
-  // tab 4 — PII preview
+  // tab 5 — PII preview
   const [previewRole, setPreviewRole] = useState<RoleKey>('BUSINESS_USER')
   const [previewDataset, setPreviewDataset] = useState('')
   const [preview, setPreview] = useState<PreviewData | null>(null)
@@ -267,14 +331,16 @@ export default function CoreFeaturesConsole() {
     let alive = true
     ;(async () => {
       try {
-        const [r, s, x, dash] = await Promise.all([
+        const [r, c, s, x, dash] = await Promise.all([
           fetch('/api/dq/rules').then((r) => r.json()),
+          fetch('/api/dq/conditions').then((r) => r.json()),
           fetch('/api/dq/signals').then((r) => r.json()),
           fetch('/api/dq/exceptions').then((r) => r.json()),
           fetch('/api/dq/dashboard').then((r) => r.json()),
         ])
         if (!alive) return
         setRules(r.rules ?? [])
+        setConditions(c.conditions ?? [])
         setSignals(s.signals ?? [])
         setSignalStats(s.stats ?? { pending: 0, confirmed: 0, dismissed: 0 })
         setExceptions(x.exceptions ?? [])
@@ -282,6 +348,7 @@ export default function CoreFeaturesConsole() {
       } catch {
         if (!alive) return
         setRules([])
+        setConditions([])
       }
     })()
     return () => {
@@ -289,7 +356,47 @@ export default function CoreFeaturesConsole() {
     }
   }, [reloadTick])
 
-  // PII preview fetch
+  // Rule Builder — ตัวอย่างข้อมูลของชุดข้อมูลที่เลือก (รองรับหลายชุด + ปิดบัง PII ตามบทบาทผู้ดำเนินการ)
+  const rbOperatorRole = useMemo(() => {
+    const role = users.find((u) => u.email === rbOperator)?.role
+    return (role as RoleKey) ?? 'BUSINESS_USER'
+  }, [users, rbOperator])
+
+  useEffect(() => {
+    if (rbDatasets.length === 0) {
+      setRbPreview(null)
+      setRbPreviewDataset('')
+      return
+    }
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/dq/dataset-preview?datasetIds=${rbDatasets.join(',')}&role=${rbOperatorRole}&rows=5`)
+        const data = (await res.json()) as MultiPreviewData & { error?: string }
+        if (!alive) return
+        if (data.error) {
+          setRbPreview(null)
+          return
+        }
+        setRbPreview(data)
+      } catch {
+        if (alive) setRbPreview(null)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [rbDatasets, rbOperatorRole])
+
+  // คงตัวอย่างที่แสดงไว้กับชุดข้อมูลที่ยังเลือกอยู่ — ถ้าหลุดให้สลับไปชุดแรกที่เลือก
+  useEffect(() => {
+    if (rbDatasets.length === 0) return
+    if (!rbPreviewDataset || !rbDatasets.includes(rbPreviewDataset)) {
+      setRbPreviewDataset(rbDatasets[0])
+    }
+  }, [rbDatasets, rbPreviewDataset])
+
+  // PII preview (แท็บแดชบอร์ด)
   useEffect(() => {
     if (!previewDataset) return
     let alive = true
@@ -312,33 +419,64 @@ export default function CoreFeaturesConsole() {
 
   const activeUsers = useMemo(() => users.filter((u) => u.status === 'ACTIVE'), [users])
 
-  const roleOf = useCallback((email: string): RoleKey | null => (users.find((u) => u.email === email)?.role as RoleKey) ?? null, [users])
-
   const hasPerm = useCallback(
     (email: string, permission: PermissionKey): boolean => {
-      const role = roleOf(email)
+      const role = users.find((u) => u.email === email)?.role as RoleKey | undefined
       if (!role) return false
       return ROLE_LIST.find((r) => r.key === role)?.permissions.includes(permission) ?? false
     },
-    [roleOf],
+    [users],
   )
 
-  const condDef = CONDITIONS[rbCondition as keyof typeof CONDITIONS]
+  // เงื่อนไขในคลัง — แยกของระบบ / ที่ผู้ใช้สร้าง (เฉพาะที่เปิดใช้งาน สำหรับสร้างกฎ)
+  const systemConditions = useMemo(() => conditions.filter((c) => c.isSystem && c.enabled), [conditions])
+  const customConditions = useMemo(() => conditions.filter((c) => !c.isSystem && c.enabled), [conditions])
+  const rbTemplate = useMemo(() => conditions.find((c) => c.key === rbCondition) ?? null, [conditions, rbCondition])
+
+  const rbDatasetNames = useMemo(
+    () => rbDatasets.map((id) => datasets.find((d) => d.id === id)?.name ?? '').filter(Boolean),
+    [rbDatasets, datasets],
+  )
 
   const previewSentence = useMemo(() => {
-    const datasetName = datasets.find((d) => d.id === rbDataset)?.name ?? '[Dataset]'
-    const params = JSON.stringify(rbParams)
+    const template = rbTemplate
     return buildRuleSentence({
-      datasetName,
+      datasetNames: rbDatasetNames.length > 0 ? rbDatasetNames : undefined,
       column: rbColumn || '[Column]',
-      condition: rbCondition,
-      parameters: params,
+      condition: rbCondition || 'NOT_NULL',
+      conditionSentence: template?.sentence,
+      engineType: template?.engineType,
+      parameters: JSON.stringify(rbParams),
       severity: rbSeverity,
       filter: rbFilter || null,
     })
-  }, [datasets, rbDataset, rbColumn, rbCondition, rbParams, rbSeverity, rbFilter])
+  }, [rbDatasetNames, rbColumn, rbCondition, rbTemplate, rbParams, rbSeverity, rbFilter])
 
-  const rulesOfDataset = useMemo(() => rules?.filter((r) => r.datasetId === exDataset && r.enabled) ?? [], [rules, exDataset])
+  // คอลัมน์ที่เลือกได้ — union จากข้อมูลตัวอย่างของทุกชุดข้อมูลที่เลือก
+  const rbColumnOptions = useMemo(() => rbPreview?.columns ?? [], [rbPreview])
+  const rbHasSampleData = useMemo(() => (rbPreview?.datasetsWithSampleCount ?? 0) > 0, [rbPreview])
+  const rbSelectedPreview = useMemo(
+    () => rbPreview?.previews.find((p) => p.datasetId === rbPreviewDataset) ?? null,
+    [rbPreview, rbPreviewDataset],
+  )
+
+  const cnSentencePreview = useMemo(
+    () =>
+      buildRuleSentence({
+        column: '[Column]',
+        condition: cnEngine,
+        conditionSentence: cnSentence.trim() || '[ประโยค must ภาษาอังกฤษ]',
+        engineType: cnEngine,
+        parameters: JSON.stringify({}),
+        severity: 'MEDIUM',
+      }),
+    [cnEngine, cnSentence],
+  )
+
+  const rulesOfDataset = useMemo(
+    () => rules?.filter((r) => r.enabled && r.datasetIds.includes(exDataset)) ?? [],
+    [rules, exDataset],
+  )
 
   const pendingExceptions = useMemo(() => exceptions.filter((x) => x.status === 'PENDING'), [exceptions])
   const decidedExceptions = useMemo(() => exceptions.filter((x) => x.status !== 'PENDING'), [exceptions])
@@ -393,11 +531,39 @@ export default function CoreFeaturesConsole() {
     }
   }
 
+  async function deleteJson(url: string, body: Record<string, unknown>, busyKey: string, okMessage: string): Promise<boolean> {
+    setBusy(busyKey)
+    try {
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast({ title: 'ดำเนินการไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return false
+      }
+      toast({ title: okMessage })
+      return true
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+      return false
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  function toggleRbDataset(id: string) {
+    setRbDatasets((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]))
+    setRbColumn('')
+  }
+
   async function handleCreateRule() {
     const ok = await postJson(
       '/api/dq/rules',
       {
-        datasetId: rbDataset,
+        datasetIds: rbDatasets,
         column: rbColumn,
         condition: rbCondition,
         parameters: rbParams,
@@ -406,7 +572,7 @@ export default function CoreFeaturesConsole() {
         operatorEmail: rbOperator,
       },
       'create-rule',
-      'สร้างกฎใหม่เรียบร้อย',
+      rbDatasets.length > 1 ? `สร้างกฎใหม่เรียบร้อย (ใช้ร่วม ${rbDatasets.length} ชุดข้อมูล)` : 'สร้างกฎใหม่เรียบร้อย',
     )
     if (ok) {
       setRbColumn('')
@@ -414,6 +580,49 @@ export default function CoreFeaturesConsole() {
       setRbParams({})
       refetch()
     }
+  }
+
+  async function handleCreateCondition() {
+    const ok = await postJson(
+      '/api/dq/conditions',
+      {
+        name: cnName,
+        nameEn: cnNameEn,
+        sentence: cnSentence,
+        dimension: cnDimension,
+        engineType: cnEngine,
+        params: cnParams,
+        operatorEmail: cnOperator,
+      },
+      'create-condition',
+      'บันทึกเงื่อนไขส่วนกลางใหม่เรียบร้อย — ใช้ได้กับทุกกฎในระบบ',
+    )
+    if (ok) {
+      setCnName('')
+      setCnNameEn('')
+      setCnSentence('')
+      refetch()
+    }
+  }
+
+  async function handleToggleCondition(c: ApiCondition) {
+    const ok = await patchJson(
+      `/api/dq/conditions/${c.id}`,
+      { action: 'TOGGLE_ENABLED', operatorEmail: cnOperator },
+      `cond-toggle-${c.id}`,
+      c.enabled ? 'ปิดใช้งานเงื่อนไขแล้ว' : 'เปิดใช้งานเงื่อนไขแล้ว',
+    )
+    if (ok) refetch()
+  }
+
+  async function handleDeleteCondition(c: ApiCondition) {
+    const ok = await deleteJson(
+      `/api/dq/conditions/${c.id}`,
+      { operatorEmail: cnOperator },
+      `cond-del-${c.id}`,
+      'ลบเงื่อนไขส่วนกลางแล้ว',
+    )
+    if (ok) refetch()
   }
 
   async function handleToggleRule(id: string, enabled: boolean) {
@@ -532,6 +741,67 @@ export default function CoreFeaturesConsole() {
     )
   }
 
+  /* ------------------------- dataset multi select -------------------------- */
+
+  function DatasetMultiSelect() {
+    const allSelected = rbDatasets.length === datasets.length && datasets.length > 0
+    return (
+      <div className="rounded-lg border" role="group" aria-label="เลือกชุดข้อมูล (เลือกได้หลายชุด)">
+        <div className="flex items-center justify-between gap-2 border-b bg-slate-50/70 px-3 py-2">
+          <span className="text-xs font-medium text-slate-700">
+            เลือกแล้ว {rbDatasets.length}/{datasets.length} ชุดข้อมูล
+          </span>
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px]"
+              onClick={() => setRbDatasets(datasets.map((d) => d.id))}
+              disabled={allSelected}
+            >
+              เลือกทั้งหมด
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px]"
+              onClick={() => {
+                setRbDatasets([])
+                setRbColumn('')
+              }}
+              disabled={rbDatasets.length === 0}
+            >
+              ล้าง
+            </Button>
+          </div>
+        </div>
+        <div className="max-h-44 overflow-y-auto p-1">
+          {datasets.length === 0 && <p className="px-2 py-3 text-center text-xs text-muted-foreground">กำลังโหลดชุดข้อมูล…</p>}
+          {datasets.map((d) => (
+            <label
+              key={d.id}
+              className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50"
+            >
+              <Checkbox
+                checked={rbDatasets.includes(d.id)}
+                onCheckedChange={() => toggleRbDataset(d.id)}
+                aria-label={`เลือกชุดข้อมูล ${d.name}`}
+              />
+              <span className="truncate">{d.name}</span>
+              {d.piiEnabled && (
+                <Badge variant="outline" className="ml-auto shrink-0 text-[10px] text-slate-500">
+                  PII
+                </Badge>
+              )}
+            </label>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   /* -------------------------------- render -------------------------------- */
 
   return (
@@ -540,6 +810,15 @@ export default function CoreFeaturesConsole() {
         <TabsTrigger value="rules" className="gap-1.5">
           <GitBranch className="size-4" aria-hidden="true" />
           Rule Builder
+        </TabsTrigger>
+        <TabsTrigger value="conditions" className="gap-1.5">
+          <Library className="size-4" aria-hidden="true" />
+          คลังเงื่อนไข (must)
+          {conditions.length > 0 && (
+            <Badge variant="secondary" className="ml-1 h-5 rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-700">
+              {conditions.length}
+            </Badge>
+          )}
         </TabsTrigger>
         <TabsTrigger value="run" className="gap-1.5">
           <Play className="size-4" aria-hidden="true" />
@@ -574,39 +853,127 @@ export default function CoreFeaturesConsole() {
                 <GitBranch className="size-4 text-emerald-700" aria-hidden="true" />
                 สร้างกฎคุณภาพข้อมูลแบบไม่ต้องเขียนโค้ด
               </CardTitle>
-              <CardDescription>ประกอบประโยคกฎจากตัวเลือก — ระบบบังคับใช้สิทธิ์ MANAGE_RULES ตามบทบาทจริง</CardDescription>
+              <CardDescription>
+                เลือกชุดข้อมูลได้หลายชุด (กฎใช้ร่วมกันได้) · ดูตัวอย่างข้อมูลก่อนเลือกคอลัมน์ · เงื่อนไขจากคลังส่วนกลาง
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="rb-dataset">ชุดข้อมูล (For)</Label>
-                  <Select value={rbDataset} onValueChange={setRbDataset}>
-                    <SelectTrigger id="rb-dataset">
-                      <SelectValue placeholder="เลือกชุดข้อมูล" />
+              {/* 1) ชุดข้อมูล — เลือกได้หลายชุด */}
+              <div className="space-y-1.5">
+                <Label>ชุดข้อมูล (For) — เลือกได้มากกว่า 1 ชุด</Label>
+                <DatasetMultiSelect />
+                {rbDatasets.length > 1 && (
+                  <p className="text-xs text-emerald-700" role="status">
+                    กฎนี้จะถูกใช้ตรวจทั้ง {rbDatasetNames.length} ชุดข้อมูล: {rbDatasetNames.join(', ')}
+                  </p>
+                )}
+              </div>
+
+              {/* 2) ตัวอย่างข้อมูล + เลือกคอลัมน์จากข้อมูลจริง */}
+              <div className="space-y-2 rounded-lg border bg-slate-50/50 p-3">
+                <div className="flex items-center gap-2">
+                  <Table2 className="size-4 text-slate-600" aria-hidden="true" />
+                  <p className="text-xs font-medium text-slate-700">ตัวอย่างข้อมูล (sandbox — ปิดบัง PII ตามบทบาท)</p>
+                </div>
+
+                {rbDatasets.length === 0 && (
+                  <p className="py-2 text-center text-xs text-muted-foreground">เลือกชุดข้อมูลก่อน เพื่อดูตัวอย่างและเลือกคอลัมน์</p>
+                )}
+
+                {rbDatasets.length > 0 && (rbPreview?.previews.length ?? 0) > 1 && (
+                  <Select value={rbPreviewDataset} onValueChange={setRbPreviewDataset}>
+                    <SelectTrigger aria-label="เลือกชุดข้อมูลที่ต้องการดูตัวอย่าง" className="h-8 text-xs">
+                      <SelectValue placeholder="ชุดข้อมูลที่ดูตัวอย่าง" />
                     </SelectTrigger>
                     <SelectContent>
-                      {datasets.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
+                      {rbPreview!.previews.map((p) => (
+                        <SelectItem key={p.datasetId} value={p.datasetId}>
+                          {p.datasetName}
+                          {!p.hasSample ? ' (ไม่มีข้อมูลตัวอย่าง)' : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                )}
+
+                {rbSelectedPreview && rbSelectedPreview.hasSample && (
+                  <div className="relative overflow-x-auto rounded-md border bg-white">
+                    <table className="w-full min-w-[480px] text-left text-[11px]">
+                      <thead className="bg-emerald-50/70 text-emerald-900">
+                        <tr>
+                          {rbSelectedPreview.columns.map((c) => (
+                            <th key={c} scope="col" className="px-2.5 py-1.5 font-medium">
+                              {c}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rbSelectedPreview.rows.map((row, i) => (
+                          <tr key={i} className="border-t">
+                            {rbSelectedPreview.columns.map((c) => (
+                              <td key={c} className="max-w-40 truncate whitespace-nowrap px-2.5 py-1 font-mono" title={String(row[c] ?? '')}>
+                                {String(row[c] ?? '')}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {rbSelectedPreview && !rbSelectedPreview.hasSample && (
+                  <p className="rounded-md border border-dashed px-3 py-2 text-center text-xs text-muted-foreground">
+                    ชุดข้อมูล “{rbSelectedPreview.datasetName}” ยังไม่มีข้อมูลตัวอย่างในระบบ — พิมพ์ชื่อคอลัมน์เองได้ด้านล่าง
+                  </p>
+                )}
+
                 <div className="space-y-1.5">
-                  <Label htmlFor="rb-column">คอลัมน์ (Column)</Label>
-                  <Input
-                    id="rb-column"
-                    value={rbColumn}
-                    onChange={(e) => setRbColumn(e.target.value)}
-                    placeholder="เช่น email, credit_limit"
-                  />
+                  <Label htmlFor="rb-column">คอลัมน์ (Column) — จากข้อมูลตัวอย่างที่เลือก</Label>
+                  {rbHasSampleData ? (
+                    <Select
+                      value={rbColumn}
+                      onValueChange={setRbColumn}
+                    >
+                      <SelectTrigger id="rb-column">
+                        <SelectValue placeholder={rbColumnOptions.length > 0 ? 'เลือกคอลัมน์' : 'ยังไม่พบคอลัมน์'} />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-64">
+                        {rbColumnOptions.map((col) => {
+                          const missingCount = col.missingIn.filter((id) => rbDatasets.includes(id)).length
+                          const selectedCount = rbDatasets.length
+                          return (
+                            <SelectItem key={col.name} value={col.name}>
+                              {col.name}
+                              {missingCount > 0 && selectedCount > 1 ? ` — ไม่พบใน ${missingCount} ชุดข้อมูลที่เลือก` : ''}
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="rb-column"
+                      value={rbColumn}
+                      onChange={(e) => setRbColumn(e.target.value)}
+                      placeholder="พิมพ์ชื่อคอลัมน์ เช่น email"
+                    />
+                  )}
+                  {rbColumn &&
+                    rbColumnOptions.find((c) => c.name === rbColumn)?.missingIn.some((id) => rbDatasets.includes(id)) && (
+                      <p className="text-[11px] text-amber-700" role="alert">
+                        คอลัมน์ “{rbColumn}” ไม่พบในบางชุดข้อมูลที่เลือก (ชุดที่มีข้อมูลตัวอย่าง) — ระบบจะปฏิเสธตอนบันทึก
+                      </p>
+                    )}
                 </div>
               </div>
 
+              {/* 3) เงื่อนไขจากคลังส่วนกลาง */}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="rb-condition">เงื่อนไข (must)</Label>
+                  <Label htmlFor="rb-condition" className="gap-1">
+                    เงื่อนไข (must) — จากคลังส่วนกลาง
+                  </Label>
                   <Select
                     value={rbCondition}
                     onValueChange={(v) => {
@@ -615,14 +982,27 @@ export default function CoreFeaturesConsole() {
                     }}
                   >
                     <SelectTrigger id="rb-condition">
-                      <SelectValue />
+                      <SelectValue placeholder="เลือกเงื่อนไข" />
                     </SelectTrigger>
-                    <SelectContent>
-                      {CONDITION_KEYS.map((k) => (
-                        <SelectItem key={k} value={k}>
-                          {CONDITIONS[k].th}
-                        </SelectItem>
-                      ))}
+                    <SelectContent className="max-h-72">
+                      <SelectGroup>
+                        <SelectLabel>มาตรฐานของระบบ</SelectLabel>
+                        {systemConditions.map((c) => (
+                          <SelectItem key={c.key} value={c.key}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                      {customConditions.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>ส่วนกลางที่สร้างเอง</SelectLabel>
+                          {customConditions.map((c) => (
+                            <SelectItem key={c.key} value={c.key}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -643,13 +1023,26 @@ export default function CoreFeaturesConsole() {
                 </div>
               </div>
 
-              {/* dynamic parameters */}
-              {condDef && condDef.params.length > 0 && (
+              {rbTemplate && (
+                <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-emerald-50/50 px-3 py-2 text-xs text-emerald-900">
+                  <Badge variant="outline" className="border-emerald-200 bg-white text-[10.5px] text-emerald-800">
+                    {rbTemplate.isSystem ? 'เงื่อนไขมาตรฐาน' : 'สร้างโดยผู้ใช้'}
+                  </Badge>
+                  <span className="font-medium">{rbTemplate.name}</span>
+                  <span className="text-emerald-700">must {rbTemplate.sentence}</span>
+                  <Badge variant="outline" className="border-emerald-200 bg-white text-[10.5px] text-emerald-800">
+                    {DIMENSION_LABELS[rbTemplate.dimension as keyof typeof DIMENSION_LABELS]?.th ?? rbTemplate.dimension}
+                  </Badge>
+                </div>
+              )}
+
+              {/* dynamic parameters — จากนิยามของเงื่อนไขในคลัง */}
+              {rbTemplate && rbTemplate.params.length > 0 && (
                 <div className="grid gap-3 rounded-lg border bg-emerald-50/50 p-3 sm:grid-cols-2">
                   <p className="text-xs font-medium text-emerald-900 sm:col-span-2">
-                    พารามิเตอร์ของเงื่อนไข “{condDef.th}” (using)
+                    พารามิเตอร์ของเงื่อนไข “{rbTemplate.name}” (using)
                   </p>
-                  {condDef.params.map((p) => (
+                  {rbTemplate.params.map((p) => (
                     <div key={p.key} className="space-y-1.5">
                       <Label htmlFor={`rb-param-${p.key}`} className="text-xs">
                         {p.label}
@@ -691,10 +1084,10 @@ export default function CoreFeaturesConsole() {
               <Button
                 className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={handleCreateRule}
-                disabled={!rbDataset || !rbColumn || busy !== null}
+                disabled={rbDatasets.length === 0 || !rbColumn || !rbCondition || busy !== null}
               >
                 <Sparkles className="size-4" aria-hidden="true" />
-                {busy === 'create-rule' ? 'กำลังบันทึก…' : 'บันทึกกฎใหม่'}
+                {busy === 'create-rule' ? 'กำลังบันทึก…' : `บันทึกกฎใหม่${rbDatasets.length > 1 ? ` (ใช้ร่วม ${rbDatasets.length} ชุดข้อมูล)` : ''}`}
               </Button>
             </CardContent>
           </Card>
@@ -708,17 +1101,29 @@ export default function CoreFeaturesConsole() {
                   <RefreshCw className="size-4" aria-hidden="true" />
                 </Button>
               </div>
-              <CardDescription>ผลรันล่าสุดของแต่ละกฎ แสดงเคียงข้างกฎเสมอ</CardDescription>
+              <CardDescription>ผลรันล่าสุดของแต่ละกฎ แสดงเคียงข้างกฎเสมอ — กฎที่ใช้ร่วมหลายชุดข้อมูลแสดงหลายป้าย</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="max-h-[26rem] space-y-2.5 overflow-y-auto pr-1">
+              <div className="max-h-[32rem] space-y-2.5 overflow-y-auto pr-1">
                 {rules === null && <p className="py-8 text-center text-sm text-muted-foreground">กำลังโหลด…</p>}
                 {rules?.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">ยังไม่มีกฎ — สร้างกฎแรกจากฟอร์มด้านซ้าย</p>}
                 {rules?.map((rule) => (
                   <div key={rule.id} className={`rounded-lg border p-3 ${rule.enabled ? '' : 'opacity-60'}`}>
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline" className="text-[11px]">
-                        {rule.datasetName}
+                      {rule.datasetNames.map((name) => (
+                        <Badge key={name} variant="outline" className="text-[11px]">
+                          {name}
+                        </Badge>
+                      ))}
+                      <Badge
+                        variant="outline"
+                        className={`text-[11px] ${
+                          rule.isSystemCondition
+                            ? 'border-slate-200 bg-slate-50 text-slate-600'
+                            : 'border-violet-200 bg-violet-50 text-violet-800'
+                        }`}
+                      >
+                        {rule.conditionName}
                       </Badge>
                       <Badge variant="outline" className={`border text-[11px] ${SEVERITY_BADGE[rule.severity] ?? ''}`}>
                         {SEVERITY_LABELS[rule.severity as keyof typeof SEVERITY_LABELS]?.th ?? rule.severity}
@@ -776,7 +1181,266 @@ export default function CoreFeaturesConsole() {
         </div>
       </TabsContent>
 
-      {/* ========================= TAB 2: RUN + SIGNALS ========================= */}
+      {/* ====================== TAB 2: CONDITION LIBRARY ====================== */}
+      <TabsContent value="conditions" className="mt-4">
+        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+          {/* create new global condition */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Library className="size-4 text-emerald-700" aria-hidden="true" />
+                สร้างเงื่อนไข (must) ส่วนกลางใหม่
+              </CardTitle>
+              <CardDescription>
+                เงื่อนไขที่สร้างจะถูกจัดเก็บเป็นส่วนกลางของระบบ — นำไปใช้กับกฎทุกตัวและทุกชุดข้อมูลได้
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cn-name">ชื่อเงื่อนไข (ไทย)</Label>
+                  <Input id="cn-name" value={cnName} onChange={(e) => setCnName(e.target.value)} placeholder="เช่น หมายเลขประชาชนไทย" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cn-name-en">ชื่อภาษาอังกฤษ (ไม่บังคับ)</Label>
+                  <Input id="cn-name-en" value={cnNameEn} onChange={(e) => setCnNameEn(e.target.value)} placeholder="Thai citizen ID" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="cn-sentence">ประโยค “must …” (ภาษาอังกฤษ — ต่อจากคำว่า must ในประโยคกฎ)</Label>
+                <Input
+                  id="cn-sentence"
+                  value={cnSentence}
+                  onChange={(e) => setCnSentence(e.target.value)}
+                  placeholder="เช่น match the Thai citizen ID pattern (13 digits)"
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cn-dimension">มิติคุณภาพข้อมูล</Label>
+                  <Select value={cnDimension} onValueChange={setCnDimension}>
+                    <SelectTrigger id="cn-dimension">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(DIMENSION_LABELS) as Array<keyof typeof DIMENSION_LABELS>).map((k) => (
+                        <SelectItem key={k} value={k}>
+                          {DIMENSION_LABELS[k].th} ({DIMENSION_LABELS[k].en})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cn-engine">เอนจินประเมินผล</Label>
+                  <Select
+                    value={cnEngine}
+                    onValueChange={(v) => {
+                      setCnEngine(v)
+                      // เติมนิยามพารามิเตอร์ตามที่เอนจินต้องการ — แก้ป้ายชื่อ/placeholder ต่อได้
+                      const def = CONDITIONS[v as keyof typeof CONDITIONS]
+                      setCnParams(def.params.map((p) => ({ key: p.key, label: p.label, type: p.type, placeholder: p.placeholder ?? '' })))
+                    }}
+                  >
+                    <SelectTrigger id="cn-engine">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONDITION_KEYS.map((k) => (
+                        <SelectItem key={k} value={k}>
+                          {CONDITIONS[k].th}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">{ENGINE_DESCRIPTIONS[cnEngine as keyof typeof ENGINE_DESCRIPTIONS]}</p>
+                </div>
+              </div>
+
+              {/* parameter definitions */}
+              <div className="space-y-2 rounded-lg border bg-slate-50/60 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-slate-700">พารามิเตอร์ที่ผู้ใช้กรอกตอนสร้างกฎ (using)</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-[11px]"
+                    onClick={() =>
+                      setCnParams((prev) => [...prev, { key: '', label: '', type: 'text', placeholder: '' }])
+                    }
+                    disabled={cnParams.length >= 6}
+                  >
+                    <Plus className="size-3.5" aria-hidden="true" />
+                    เพิ่มพารามิเตอร์
+                  </Button>
+                </div>
+                {cnParams.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground">เอนจินนี้ไม่ต้องใช้พารามิเตอร์</p>
+                )}
+                {cnParams.map((p, i) => (
+                  <div key={i} className="grid gap-2 sm:grid-cols-[1fr_1.4fr_1.2fr_auto]">
+                    <Input
+                      aria-label={`คีย์พารามิเตอร์ ${i + 1}`}
+                      value={p.key}
+                      placeholder="key เช่น pattern"
+                      onChange={(e) =>
+                        setCnParams((prev) => prev.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))
+                      }
+                    />
+                    <Input
+                      aria-label={`ป้ายชื่อพารามิเตอร์ ${i + 1}`}
+                      value={p.label}
+                      placeholder="ป้ายชื่อ (ไทย)"
+                      onChange={(e) =>
+                        setCnParams((prev) => prev.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))
+                      }
+                    />
+                    <Input
+                      aria-label={`ตัวอย่างพารามิเตอร์ ${i + 1}`}
+                      value={p.placeholder}
+                      placeholder="ตัวอย่างค่า (ไม่บังคับ)"
+                      onChange={(e) =>
+                        setCnParams((prev) => prev.map((x, j) => (j === i ? { ...x, placeholder: e.target.value } : x)))
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`ลบพารามิเตอร์ ${i + 1}`}
+                      className="text-rose-600 hover:bg-rose-50"
+                      onClick={() => setCnParams((prev) => prev.filter((_, j) => j !== i))}
+                    >
+                      <Trash2 className="size-3.5" aria-hidden="true" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="cn-operator">ผู้ดำเนินการ (ต้องมีสิทธิ์ MANAGE_RULES)</Label>
+                <OperatorSelect id="cn-operator" value={cnOperator} onChange={setCnOperator} permission={PERMISSIONS_BY_ACTION.MANAGE_RULES} />
+              </div>
+
+              <div className="rounded-lg bg-slate-900 p-3.5 font-mono text-[12.5px] leading-relaxed text-emerald-300" aria-live="polite">
+                {cnSentencePreview}
+              </div>
+
+              <Button
+                className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={handleCreateCondition}
+                disabled={cnName.trim().length < 2 || cnSentence.trim().length < 3 || busy !== null}
+              >
+                <Sparkles className="size-4" aria-hidden="true" />
+                {busy === 'create-condition' ? 'กำลังบันทึก…' : 'บันทึกเงื่อนไขส่วนกลาง'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* condition list */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base">เงื่อนไขในระบบ ({conditions.length})</CardTitle>
+                <Button variant="ghost" size="sm" onClick={refetch} aria-label="รีเฟรชคลังเงื่อนไข">
+                  <RefreshCw className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+              <CardDescription>เงื่อนไขมาตรฐานของระบบลบ/แก้ไม่ได้ — เงื่อนไขที่สร้างเองลบได้เมื่อไม่มีกฎใช้อ้างอิง</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-[36rem] space-y-2.5 overflow-y-auto pr-1">
+                {conditions.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">กำลังโหลดคลังเงื่อนไข…</p>}
+                {conditions.map((c) => (
+                  <div key={c.id} className={`rounded-lg border p-3 ${c.enabled ? '' : 'opacity-60'}`}>
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      <Badge
+                        variant="outline"
+                        className={`text-[10.5px] ${
+                          c.isSystem ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-violet-200 bg-violet-50 text-violet-800'
+                        }`}
+                      >
+                        {c.isSystem ? (
+                          <span className="flex items-center gap-1">
+                            <Lock className="size-3" aria-hidden="true" />
+                            ของระบบ
+                          </span>
+                        ) : (
+                          'สร้างโดยผู้ใช้'
+                        )}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10.5px]">
+                        {c.dimensionTh}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10.5px]">
+                        เอนจิน: {c.engineLabel}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10.5px]">
+                        ใช้ใน {c.usageCount} กฎ
+                      </Badge>
+                      {!c.enabled && (
+                        <Badge variant="outline" className="text-[10.5px] bg-slate-50 text-slate-500">
+                          ปิดใช้งาน
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium">
+                      {c.name}
+                      {c.nameEn && <span className="ml-1.5 text-xs font-normal text-muted-foreground">({c.nameEn})</span>}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[11.5px] text-slate-600">
+                      …must {c.sentence} · รหัส {c.key}
+                    </p>
+                    {c.params.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {c.params.map((p) => (
+                          <Badge key={p.key} variant="outline" className="text-[10px] text-slate-500">
+                            {p.key}: {p.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    {!c.isSystem && (
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className="text-[10.5px] text-muted-foreground">
+                          สร้างโดย {c.createdBy ?? '—'} · {fmtTime(c.createdAt)}
+                        </span>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={c.enabled ? 'ปิดใช้งานเงื่อนไข' : 'เปิดใช้งานเงื่อนไข'}
+                            onClick={() => handleToggleCondition(c)}
+                            disabled={busy !== null}
+                          >
+                            <Power className="size-4" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label="ลบเงื่อนไข"
+                            className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                            onClick={() => handleDeleteCondition(c)}
+                            disabled={busy !== null || c.usageCount > 0}
+                            title={c.usageCount > 0 ? `ใช้ใน ${c.usageCount} กฎ — ลบไม่ได้ (ปิดใช้งานแทนได้)` : 'ลบเงื่อนไข'}
+                          >
+                            <Trash2 className="size-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </TabsContent>
+
+      {/* ========================= TAB 3: RUN + SIGNALS ========================= */}
       <TabsContent value="run" className="mt-4">
         <div className="space-y-4">
           <Card>
@@ -825,7 +1489,8 @@ export default function CoreFeaturesConsole() {
                   ผลการตรวจสอบ — {runResult.datasetName}
                 </CardTitle>
                 <CardDescription>
-                  {runResult.rowsCount} แถว · {runResult.rulesCount} กฎ · สัญญาณใหม่ {runResult.newSignals} รายการ (รอมนุษย์ทบทวน)
+                  {runResult.rowsCount} แถว · {runResult.rulesCount} กฎ
+                  {runResult.skipped ? ` · ข้าม ${runResult.skipped} กฎ (เงื่อนไขไม่พบในคลัง)` : ''} · สัญญาณใหม่ {runResult.newSignals} รายการ (รอมนุษย์ทบทวน)
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -867,6 +1532,9 @@ export default function CoreFeaturesConsole() {
                         </Badge>
                         <Badge variant="outline" className="text-[11px]">
                           {r.dimensionTh}
+                        </Badge>
+                        <Badge variant="outline" className="text-[11px]">
+                          {r.conditionName}
                         </Badge>
                         <span className={`text-xs font-semibold ${r.status === 'PASSED' ? 'text-emerald-700' : 'text-rose-700'}`}>
                           {r.status === 'PASSED' ? 'ผ่าน' : `ล้มเหลว ${r.failedRows}/${r.totalRows} แถว`}
@@ -981,7 +1649,7 @@ export default function CoreFeaturesConsole() {
         </div>
       </TabsContent>
 
-      {/* ===================== TAB 3: EXCEPTIONS ===================== */}
+      {/* ===================== TAB 4: EXCEPTIONS ===================== */}
       <TabsContent value="exceptions" className="mt-4">
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
           <Card>
@@ -1025,7 +1693,7 @@ export default function CoreFeaturesConsole() {
                     <SelectItem value="none">— ไม่ระบุกฎ —</SelectItem>
                     {rulesOfDataset.map((r) => (
                       <SelectItem key={r.id} value={r.id}>
-                        {r.column} ({r.condition})
+                        {r.column} ({r.conditionName})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1134,7 +1802,7 @@ export default function CoreFeaturesConsole() {
         </div>
       </TabsContent>
 
-      {/* ===================== TAB 4: DASHBOARD ===================== */}
+      {/* ===================== TAB 5: DASHBOARD ===================== */}
       <TabsContent value="dashboard" className="mt-4">
         <div className="space-y-4">
           {/* stat cards */}

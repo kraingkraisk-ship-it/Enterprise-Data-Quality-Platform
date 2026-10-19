@@ -23,10 +23,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (TOGGLE_ENABLED | DELETE)' }, { status: 400 })
     }
 
-    const rule = await db.dqRule.findUnique({ where: { id }, include: { dataset: { select: { name: true } } } })
+    const rule = await db.dqRule.findUnique({
+      where: { id },
+      include: { datasets: { include: { dataset: { select: { name: true } } } } },
+    })
     if (!rule) {
       return NextResponse.json({ error: 'ไม่พบกฎนี้ในระบบ' }, { status: 404 })
     }
+    const datasetNames = rule.datasets.map((rd) => rd.dataset.name)
+    const targetLabel = datasetNames.join(', ') || '(ไม่มีชุดข้อมูล)'
 
     if (action === 'TOGGLE_ENABLED') {
       const updated = await db.dqRule.update({ where: { id }, data: { enabled: !rule.enabled } })
@@ -34,8 +39,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         data: {
           action: 'TOGGLE_RULE',
           actor: op.ctx.email,
-          target: rule.dataset.name,
-          detail: `${updated.enabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}กฎ: ${buildRuleSentence({ ...updated, datasetName: rule.dataset.name })} (บทบาท ${op.ctx.roleTh})`,
+          target: targetLabel,
+          detail: `${updated.enabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}กฎ: ${buildRuleSentence({ ...updated, datasetNames })} (บทบาท ${op.ctx.roleTh})`,
         },
       })
       return NextResponse.json({ rule: updated })
@@ -47,8 +52,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       data: {
         action: 'DELETE_RULE',
         actor: op.ctx.email,
-        target: rule.dataset.name,
-        detail: `ลบกฎ: ${buildRuleSentence(rule)} (บทบาท ${op.ctx.roleTh})`,
+        target: targetLabel,
+        detail: `ลบกฎ: ${buildRuleSentence({ ...rule, datasetNames })} (บทบาท ${op.ctx.roleTh})`,
       },
     })
     return NextResponse.json({ rule: null })

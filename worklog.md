@@ -352,3 +352,25 @@ Stage Summary:
 - แพลตฟอร์มกลับมารันฉบับเต็ม **v0.4.0** = ฉบับที่คู่มือ "เวอร์ชัน 1.0 · 15 ตุลาคม 2569" อธิบายครบทุกฟีเจอร์ — ไม่มีการแก้ source code (tree = v0.4.0 เป๊ะ)
 - Rollback Reference: สถานะก่อน restore นี้ = 1d64e37 (tag `v0.1.0-initial-source`) — กลับได้ด้วย `git reset --hard v0.1.0-initial-source`
 - สถานะ push: **รอ token** จากผู้ใช้เพื่อ push commit worklog นี้ (fast-forward, sync remote main กลับสู่แนว v0.4.0)
+
+---
+
+## Task ID: 10
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: พัฒนา v0.5.0 — ปรับปรุง Rule Builder ตาม 3 ความต้องการ: (1) แสดงตัวอย่างข้อมูลและเลือกคอลัมน์จากชุดข้อมูลจริง (2) กฎหนึ่งข้อใช้ร่วมกับหลายชุดข้อมูล (3) เงื่อนไข (must) สร้างเองและจัดเก็บเป็นส่วนกลางของระบบ
+
+Work Log:
+- เริ่มจากสถานะ v0.4.0 (`567f586` + worklog commit `2b74029`) ตรวจสอบโครงสร้าง schema/โค้ดเดิมทั้งหมด
+- **Schema (prisma/schema.prisma)**: สร้าง model `ConditionTemplate` (คลังเงื่อนไขส่วนกลาง: key/name/sentence/dimension/engineType/params JSON/isSystem/enabled/createdBy) และ model `RuleDataset` (many-to-many กฎ ↔ ชุดข้อมูล, @@unique([ruleId, datasetId])) — ตัด `datasetId` ออกจาก `DqRule` เปลี่ยน `Dataset.rules` ให้ชี้ `RuleDataset[]` — push ด้วย `bun run db:push`
+- **Engine (src/lib/dq.ts)**: `buildRuleSentence` รองรับ `datasetNames[]` (กฎหลายชุดข้อมูล) + `conditionSentence`/`engineType` (จาก template) — `evaluateRule` สลับมาใช้ `engineType` แทน condition enum ตายตัว — เพิ่ม `isDimensionKey`, `parseTemplateParams`, `ENGINE_DESCRIPTIONS`, `ENGINE_REQUIRED_PARAM_KEYS`, `generateTemplateKey` (รหัส CUSTOM_xxxx ไม่ซ้ำ)
+- **API ใหม่**: `GET/POST /api/dq/conditions` (คลังเงื่อนไข + สร้างใหม่, ใช้สิทธิ์ MANAGE_RULES, ตรวจพารามิเตอร์ครบตามที่เอนจินบังคับ) — `PATCH/DELETE /api/dq/conditions/[id]` (เปิด/ปิด/ลบ — ห้ามลบของระบบ ห้ามลบถ้ามีกฎใช้อ้างอิง 409) — `GET /api/dq/dataset-preview?datasetIds=...` (ตัวอย่างข้อมูลหลายชุด + สรุปคอลัมน์ union พร้อม availableIn/missingIn + ปิดบัง PII ฝั่ง backend ตามบทบาท)
+- **API ปรับปรุง**: `POST /api/dq/rules` รับ `datasetIds[]` + ตรวจ condition ต้องมาจากคลัง + ตรวจคอลัมน์มีจริงใน sample ของทุก dataset — `GET /api/dq/rules` ส่ง `datasetIds/datasetNames/conditionName/engineType` + ประโยคจาก template — `POST /api/dq/run` หากฎผ่าน `datasets: { some: { datasetId } }` มิติจาก `template.dimension` ส่ง `conditionName`/`skipped` — `dashboard` ใช้ nested include ผ่าน RuleDataset — `exceptions` ตรวจกฎ-ชุดข้อมูลผ่าน join + ruleLabel ใช้ชื่อ template
+- **Seed**: เพิ่มเงื่อนไขมาตรฐาน 7 รายการ (isSystem) + ตัวอย่างที่ผู้ใช้สร้าง 4 รายการ (TH_PHONE/NON_NEGATIVE/SUPPORTED_CURRENCY/FRESH_DATA) — กฎ 8 ข้อ โดยกฎ phone (CUSTOM_TH_PHONE) ใช้ร่วม 2 ชุดข้อมูล (ลูกค้า + พนักงาน HR) = 9 ลิงก์
+- **UI (core-features-console.tsx ใหม่ทั้งไฟล์)**: แท็บ Rule Builder — เลือกชุดข้อมูลแบบ checkbox หลายชุด (เลือกทั้งหมด/ล้าง/นับจำนวน) + ตารางตัวอย่างข้อมูล 5 แถว (สลับดูได้เมื่อเลือกหลายชุด, PII masked ตามบทบาทผู้ดำเนินการ) + dropdown คอลัมน์จากข้อมูลจริง (union + เตือนคอลัมน์ที่ไม่พบในบางชุด, ไม่มี sample → พิมพ์เอง) + เงื่อนไขแบ่งกลุ่ม "มาตรฐานของระบบ / ส่วนกลางที่สร้างเอง" + params ไดนามิกจาก template + ประโยค live preview — แท็บใหม่ "คลังเงื่อนไข (must)" — ฟอร์มสร้างเงื่อนไข (ชื่อไทย/อังกฤษ, ประโยค must, มิติ 9 แบบ, เอนจิน 7 แบบพร้อมคำอธิบาย, พารามิเตอร์เติมอัตโนมัติตามเอนจิน แก้ label/placeholder/เพิ่ม-ลบแถวได้) + รายการทั้งหมดพร้อม badge ของระบบ/ผู้ใช้, จำนวนกฎที่ใช้, ปุ่มเปิด-ปิด/ลบ (ลบ disabled เมื่อมีกฎใช้) — แท็บอื่นปรับให้แสดง conditionName และ badge ชุดข้อมูลหลายตัว
+- **ทดสอบด้วย agent-browser จริง**: เลือกชุดข้อมูล → ตารางตัวอย่างโผล่ → เลือกคอลัมน์ email → เงื่อนไข EMAIL → ประโยคถูกต้อง → บันทึกสำเร็จ; เลือก 2 ชุดข้อมูล → ข้อความ "ใช้ตรวจทั้ง 2 ชุดข้อมูล" → เงื่อนไขส่วนกลาง "หมายเลขโทรศัพท์ไทย 10 หลัก" + กรอก pattern → สร้างกฎร่วมสำเร็จ รายการแสดง 2 dataset badges; สร้างเงื่อนไขใหม่ "รหัสประชาชนไทย 13 หลัก" ผ่านฟอร์ม (11 → 12 รายการ) และปรากฏใน dropdown; รันตรวจสอบ 6 กฎ บน 20 แถว มิติ/ชื่อเงื่อนไขถูกต้อง; แท็บข้อยกเว้นแสดงกฎร่วมด้วยชื่อ template; มือถือ 390px layout ปกติ; แก้ dev server ใช้ Prisma client เก่า (restart) และแก้ UX params ไม่เติมอัตโนมัติตอนเปิดฟอร์ม
+- เพิ่ม APP_VERSION เป็น v0.5.0, ตรวจ `bun run lint` สะอาด, re-seed ข้อมูลสาธิต
+
+Stage Summary:
+- **v0.5.0 ครบ 3 ความต้องการ**: (1) Dataset preview + เลือกคอลัมน์จากข้อมูลจริง (2) กฎใช้ร่วมหลายชุดข้อมูลผ่านตาราง RuleDataset (3) คลังเงื่อนไขส่วนกลาง — สร้าง/ใช้/ปิด/ลบได้ พร้อม guard ตามหลัก RBAC + audit log ทุกเหตุการณ์
+- Rollback Reference: ก่อนงานนี้ local อยู่ที่ `2b74029` (= v0.4.0 `567f586` + worklog) — กู้คืนด้วย `git reset --hard 2b74029 && bun run db:push && bunx tsx scripts/seed.ts`
+- Commit นี้: v0.5.0 (tag `v0.5.0`) — รอ push ขึ้น GitHub เมื่อผู้ใช้แนบ token (one-time URL ตาม workflow)

@@ -5,6 +5,8 @@ import {
   evaluateRule,
   generateMlSignals,
   DIMENSION_LABELS,
+  isConditionKey,
+  isDimensionKey,
   maskValueByRole,
   type DimensionKey,
   type Row,
@@ -45,13 +47,20 @@ export async function POST(req: NextRequest) {
     const datasetId = String(body.datasetId ?? '').trim()
     if (!datasetId) return NextResponse.json({ error: 'กรุณาเลือกชุดข้อมูล' }, { status: 400 })
 
-    const dataset = await db.dataset.findUnique({
-      where: { id: datasetId },
-      include: { rules: { where: { enabled: true }, orderBy: { createdAt: 'asc' } } },
-    })
+    const dataset = await db.dataset.findUnique({ where: { id: datasetId } })
     if (!dataset) {
       return NextResponse.json({ error: 'ไม่พบชุดข้อมูลนี้ในระบบ' }, { status: 404 })
     }
+
+    // กฎที่ใช้ร่วมกับชุดข้อมูลนี้ (many-to-many ผ่าน RuleDataset)
+    const [rulesForDataset, allTemplates] = await Promise.all([
+      db.dqRule.findMany({
+        where: { enabled: true, datasets: { some: { datasetId } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      db.conditionTemplate.findMany(),
+    ])
+    const templateMap = new Map(allTemplates.map((t) => [t.key, t]))
 
     const sampleRows = await db.sampleRow.findMany({ where: { datasetId }, orderBy: { createdAt: 'asc' } })
     const rows: Row[] = sampleRows.map((r) => {
@@ -67,6 +76,7 @@ export async function POST(req: NextRequest) {
       ruleId: string
       column: string
       condition: string
+      conditionName: string
       severity: string
       dimension: DimensionKey
       dimensionTh: string
@@ -79,24 +89,22 @@ export async function POST(req: NextRequest) {
     }
     const results: RunResult[] = []
     const byDimension = new Map<DimensionKey, number[]>()
+    let skipped = 0
 
-    for (const rule of dataset.rules) {
-      const evaluation = evaluateRule(rule, rows)
+    for (const rule of rulesForDataset) {
+      // เงื่อนไขของกฎต้องมาจากคลังเงื่อนไข (หรือเป็นคีย์ระบบเดิม) — ถ้าไม่พบให้ข้ามกฎนี้อย่างชัดเจน
+      const template = templateMap.get(rule.condition)
+      const engineType = template?.engineType ?? (isConditionKey(rule.condition) ? rule.condition : null)
+      if (!engineType) {
+        skipped++
+        continue
+      }
+      const dimensionKey: DimensionKey =
+        template && isDimensionKey(template.dimension) ? template.dimension : engineType === 'NOT_NULL' ? 'COMPLETENESS' : 'VALIDITY'
+
+      const evaluation = evaluateRule({ column: rule.column, engineType, parameters: rule.parameters }, rows)
       const status = evaluation.failedRows === 0 ? 'PASSED' : 'FAILED'
       const passRate = evaluation.totalRows > 0 ? (evaluation.totalRows - evaluation.failedRows) / evaluation.totalRows : 1
-
-      const dimensionKey: DimensionKey =
-        rule.condition === 'NOT_NULL'
-          ? 'COMPLETENESS'
-          : rule.condition === 'UNIQUE'
-            ? 'UNIQUENESS'
-            : rule.condition === 'RANGE'
-              ? 'ACCURACY'
-              : rule.condition === 'IN_LIST'
-                ? 'CONSISTENCY'
-                : rule.condition === 'MAX_AGE_DAYS'
-                  ? 'TIMELINESS'
-                  : 'VALIDITY'
 
       await db.dqRun.create({
         data: {
@@ -125,10 +133,20 @@ export async function POST(req: NextRequest) {
         ruleId: rule.id,
         column: rule.column,
         condition: rule.condition,
+        conditionName: template?.name ?? rule.condition,
         severity: rule.severity,
         dimension: dimensionKey,
         dimensionTh: DIMENSION_LABELS[dimensionKey].th,
-        sentence: buildRuleSentence({ ...rule, datasetName: dataset.name }),
+        sentence: buildRuleSentence({
+          datasetName: dataset.name,
+          column: rule.column,
+          condition: rule.condition,
+          conditionSentence: template?.sentence,
+          engineType,
+          parameters: rule.parameters,
+          severity: rule.severity,
+          filter: rule.filter,
+        }),
         status,
         totalRows: evaluation.totalRows,
         failedRows: evaluation.failedRows,
@@ -150,7 +168,7 @@ export async function POST(req: NextRequest) {
 
     for (const r of results) {
       if (r.status !== 'FAILED') continue
-      const title = `กฎล้มเหลว: ${r.column} — ${r.condition}`
+      const title = `กฎล้มเหลว: ${r.column} — ${r.conditionName}`
       if (pendingTitles.has(`RULE_VIOLATION|${title}`)) continue
       await db.dqSignal.create({
         data: {
@@ -203,14 +221,15 @@ export async function POST(req: NextRequest) {
         action: 'RUN_VALIDATION',
         actor: op.ctx.email,
         target: dataset.name,
-        detail: `รันตรวจสอบ ${dataset.rules.length} กฎ บน ${rows.length} แถว (sandbox) — ผ่าน ${passedCount}, ล้มเหลว ${results.length - passedCount}, สัญญาณใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
+        detail: `รันตรวจสอบ ${rulesForDataset.length} กฎ บน ${rows.length} แถว (sandbox) — ผ่าน ${passedCount}, ล้มเหลว ${results.length - passedCount}, สัญญาณใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 
     return NextResponse.json({
       datasetName: dataset.name,
       rowsCount: rows.length,
-      rulesCount: dataset.rules.length,
+      rulesCount: rulesForDataset.length,
+      skipped,
       results,
       newSignals,
       overallScore,

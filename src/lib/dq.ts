@@ -144,20 +144,94 @@ export function isSeverityKey(v: string): v is SeverityKey {
   return (SEVERITY_KEYS as string[]).includes(v)
 }
 
+export function isDimensionKey(v: string): v is DimensionKey {
+  return (Object.keys(DIMENSION_LABELS) as string[]).includes(v)
+}
+
+/* ------------------------ condition templates ------------------------------ */
+
+/** นิยามพารามิเตอร์ของเงื่อนไขส่วนกลาง (เก็บเป็น JSON ใน ConditionTemplate.params) */
+export interface TemplateParamDef {
+  key: string
+  label: string
+  type: 'number' | 'text'
+  placeholder?: string
+}
+
+/** แปลง JSON string เป็นรายการนิยามพารามิเตอร์ — คืน [] หาก JSON ไม่ถูกต้อง (fail-safe) */
+export function parseTemplateParams(json: string): TemplateParamDef[] {
+  try {
+    const arr = JSON.parse(json || '[]') as unknown
+    if (!Array.isArray(arr)) return []
+    return arr
+      .filter(
+        (p): p is TemplateParamDef =>
+          typeof p === 'object' &&
+          p !== null &&
+          typeof (p as TemplateParamDef).key === 'string' &&
+          typeof (p as TemplateParamDef).label === 'string',
+      )
+      .map((p) => ({
+        key: p.key,
+        label: p.label,
+        type: p.type === 'number' ? 'number' : 'text',
+        placeholder: typeof p.placeholder === 'string' ? p.placeholder : undefined,
+      }))
+  } catch {
+    return []
+  }
+}
+
+/** ข้อความอธิบายเอนจินประเมินผล — ใช้ในฟอร์มสร้างเงื่อนไขส่วนกลาง */
+export const ENGINE_DESCRIPTIONS: Record<ConditionKey, string> = {
+  NOT_NULL: 'ค่าว่างถือว่าล้มเหลว (ไม่ต้องมีพารามิเตอร์)',
+  EMAIL: 'ตรวจรูปแบบอีเมล (ไม่ต้องมีพารามิเตอร์)',
+  REGEX: 'ตรวจด้วย Regular Expression — ต้องมีพารามิเตอร์ pattern',
+  RANGE: 'ตรวจช่วงตัวเลข — ต้องมีพารามิเตอร์ min และ max',
+  IN_LIST: 'ตรวจค่าในรายการที่อนุญาต — ต้องมีพารามิเตอร์ values',
+  UNIQUE: 'ตรวจค่าซ้ำในชุดข้อมูล (ไม่ต้องมีพารามิเตอร์)',
+  MAX_AGE_DAYS: 'ตรวจอายุข้อมูล (วัน) — ต้องมีพารามิเตอร์ days',
+}
+
+/** คีย์พารามิเตอร์ที่เอนจินบังคับ — ใช้ตรวจขณะสร้างเงื่อนไขส่วนกลางใหม่ */
+export const ENGINE_REQUIRED_PARAM_KEYS: Record<ConditionKey, string[]> = {
+  NOT_NULL: [],
+  EMAIL: [],
+  REGEX: ['pattern'],
+  RANGE: ['min', 'max'],
+  IN_LIST: ['values'],
+  UNIQUE: [],
+  MAX_AGE_DAYS: ['days'],
+}
+
+/** สร้างรหัสเงื่อนไขส่วนกลางใหม่ที่ไม่ซ้ำ เช่น CUSTOM_LX2Q8A */
+export function generateTemplateKey(): string {
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase()
+  const stamp = Date.now().toString(36).slice(-4).toUpperCase()
+  return `CUSTOM_${stamp}${rand}`.slice(0, 20)
+}
+
 /* --------------------------- rule sentence -------------------------------- */
 
 export interface RuleLike {
   datasetName?: string
   dataset?: { name?: string } | null
+  /** ชื่อชุดข้อมูลหลายชุด (กฎที่ใช้ร่วมกันหลาย dataset) — มี priority เหนือ datasetName */
+  datasetNames?: string[]
   column: string
+  /** รหัสเงื่อนไขจากคลังเงื่อนไขส่วนกลาง (system key หรือ CUSTOM_xxx) */
   condition: string
   parameters: string
   severity: string
   filter?: string | null
+  /** ประโยค "must ..." จากเงื่อนไขส่วนกลาง (ถ้ามี) */
+  conditionSentence?: string
+  /** เอนจินประเมินผล (ใช้จัดรูปแบบ using) — เช่น REGEX, RANGE */
+  engineType?: string
 }
 
-function formatParamValue(condition: ConditionKey, params: Record<string, unknown>): string {
-  switch (condition) {
+function formatParamValue(engineType: string, params: Record<string, unknown>): string {
+  switch (engineType) {
     case 'RANGE':
       return `[${String(params.min ?? '?')} – ${String(params.max ?? '?')}]`
     case 'IN_LIST': {
@@ -175,18 +249,23 @@ function formatParamValue(condition: ConditionKey, params: Record<string, unknow
 
 /** ประกอบประโยคกฎมาตรฐาน: For [Dataset], [Column] must [Condition] using [Parameters] when [Filter], otherwise mark as [Severity] */
 export function buildRuleSentence(rule: RuleLike): string {
-  const datasetName = rule.datasetName ?? rule.dataset?.name ?? '[Dataset]'
-  const cond = isConditionKey(rule.condition) ? CONDITIONS[rule.condition] : null
+  const datasetPart =
+    rule.datasetNames && rule.datasetNames.length > 0
+      ? rule.datasetNames.join(', ')
+      : (rule.datasetName ?? rule.dataset?.name ?? '[Dataset]')
+  const systemCond = isConditionKey(rule.condition) ? CONDITIONS[rule.condition] : null
+  const mustSentence = rule.conditionSentence ?? systemCond?.sentence ?? '[Condition]'
+  const engine = rule.engineType ?? (systemCond ? rule.condition : undefined)
   let params: Record<string, unknown> = {}
   try {
     params = JSON.parse(rule.parameters || '{}') as Record<string, unknown>
   } catch {
     params = {}
   }
-  const usingPart = cond ? formatParamValue(cond.key, params) : '[Parameters]'
+  const usingPart = engine ? formatParamValue(engine, params) : '[Parameters]'
   const severityTh = isSeverityKey(rule.severity) ? SEVERITY_LABELS[rule.severity].th : rule.severity
 
-  let sentence = `For ${datasetName}, ${rule.column} must ${cond?.sentence ?? '[Condition]'}`
+  let sentence = `For ${datasetPart}, ${rule.column} must ${mustSentence}`
   if (usingPart) sentence += ` using ${usingPart}`
   if (rule.filter) sentence += ` when ${rule.filter}`
   sentence += `, otherwise mark as ${severityTh} (${rule.severity})`
@@ -209,9 +288,9 @@ function valueOf(row: Row, column: string): unknown {
   return row[column]
 }
 
-/** ประเมินกฎเดียวกับแถวข้อมูลทั้งหมด (sandbox) */
+/** ประเมินกฎเดียวกับแถวข้อมูลทั้งหมด (sandbox) — กำหนดด้วยเอนจิน (engineType) จากคลังเงื่อนไข */
 export function evaluateRule(
-  rule: { column: string; condition: string; parameters: string },
+  rule: { column: string; engineType: string; parameters: string },
   rows: Row[],
 ): RuleEvaluation {
   let params: Record<string, unknown> = {}
@@ -229,7 +308,7 @@ export function evaluateRule(
     const value = valueOf(row, rule.column)
     let failed = false
 
-    switch (rule.condition) {
+    switch (rule.engineType) {
       case 'NOT_NULL':
         failed = value === null || value === undefined || String(value).trim() === ''
         break

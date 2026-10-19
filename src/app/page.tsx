@@ -45,7 +45,7 @@ import { Separator } from '@/components/ui/separator'
 import RbacConsole from '@/components/rbac-console'
 import CoreFeaturesConsole from '@/components/core-features-console'
 
-export const APP_VERSION = 'v0.4.0'
+export const APP_VERSION = 'v0.5.0'
 
 /* ---------------------------------- data ---------------------------------- */
 
