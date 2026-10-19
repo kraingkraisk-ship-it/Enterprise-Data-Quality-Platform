@@ -1,0 +1,3 @@
+{
+  "/api/rbac/audit/route": "app/api/rbac/audit/route.js"
+}

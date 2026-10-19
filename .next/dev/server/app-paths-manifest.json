@@ -1,0 +1,10 @@
+{
+  "/api/dq/dashboard/route": "app/api/dq/dashboard/route.js",
+  "/api/dq/exceptions/route": "app/api/dq/exceptions/route.js",
+  "/api/dq/rules/route": "app/api/dq/rules/route.js",
+  "/api/dq/signals/route": "app/api/dq/signals/route.js",
+  "/api/rbac/audit/route": "app/api/rbac/audit/route.js",
+  "/api/rbac/datasets/route": "app/api/rbac/datasets/route.js",
+  "/api/rbac/users/route": "app/api/rbac/users/route.js",
+  "/page": "app/page.js"
+}
