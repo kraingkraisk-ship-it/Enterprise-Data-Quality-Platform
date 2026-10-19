@@ -378,6 +378,57 @@ Stage Summary:
 - **ตรวจสอบว่าอยู่ที่ version นี้**: `git describe --tags` → ต้องแสดง `v0.4.0`
 - ⚠️ ควร rotate/revoke token หลังใช้งานเสร็จตามขั้นตอนเดิม
 
+---
+
+## Task ID: 7
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: `v0.4.0` (main ไม่เปลี่ยน — เพิ่มเพียง tags ของ commit แรกเริ่ม)
+**Task**: Push tags ของ commit แรกเริ่มสุดของโปรเจกต์ (version '0' = `dd78f81`, version '1' = `1d64e37`) ขึ้น GitHub เพื่อให้เป็นจุด rollback ถาวรที่เรียกหาได้ด้วยชื่อ
+(Push tags for the earliest commits as permanent, named rollback points)
+
+Work Log:
+- ผู้ใช้ถามว่า rollback ไป version แรกเริ่มสุดได้หรือไม่ → อธิบาย timeline ครบ (commit '0' โครงเปล่า / commit '1' source ชุดแรก) และยืนยันว่าทั้งสอง commit **อยู่ในประวัติ remote main อยู่แล้ว** (ตรวจด้วย `git merge-base --is-ancestor`) — การ push ครั้งนี้คือการติด tag ให้เรียกหาได้ถาวร
+- ตรวจเนื้อหา `.env` ใน commit `dd78f81` ก่อน push (ความโปร่งใส): มีเพียง `DATABASE_URL=file:/home/z/my-project/db/custom.db` (path SQLite ในเครื่อง ไม่มี secret) และอยู่ในประวัติ main อยู่แล้ว — การ tag ไม่เพิ่มความเสี่ยง
+- ผู้ใช้ยืนยันการตั้งชื่อ + ส่ง token ใหม่ (token ลำดับที่ 6 ของโปรเจกต์)
+- สร้าง annotated tags 2 ตัวและตรวจจุดชี้ถูกต้อง:
+  - `v0.0.0-original-scaffold` → `dd78f815d5c369b35e3ba726831b45e18c224bca` (Initial commit — Z.ai scaffold)
+  - `v0.1.0-initial-source` → `1d64e372dc862ada2d0bc5a077e6578eb4361c38` (source code ชุดแรก 85 ไฟล์)
+  - หมายเหตุ: ตั้งชื่อเลี่ยงความสับสนกับ `v0.1.0-baseline` ที่มีอยู่แล้ว (ชี้ `9f1daef` — commit หลังจากนี้ 1 commit ที่รวม worklog)
+- Push ทั้ง 2 tags ด้วย one-time URL (ไม่ใช้ force push, main ไม่ถูกแตะ):
+  `git push <one-time-url> refs/tags/v0.0.0-original-scaffold:refs/tags/v0.0.0-original-scaffold refs/tags/v0.1.0-initial-source:refs/tags/v0.1.0-initial-source`
+  - ผลลัพธ์: `* [new tag] v0.0.0-original-scaffold` + `* [new tag] v0.1.0-initial-source` ✅
+- Verify บน remote (`git ls-remote`):
+  - `refs/tags/v0.0.0-original-scaffold^{}` = `dd78f815d5c369b35e3ba726831b45e18c224bca` ถูกต้อง
+  - `refs/tags/v0.1.0-initial-source^{}` = `1d64e372dc862ada2d0bc5a077e6578eb4361c38` ถูกต้อง
+  - `v0.1.0-baseline` ยังชี้ `9f1daef` ตามเดิม (ไม่กระทบ)
+- Token ไม่ถูกบันทึกลง `.git/config` (ใช้ one-time URL ตามกระบวนการ)
+
+Stage Summary:
+- **สถานะ: main ยังอยู่ที่ `2cad40b` (v0.4.0 + worklog) sync กับ remote สมบูรณ์ — มีเพียง tags ใหม่ 2 ตัวเท่านั้น**
+- **แผนที่ tags ทั้งหมดบน GitHub (6 ตัว) สำหรับ rollback**:
+
+| Tag | ชี้ไปที่ | ความหมาย |
+|---|---|---|
+| `v0.0.0-original-scaffold` | `dd78f81` | โครงเปล่า Z.ai (ก่อนพัฒนาอะไรเลย) |
+| `v0.1.0-initial-source` | `1d64e37` | source code ชุดแรก (85 ไฟล์, หน้ายังเป็น placeholder) |
+| `v0.1.0-baseline` | `9f1daef` | source ชุดแรก + worklog ชุดแรก |
+| `v0.2.0` | `604b5b8` | เริ่มมีหน้าจอ DQ Platform |
+| `v0.3.0` | `4aeb834` | + โมดูล RBAC |
+| `v0.4.0` | `567f586` | + Core Features (รันตรวจสอบจริง / ML signals / ข้อยกเว้น / แดชบอร์ด) |
+
+- **วิธี Rollback ไป version แรกเริ่มสุดเมื่อต้องการ (ตัวอย่าง)**:
+  ```bash
+  # ดูอย่างเดียว (ปลอดภัย)
+  git checkout v0.0.0-original-scaffold   # หรือ v0.1.0-initial-source
+
+  # ย้อนจริงทั้ง local + remote (ต้องมี token สำหรับ force push)
+  git checkout main
+  git reset --hard v0.0.0-original-scaffold
+  git push --force origin main
+  ```
+- **วิธีกลับมาที่ปัจจุบัน (v0.4.0) หลัง rollback เสมอ**: `git reset --hard v0.4.0` (tag ยังอยู่ครบ — ไม่มีอะไรสูญหายถาวร)
+- ⚠️ ควร rotate/revoke token หลังใช้งานเสร็จตามขั้นตอนเดิม
+
 
 
 
