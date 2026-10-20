@@ -15,7 +15,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.6.0'
+export const APP_VERSION = 'v0.7.0'
 
 /** มุมมองที่อยู่ในคอนโซลคุณภาพข้อมูลหลัก (CoreFeaturesConsole) */
 export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'exceptions' | 'dashboard'
@@ -78,7 +78,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'about',
     th: 'เกี่ยวกับแพลตฟอร์ม',
     en: 'Platform Overview',
-    desc: 'ภาพรวมความสามารถ 9 มิติคุณภาพข้อมูล ขั้นตอนการใช้งาน และมาตรฐานที่รองรับ',
+    desc: 'ภาพรวมความสามารถ มิติคุณภาพข้อมูล 9 มิติตาม DAMA-DMBOK ขั้นตอนการใช้งาน และมาตรฐานที่รองรับ',
     icon: ScrollText,
   },
 }

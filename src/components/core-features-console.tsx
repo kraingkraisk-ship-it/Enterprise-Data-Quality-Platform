@@ -43,6 +43,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
+import { DimensionBadge, DimensionHint, DimensionPicker } from '@/components/dimension-picker'
 import {
   buildRuleSentence,
   CONDITIONS,
@@ -152,6 +153,7 @@ interface RunResponse {
     condition: string
     conditionName: string
     severity: string
+    dimension: string
     dimensionTh: string
     sentence: string
     status: 'PASSED' | 'FAILED'
@@ -1191,21 +1193,14 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                 />
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="cn-dimension">มิติคุณภาพข้อมูล</Label>
-                  <Select value={cnDimension} onValueChange={setCnDimension}>
-                    <SelectTrigger id="cn-dimension">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(DIMENSION_LABELS) as Array<keyof typeof DIMENSION_LABELS>).map((k) => (
-                        <SelectItem key={k} value={k}>
-                          {DIMENSION_LABELS[k].th} ({DIMENSION_LABELS[k].en})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="cn-dimension">มิติคุณภาพข้อมูล — 9 มิติตาม DAMA-DMBOK</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    เลือกมิติที่เงื่อนไขนี้ช่วยรับประกัน — ใช้เป็นมาตรฐานรายงานผลและคะแนนคุณภาพขององค์กร
+                  </p>
+                  <DimensionPicker value={cnDimension} onChange={setCnDimension} />
+                  <DimensionHint value={cnDimension} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cn-engine">เอนจินประเมินผล</Label>
@@ -1346,9 +1341,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                           'สร้างโดยผู้ใช้'
                         )}
                       </Badge>
-                      <Badge variant="outline" className="text-[10.5px]">
-                        {c.dimensionTh}
-                      </Badge>
+                      <DimensionBadge dimension={c.dimension} />
                       <Badge variant="outline" className="text-[10.5px]">
                         เอนจิน: {c.engineLabel}
                       </Badge>
@@ -1504,9 +1497,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                         <Badge variant="outline" className={`border text-[11px] ${SEVERITY_BADGE[r.severity] ?? ''}`}>
                           {SEVERITY_LABELS[r.severity as keyof typeof SEVERITY_LABELS]?.th ?? r.severity}
                         </Badge>
-                        <Badge variant="outline" className="text-[11px]">
-                          {r.dimensionTh}
-                        </Badge>
+                        <DimensionBadge dimension={r.dimension} />
                         <Badge variant="outline" className="text-[11px]">
                           {r.conditionName}
                         </Badge>
@@ -1568,9 +1559,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                       <Badge variant="outline" className={`border text-[11px] ${SEVERITY_BADGE[s.severity] ?? ''}`}>
                         {SEVERITY_LABELS[s.severity as keyof typeof SEVERITY_LABELS]?.th ?? s.severity}
                       </Badge>
-                      <Badge variant="outline" className="text-[11px]">
-                        {DIMENSION_LABELS[s.dimension as keyof typeof DIMENSION_LABELS]?.th ?? s.dimension}
-                      </Badge>
+                      <DimensionBadge dimension={s.dimension} />
                       <Badge
                         variant="outline"
                         className={`border text-[11px] ${

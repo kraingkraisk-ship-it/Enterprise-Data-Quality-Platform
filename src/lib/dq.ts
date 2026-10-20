@@ -12,28 +12,141 @@ import { hasPermission, ROLE_LIST, type PermissionKey, type RoleKey } from '@/li
 
 /* ------------------------------ dimensions ------------------------------- */
 
+/**
+ * มิติคุณภาพข้อมูล 9 มิติ — อ้างอิงกรอบมาตรฐาน DAMA-DMBOK
+ * (1) Accuracy (2) Completeness (3) Consistency (4) Validity (5) Uniqueness
+ * (6) Integrity (7) Timeliness (8) Currentness (9) Reasonableness
+ */
 export type DimensionKey =
-  | 'COMPLETENESS'
   | 'ACCURACY'
-  | 'VALIDITY'
+  | 'COMPLETENESS'
   | 'CONSISTENCY'
+  | 'VALIDITY'
   | 'UNIQUENESS'
-  | 'TIMELINESS'
   | 'INTEGRITY'
-  | 'VOLUME'
-  | 'SCHEMA_CONFORMANCE'
+  | 'TIMELINESS'
+  | 'CURRENTNESS'
+  | 'REASONABLENESS'
 
-export const DIMENSION_LABELS: Record<DimensionKey, { th: string; en: string }> = {
-  COMPLETENESS: { th: 'ความสมบูรณ์', en: 'Completeness' },
-  ACCURACY: { th: 'ความถูกต้อง', en: 'Accuracy' },
-  VALIDITY: { th: 'ความถูกต้องตามรูปแบบ', en: 'Validity' },
-  CONSISTENCY: { th: 'ความสอดคล้อง', en: 'Consistency' },
-  UNIQUENESS: { th: 'ความไม่ซ้ำซ้อน', en: 'Uniqueness' },
-  TIMELINESS: { th: 'ความทันเวลา', en: 'Timeliness' },
-  INTEGRITY: { th: 'เอกภาพการอ้างอิง', en: 'Integrity Constraints' },
-  VOLUME: { th: 'ปริมาณข้อมูล', en: 'Volume / Amount' },
-  SCHEMA_CONFORMANCE: { th: 'การตรงตามโครงสร้าง', en: 'Schema Conformance' },
+export interface DimensionMeta {
+  /** ชื่อภาษาไทย */
+  th: string
+  /** ชื่อภาษาอังกฤษ (ตาม DAMA-DMBOK) */
+  en: string
+  /** คำถามสั้น ๆ ช่วยผู้ใช้เลือกมิติให้ถูก */
+  question: string
+  /** คำอธิบายหนึ่งประโยค */
+  description: string
+  /** ตัวอย่างการตรวจที่พบบ่อย */
+  examples: string[]
+  /** เอนจินที่แนะนำให้ใช้กับมิตินี้ */
+  recommendedEngines: ConditionKey[]
+  /** คลาสสีของ badge/card (เขียนเป็น literal เพื่อให้ Tailwind scan เจอ) */
+  badgeClass: string
+  /** ไอคอน (key) — map เป็น component ใน dimension-picker.tsx */
+  icon: string
 }
+
+/** ข้อมูลครบของทั้ง 9 มิติ — แหล่งเดียวที่ UI ทุกจุดอ้างอิง */
+export const DIMENSION_META: Record<DimensionKey, DimensionMeta> = {
+  ACCURACY: {
+    th: 'ความถูกต้อง',
+    en: 'Accuracy',
+    question: 'ค่านี้ตรงกับความจริงหรือแหล่งอ้างอิงหรือไม่?',
+    description: 'ข้อมูลถูกต้องตรงตามความเป็นจริงหรือแหล่งข้อมูลมาตรฐาน เช่น รหัสกลุ่มลูกค้า ยอดเงิน ที่อยู่',
+    examples: ['รหัสกลุ่มลูกค้าตรงตามมาตรฐานที่กำหนด', 'ค่าที่บันทึกต้องตรงกับระบบต้นทาง'],
+    recommendedEngines: ['IN_LIST', 'RANGE', 'REGEX'],
+    badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    icon: 'target',
+  },
+  COMPLETENESS: {
+    th: 'ความสมบูรณ์',
+    en: 'Completeness',
+    question: 'ข้อมูลมีครบทุกฟิลด์/ทุกระเบียนที่จำเป็นหรือไม่?',
+    description: 'ไม่มีค่าว่างหรือระเบียนหายในฟิลด์ที่จำเป็นต้องมี',
+    examples: ['อีเมลลูกค้าห้ามว่าง', 'ทุกระเบียนต้องมีรหัสประจำตัว'],
+    recommendedEngines: ['NOT_NULL'],
+    badgeClass: 'bg-teal-50 text-teal-800 border-teal-200',
+    icon: 'clipboard-check',
+  },
+  CONSISTENCY: {
+    th: 'ความสอดคล้อง',
+    en: 'Consistency',
+    question: 'ข้อมูลสอดคล้องกันทั้งระบบหรือไม่?',
+    description: 'ค่า/รูปแบบ/โครงสร้างเหมือนกันทุกชุดข้อมูลและข้ามระบบ เช่น สถานะใช้ชุดรหัสเดียวกัน',
+    examples: ['สถานะธุรกรรมใช้รหัสเดียวกันทุกระบบ', 'สกุลเงินต้องอยู่ในรายการที่ระบบรองรับ'],
+    recommendedEngines: ['IN_LIST', 'REGEX'],
+    badgeClass: 'bg-amber-50 text-amber-900 border-amber-200',
+    icon: 'layers',
+  },
+  VALIDITY: {
+    th: 'ความถูกต้องตามรูปแบบ',
+    en: 'Validity',
+    question: 'รูปแบบ/ชนิดข้อมูลถูกต้องตามข้อกำหนดหรือไม่?',
+    description: 'ข้อมูลอยู่ในรูปแบบหรือโดเมนที่กำหนด เช่น อีเมล หมายเลขโทรศัพท์ รหัสไปรษณีย์',
+    examples: ['อีเมลต้องมีรูปแบบถูกต้อง', 'เบอร์โทรไทย 10 หลักขึ้นต้นด้วย 0'],
+    recommendedEngines: ['EMAIL', 'REGEX'],
+    badgeClass: 'bg-violet-50 text-violet-800 border-violet-200',
+    icon: 'shield-check',
+  },
+  UNIQUENESS: {
+    th: 'ความไม่ซ้ำซ้อน',
+    en: 'Uniqueness',
+    question: 'มีค่าหรือระเบียนซ้ำกันหรือไม่?',
+    description: 'ไม่มีระเบียนหรือค่าซ้ำซ้อนในชุดข้อมูลเดียวกัน',
+    examples: ['รหัสธุรกรรมห้ามซ้ำ', 'อีเมลหนึ่งคนหนึ่งระเบียน'],
+    recommendedEngines: ['UNIQUE'],
+    badgeClass: 'bg-fuchsia-50 text-fuchsia-800 border-fuchsia-200',
+    icon: 'fingerprint',
+  },
+  INTEGRITY: {
+    th: 'ความเชื่อมโยงถูกต้อง',
+    en: 'Integrity',
+    question: 'การอ้างอิงข้ามตาราง/ระบบถูกต้องหรือไม่?',
+    description: 'ค่าที่อ้างอิงถึงข้อมูลอื่นต้องมีอยู่จริงและสัมพันธ์ถูกต้อง (Referential Integrity)',
+    examples: ['รหัสสาขาต้องมีอยู่ในทะเบียนสาขาหลัก', 'รหัสลูกค้าต้องมีในระบบหลัก'],
+    recommendedEngines: ['IN_LIST', 'NOT_NULL'],
+    badgeClass: 'bg-rose-50 text-rose-800 border-rose-200',
+    icon: 'link',
+  },
+  TIMELINESS: {
+    th: 'ความทันเวลา',
+    en: 'Timeliness',
+    question: 'ข้อมูลมาถึง/พร้อมใช้ตามเวลาที่กำหนดหรือไม่?',
+    description: 'ข้อมูลอัปเดตตามรอบเวลาที่กำหนด เช่น รายวัน รายชั่วโมง ตาม SLA',
+    examples: ['ข้อมูลต้องอัปเดตตามรอบรายวัน', 'ไฟล์รายวันต้องมาไม่เกินเวลาที่กำหนด'],
+    recommendedEngines: ['MAX_AGE_DAYS'],
+    badgeClass: 'bg-orange-50 text-orange-800 border-orange-200',
+    icon: 'clock',
+  },
+  CURRENTNESS: {
+    th: 'ความเป็นปัจจุบัน',
+    en: 'Currentness',
+    question: 'ข้อมูลยังใหม่ ไม่ค้างเก่าหรือไม่?',
+    description: 'ข้อมูลเป็นเวอร์ชันล่าสุด ไม่เก่ากว่าหน้าต่างเวลาที่ยอมรับได้ (ความสดของข้อมูล)',
+    examples: ['วันที่ทำรายการไม่เก่าเกิน 30 วัน', 'ราคาสินค้าอัปเดตไม่เกิน 7 วัน'],
+    recommendedEngines: ['MAX_AGE_DAYS'],
+    badgeClass: 'bg-lime-50 text-lime-800 border-lime-200',
+    icon: 'calendar-clock',
+  },
+  REASONABLENESS: {
+    th: 'ความสมเหตุสมผล',
+    en: 'Reasonableness',
+    question: 'ค่านี้สมเหตุสมผล ไม่ผิดปกติเกินคาดหรือไม่?',
+    description: 'ค่าอยู่ในกรอบที่สมเหตุสมผลตามธุรกิจ เช่น จำนวนไม่ติดลบ อายุ 0–120 ปี',
+    examples: ['วงเงินเครดิตอยู่ในช่วง 0–1,000,000', 'จำนวนเงินธุรกรรมไม่ติดลบ'],
+    recommendedEngines: ['RANGE', 'REGEX'],
+    badgeClass: 'bg-purple-50 text-purple-800 border-purple-200',
+    icon: 'gauge',
+  },
+}
+
+export const DIMENSION_KEYS = Object.keys(DIMENSION_META) as DimensionKey[]
+
+/** ป้ายชื่อมิติ (th/en) — อนุพันธ์จาก DIMENSION_META เพื่อให้เป็นแหล่งเดียวกัน */
+export const DIMENSION_LABELS: Record<DimensionKey, { th: string; en: string }> = Object.fromEntries(
+  DIMENSION_KEYS.map((k) => [k, { th: DIMENSION_META[k].th, en: DIMENSION_META[k].en }]),
+) as Record<DimensionKey, { th: string; en: string }>
 
 /* ------------------------------ conditions -------------------------------- */
 
@@ -93,7 +206,7 @@ export const CONDITIONS: Record<ConditionKey, ConditionDefinition> = {
     th: 'อยู่ในช่วงตัวเลขที่กำหนด',
     en: 'Must be within a range',
     sentence: 'be within the range',
-    dimension: 'ACCURACY',
+    dimension: 'REASONABLENESS',
     params: [
       { key: 'min', label: 'ค่าต่ำสุด', type: 'number' },
       { key: 'max', label: 'ค่าสูงสุด', type: 'number' },
@@ -120,7 +233,7 @@ export const CONDITIONS: Record<ConditionKey, ConditionDefinition> = {
     th: 'ข้อมูลไม่เก่าเกินกี่วัน',
     en: 'Must not be older than N days',
     sentence: 'not be older than',
-    dimension: 'TIMELINESS',
+    dimension: 'CURRENTNESS',
     params: [{ key: 'days', label: 'จำนวนวันที่ยอมรับได้', type: 'number', placeholder: '7' }],
   },
 }
@@ -430,7 +543,7 @@ export function generateMlSignals(rows: Row[]): MlSignalDraft[] {
     if (missing > 0 && missing < rows.length) {
       signals.push({
         kind: 'ML_ANOMALY',
-        dimension: 'SCHEMA_CONFORMANCE',
+        dimension: 'CONSISTENCY',
         title: `โครงสร้างคอลัมน์ ${col} ไม่คงที่`,
         detail: `พบ ${missing}/${rows.length} แถวที่ไม่มีคอลัมน์ ${col} — อาจเกิด schema drift จากแหล่งข้อมูล (สัญญาณ AI — รอมนุษย์ทบทวน)`,
         severity: 'HIGH',
@@ -446,7 +559,7 @@ export function generateMlSignals(rows: Row[]): MlSignalDraft[] {
       const sample = outliers.slice(0, 3).map((o) => `แถว #${o.index + 1} = ${o.num}`).join(', ')
       signals.push({
         kind: 'ML_ANOMALY',
-        dimension: 'ACCURACY',
+        dimension: 'REASONABLENESS',
         title: `ค่าผิดปกติ (outlier) ในคอลัมน์ ${col}`,
         detail: `โมเดลตรวจพบค่าห่างจากกรอบ IQR ${outliers.length} แถว (${sample}) — โปรดทบทวนก่อนดำเนินการ (สัญญาณ AI ไม่ได้แก้ไขข้อมูล)`,
         severity: 'MEDIUM',
@@ -476,7 +589,7 @@ export function generateMlSignals(rows: Row[]): MlSignalDraft[] {
   if (rows.length > 0 && rows.length < columns.length * 2) {
     signals.push({
       kind: 'ML_ANOMALY',
-      dimension: 'VOLUME',
+      dimension: 'COMPLETENESS',
       title: 'ปริมาณข้อมูลต่ำกว่าที่คาดหวัง',
       detail: `ชุดข้อมูลมีเพียง ${rows.length} แถว (${columns.length} คอลัมน์) — อาจมีข้อมูลหายระหว่างนำเข้า (สัญญาณ AI — รอมนุษย์ทบทวน)`,
       severity: 'LOW',

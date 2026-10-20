@@ -171,7 +171,7 @@ const CONDITION_TEMPLATES: Array<{
     name: 'อยู่ในช่วงตัวเลขที่กำหนด',
     nameEn: 'Within range',
     sentence: 'be within the range',
-    dimension: 'ACCURACY',
+    dimension: 'REASONABLENESS',
     engineType: 'RANGE',
     params: '[{"key":"min","label":"ค่าต่ำสุด","type":"number"},{"key":"max","label":"ค่าสูงสุด","type":"number"}]',
     isSystem: true,
@@ -192,7 +192,7 @@ const CONDITION_TEMPLATES: Array<{
     name: 'ข้อมูลไม่เก่าเกินกี่วัน',
     nameEn: 'Max age in days',
     sentence: 'not be older than',
-    dimension: 'TIMELINESS',
+    dimension: 'CURRENTNESS',
     engineType: 'MAX_AGE_DAYS',
     params: '[{"key":"days","label":"จำนวนวันที่ยอมรับได้","type":"number","placeholder":"7"}]',
     isSystem: true,
@@ -213,7 +213,7 @@ const CONDITION_TEMPLATES: Array<{
     name: 'จำนวนไม่ติดลบ',
     nameEn: 'Non-negative number',
     sentence: 'be a non-negative number within the allowed range',
-    dimension: 'ACCURACY',
+    dimension: 'REASONABLENESS',
     engineType: 'RANGE',
     params: '[{"key":"min","label":"ค่าต่ำสุด","type":"number","placeholder":"0"},{"key":"max","label":"ค่าสูงสุด","type":"number"}]',
     isSystem: false,
@@ -233,9 +233,40 @@ const CONDITION_TEMPLATES: Array<{
     name: 'ข้อมูลสด (ไม่เก่าเกิน 7 วัน)',
     nameEn: 'Fresh data (7 days)',
     sentence: 'not be older than the freshness window',
-    dimension: 'TIMELINESS',
+    dimension: 'CURRENTNESS',
     engineType: 'MAX_AGE_DAYS',
     params: '[{"key":"days","label":"จำนวนวันที่ยอมรับได้","type":"number","placeholder":"7"}]',
+    isSystem: false,
+  },
+  // ตัวอย่างเพิ่มเติมให้คลุมครบทั้ง 9 มิติ DAMA-DMBOK — Accuracy / Integrity / Timeliness
+  {
+    key: 'CUSTOM_SEGMENT_STD',
+    name: 'รหัสกลุ่มลูกค้าตามมาตรฐาน',
+    nameEn: 'Standard customer segment',
+    sentence: 'be one of the standard customer segments defined by the CRM system',
+    dimension: 'ACCURACY',
+    engineType: 'IN_LIST',
+    params: '[{"key":"values","label":"ค่าที่อนุญาต (คั่นด้วยเครื่องหมาย ,)","type":"text","placeholder":"ENTERPRISE, SME, RETAIL"}]',
+    isSystem: false,
+  },
+  {
+    key: 'CUSTOM_BRANCH_REF',
+    name: 'รหัสสาขาตรงตามทะเบียนสาขาหลัก',
+    nameEn: 'Registered branch code',
+    sentence: 'be a branch code that exists in the master branch registry',
+    dimension: 'INTEGRITY',
+    engineType: 'IN_LIST',
+    params: '[{"key":"values","label":"รหัสสาขาที่มีอยู่จริง (คั่นด้วยเครื่องหมาย ,)","type":"text","placeholder":"BKK, CNX, PKT, HKT, KKC"}]',
+    isSystem: false,
+  },
+  {
+    key: 'CUSTOM_DAILY_REFRESH',
+    name: 'อัปเดตตามรอบรายวัน (ไม่เกิน 1 วัน)',
+    nameEn: 'Daily refresh (1 day)',
+    sentence: 'not be older than the daily refresh window',
+    dimension: 'TIMELINESS',
+    engineType: 'MAX_AGE_DAYS',
+    params: '[{"key":"days","label":"จำนวนวันที่ยอมรับได้","type":"number","placeholder":"1"}]',
     isSystem: false,
   },
 ]
@@ -270,6 +301,14 @@ const RULES: Array<{
   },
   { datasets: ['รายการธุรกรรมรายวัน'], column: 'txn_date', condition: 'MAX_AGE_DAYS', parameters: '{"days":30}', severity: 'LOW' },
   { datasets: ['รายการธุรกรรมรายวัน'], column: 'amount', condition: 'CUSTOM_NON_NEGATIVE', parameters: '{"min":0,"max":1000000}', severity: 'HIGH' },
+  // กฎมิติ Accuracy — รหัสกลุ่มลูกค้าต้องตรงตามมาตรฐาน
+  {
+    datasets: ['ลูกค้าองค์กร — Master'],
+    column: 'segment',
+    condition: 'CUSTOM_SEGMENT_STD',
+    parameters: '{"values":"ENTERPRISE, SME, RETAIL"}',
+    severity: 'MEDIUM',
+  },
 ]
 
 async function main() {
@@ -356,7 +395,7 @@ async function main() {
     data: {
       datasetId: custId,
       kind: 'ML_ANOMALY',
-      dimension: 'ACCURACY',
+      dimension: 'REASONABLENESS',
       title: 'ค่าผิดปกติ (outlier) ในคอลัมน์ credit_limit',
       detail:
         'โมเดลตรวจพบค่า credit_limit 9,999,999 (แถว #20) ห่างจากกรอบ IQR อย่างมีนัยสำคัญ — โปรดทบทวนก่อนดำเนินการ (สัญญาณ AI ไม่ได้แก้ไขข้อมูล)',
@@ -368,7 +407,7 @@ async function main() {
     data: {
       datasetId: txnId,
       kind: 'ML_ANOMALY',
-      dimension: 'VOLUME',
+      dimension: 'COMPLETENESS',
       title: 'ปริมาณธุรกรรมต่ำกว่าค่าเฉลี่ยรายวัน',
       detail:
         'จำนวนระเบียนวันนี้ต่ำกว่าค่าเฉลี่ย 7 วันที่ผ่านมา 38% — อาจมีข้อมูลหายระหว่างนำเข้า (สัญญาณ AI — รอมนุษย์ทบทวน)',
@@ -420,7 +459,7 @@ async function main() {
       action: 'CREATE_CONDITION',
       actor: 'system@seed',
       target: `${CONDITION_TEMPLATES.length} conditions`,
-      detail: 'Seed เริ่มต้นระบบ: ตั้งค่าคลังเงื่อนไขส่วนกลาง (เงื่อนไขมาตรฐาน 7 รายการ + ตัวอย่างที่ผู้ใช้สร้าง 4 รายการ)',
+      detail: 'Seed เริ่มต้นระบบ: ตั้งค่าคลังเงื่อนไขส่วนกลาง (เงื่อนไขมาตรฐาน 7 รายการ + ตัวอย่างที่ผู้ใช้สร้าง 7 รายการ)',
     },
   })
   await db.auditLog.create({
@@ -428,7 +467,7 @@ async function main() {
       action: 'CREATE_RULE',
       actor: 'system@seed',
       target: `${RULES.length} rules`,
-      detail: 'Seed เริ่มต้นระบบ: สร้างกฎคุณภาพข้อมูลเริ่มต้น 8 ข้อ (มีกฎที่ใช้ร่วมหลายชุดข้อมูล) + ข้อมูลตัวอย่าง sandbox',
+      detail: 'Seed เริ่มต้นระบบ: สร้างกฎคุณภาพข้อมูลเริ่มต้น 9 ข้อ (มีกฎที่ใช้ร่วมหลายชุดข้อมูล) + ข้อมูลตัวอย่าง sandbox',
     },
   })
 

@@ -12,7 +12,6 @@ import {
   Server,
   Globe,
   Table2,
-  CheckCircle2,
   AlertTriangle,
   Lock,
   EyeOff,
@@ -20,17 +19,10 @@ import {
   ArrowRight,
   Sparkles,
   History,
-  Boxes,
-  GaugeCircle,
-  Timer,
-  Link2,
-  Hash,
-  Ruler,
-  Shapes,
-  Layers,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DIMENSION_ICONS } from '@/components/dimension-picker'
 import {
   Card,
   CardContent,
@@ -39,66 +31,20 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { DIMENSION_KEYS, DIMENSION_META } from '@/lib/dq'
 import type { ViewKey } from '@/lib/views'
 
 /* ---------------------------------- data ---------------------------------- */
 
-const DIMENSIONS = [
-  {
-    icon: CheckCircle2,
-    th: 'ความสมบูรณ์',
-    en: 'Completeness',
-    desc: 'ข้อมูลจำเป็นต้องมีครบถ้วนตามที่กำหนด (Completeness)',
-  },
-  {
-    icon: Ruler,
-    th: 'ความถูกต้อง',
-    en: 'Accuracy',
-    desc: 'ค่าข้อมูลสอดคล้องกับความจริงหรือแหล่งอ้างอิง (Accuracy)',
-  },
-  {
-    icon: Shapes,
-    th: 'ความถูกต้องตามรูปแบบ',
-    en: 'Validity',
-    desc: 'รูปแบบ ชนิด และช่วงค่าอยู่ในเกณฑ์ที่กำหนด (Validity)',
-  },
-  {
-    icon: Link2,
-    th: 'ความสอดคล้อง',
-    en: 'Consistency',
-    desc: 'ข้อมูลสอดคล้องกันทั้งระบบและข้ามระบบ (Consistency)',
-  },
-  {
-    icon: Hash,
-    th: 'ความไม่ซ้ำซ้อน',
-    en: 'Uniqueness',
-    desc: 'ไม่มีระเบียนซ้ำซ้อนในชุดข้อมูลเดียวกัน (Uniqueness)',
-  },
-  {
-    icon: Timer,
-    th: 'ความทันเวลา',
-    en: 'Timeliness',
-    desc: 'ข้อมูลอัปเดตและพร้อมใช้ตรงตามเวลาที่คาดหวัง (Timeliness)',
-  },
-  {
-    icon: Layers,
-    th: 'เอกภาพการอ้างอิง',
-    en: 'Integrity Constraints',
-    desc: 'ความสัมพันธ์และการอ้างอิงถูกต้องตามข้อกำหนด (Integrity)',
-  },
-  {
-    icon: GaugeCircle,
-    th: 'ปริมาณข้อมูล',
-    en: 'Volume / Amount',
-    desc: 'จำนวนระเบียนอยู่ในช่วงที่คาดหวัง ตรวจจับข้อมูลหาย (Volume)',
-  },
-  {
-    icon: Boxes,
-    th: 'การตรงตามโครงสร้าง',
-    en: 'Schema Conformance',
-    desc: 'โครงสร้างคอลัมน์และชนิดข้อมูลตรงตาม Schema (Schema Conformance)',
-  },
-]
+/** มิติคุณภาพข้อมูล 9 มิติตาม DAMA-DMBOK — derive จากแหล่งเดียว (lib/dq.ts) */
+const DIMENSIONS = DIMENSION_KEYS.map((key) => ({
+  key,
+  icon: DIMENSION_ICONS[key],
+  th: DIMENSION_META[key].th,
+  en: DIMENSION_META[key].en,
+  desc: DIMENSION_META[key].description,
+  badgeClass: DIMENSION_META[key].badgeClass,
+}))
 
 const FEATURES = [
   {
@@ -306,20 +252,21 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
       {/* --------------------------- dimensions ---------------------------- */}
       <section id="dimensions" aria-labelledby="dimensions-title">
         <div className="mb-6 max-w-2xl">
-          <Badge variant="outline" className="mb-3 border-emerald-300 bg-emerald-50 text-emerald-800">9 Dimensions</Badge>
+          <Badge variant="outline" className="mb-3 border-emerald-300 bg-emerald-50 text-emerald-800">9 Dimensions — DAMA-DMBOK</Badge>
           <h2 id="dimensions-title" className="text-xl font-bold tracking-tight sm:text-2xl">
-            ครอบคลุมมิติคุณภาพข้อมูลครบทั้ง 9 มิติ
+            ครอบคลุมมิติคุณภาพข้อมูลตามมาตรฐาน DAMA-DMBOK ครบทั้ง 9 มิติ
           </h2>
           <p className="mt-2 text-muted-foreground">
-            อ้างอิงมาตรฐาน ISO/IEC 25012 และ DAMA-DMBOK ตรวจสอบได้ทุกมิติในการรันครั้งเดียว
+            Accuracy · Completeness · Consistency · Validity · Uniqueness · Integrity · Timeliness · Currentness · Reasonableness
+            — ทุกกฎที่สร้างผูกกับมิติเหล่านี้ และรายงานคะแนนแยกตามมิติในการรันครั้งเดียว
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {DIMENSIONS.map((d) => (
-            <Card key={d.en} className="transition-shadow hover:shadow-md">
+            <Card key={d.key} className="transition-shadow hover:shadow-md">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2.5">
-                  <span className="flex size-9 items-center justify-center rounded-lg border border-emerald-200/70 bg-emerald-50 text-emerald-700">
+                  <span className={`flex size-9 items-center justify-center rounded-lg border ${d.badgeClass}`}>
                     <d.icon className="size-4.5" aria-hidden="true" />
                   </span>
                   <div>

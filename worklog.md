@@ -434,3 +434,25 @@ Stage Summary:
 - v0.6.0 สรุป: sidebar ซ้าย 3 กลุ่มเมนู (ภาพรวม/คุณภาพข้อมูล/การกำกับดูแล) + live badges, sticky header/footer, mobile drawer, skip link + focus management (WCAG 2.2 AA), ฟังก์ชัน v0.5.0 ครบถ้วน (dataset preview + column picker, กฎใช้ร่วมหลายชุดข้อมูล, คลังเงื่อนไขส่วนกลาง)
 - Rollback point ก่อนหน้า: `v0.5.0` (d0c979e)
 - Token ถูกใช้เฉพาะใน push command (one-time URL) ไม่มีบันทึกลงไฟล์/config ใดๆ — config ตรวจ clean ทุกครั้ง
+
+---
+## Task ID: 14
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: v0.7.0 (feat — DQ Dimensions ตามมาตรฐาน DAMA-DMBOK 9 มิติ + Dimension Picker UX ใหม่)
+**Task**: ผู้ใช้ขอให้ "Data Quality Rule check อ้างอิง 9 มิติ ตาม DAMA-DMBOK (Accuracy, Completeness, Consistency, Validity, Uniqueness, Integrity, Timeliness, Currentness, Reasonableness) พร้อมออกแบบหน้าตั้งค่าให้ผู้ใช้งานใช้ง่ายและเข้าใจง่าย"
+
+Work Log:
+- **มิติใหม่ตาม DAMA-DMBOK เป๊ะ (src/lib/dq.ts)**: เปลี่ยน DimensionKey 9 ค่า — ตัด VOLUME/SCHEMA_CONFORMANCE เพิ่ม CURRENTNESS/REASONABLENESS เรียงตามที่ผู้ใช้กำหนด — สร้าง `DimensionMeta` (th/en/คำถามช่วยเลือก/คำอธิบาย/ตัวอย่างการตรวจ/เอนจินแนะนำ/สี badge/ไอคอน) — DIMENSION_LABELS กลายเป็นอนุพันธ์ของ DIMENSION_META (แหล่งเดียว) — จุด mapping ใหม่: RANGE→REASONABLENESS, MAX_AGE_DAYS→CURRENTNESS, ML schema drift→CONSISTENCY, ML outlier→REASONABLENESS, ML volume→COMPLETENESS
+- **Seed**: ปรับมิติเท็มเพลตเดิม 4 รายการ + เพิ่มเงื่อนไขตัวอย่าง 3 รายการให้คลังครอบคลุมครบ 9 มิติ (CUSTOM_SEGMENT_STD/ACCURACY, CUSTOM_BRANCH_REF/INTEGRITY, CUSTOM_DAILY_REFRESH/TIMELINESS) + กฎใหม่ segment (ACCURACY) = เงื่อนไข 14 รายการ กฎ 9 ข้อ + สัญญาณ AI ตัวอย่างปรับมิติ (REASONABLENESS/COMPLETENESS) — re-seed สำเร็จ
+- **Component ใหม่ (src/components/dimension-picker.tsx)**: DimensionPicker — radio group การ์ด 9 ใบ (ไอคอน lucide + ชื่อไทย/อังกฤษ + เลือกแล้วขอบเขียว + เครื่องหมายถูก, keyboard accessible, responsive 3 คอลัมน์→1 คอลัมน์บนมือถือ) / DimensionHint — กล่องคำอธิบายมิติที่เลือก (คำถาม + ตัวอย่าง + เอนจินแนะนำ) / DimensionBadge — ป้ายมิติมีสี + tooltip ใช้ในรายการเงื่อนไข/ผลรัน/สัญญาณ AI (fallback ปลอดภัยเมื่อมิติไม่รู้จัก)
+- **Core Console**: แทน dropdown มิติในฟอร์มสร้างเงื่อนไขด้วย DimensionPicker + DimensionHint เต็มความกว้าง — badge มิติทุกจุดเปลี่ยนเป็น DimensionBadge (คลังเงื่อนไข / ผลรัน / สัญญาณ AI) — เพิ่ม field `dimension` ใน type ผลรันฝั่ง client
+- **Platform Overview**: หมวด 9 มิติ derive จาก DIMENSION_META (ไอคอน/สี/คำอธิบายเดียวกับทั้งแอป) + หัวข้อเน้น "ตามมาตรฐาน DAMA-DMBOK" พร้อมรายชื่อมิติ EN ครบ — เก็บกวาด lucide import ที่เลิกใช้ 9 ตัว
+- **views.ts**: APP_VERSION → v0.7.0 + คำอธิบายหน้า about ระบุ DAMA-DMBOK
+- **ตรวจสอบจริงด้วย agent-browser (ทองสุดท้ายผ่านหมด)**: (1) picker แสดง 9 มิติ radio cards ตรงลำดับผู้ใช้ (2) คลิก Reasonableness → hint เปลี่ยนทันที (คำถาม/ตัวอย่างวงเงิน 0–1,000,000/เอนจิน RANGE REGEX) (3) สร้างเงื่อนไข "อายุลูกค้าสมเหตุสมผล" ผ่าน picker สำเร็จ — API ยืนยัน dimension=REASONABLENESS (4) คลังครบ 9/9 มิติ 15 รายการ (5) รันตรวจ dataset ลูกค้า+ธุรกรรม — ผลรันแสดง badge ความสมเหตุสมผล/ความเป็นปัจจุบัน/ความสอดคล้อง/ความไม่ซ้ำซ้อน + tooltip คำอธิบาย (6) สัญญาณ AI ปริมาณธุรกรรม = COMPLETENESS (7) แดชบอร์ดคะแนนเฉลี่ยตามมิติใหม่ (8) Rule Builder สร้างกฎด้วยเงื่อนไขใหม่: "For ลูกค้าองค์กร — Master, credit_limit must be a plausible customer age in years using [0 – 120]…" บันทึกสำเร็จ (9) มือถือ 390px — drawer + picker 1 คอลัมน์ (10) ไม่มี console/page error, lint สะอาด
+- หมายเหตุกระบวนการ: MultiEdit กับไฟล์ seed.ts เกิด partial-apply (tool แจ้ง fail แต่ edit ก่อนหน้าถูก apply) — แก้ด้วยสคริปต์ python assert ทุกจุดจนครบ + ตรวจด้วย rg
+
+Stage Summary:
+- **v0.7.0 = ระบบมิติคุณภาพข้อมูลอ้างอิง DAMA-DMBOK 9 มิติครบถ้วน** — ทุกเงื่อนไข/กฎ/ผลรัน/สัญญาณ/แดชบอร์ด/หน้าแนะนำ ใช้ชุดมิติเดียวกันจากแหล่งเดียว (DIMENSION_META)
+- **UX ตั้งค่าใหม่**: เลือกมิติด้วยการ์ดไอคอน + คำถามช่วยตัดสินใจ + ตัวอย่าง + เอนจินแนะนำ — ลดการเดาความหมาย ผู้ไม่ใช่ IT ก็เข้าใจได้
+- Rollback Reference: ก่อนงานนี้ = `bd8cfaf` (v0.6.0 + worklog Task 13) — กู้คืนด้วย `git reset --hard bd8cfaf && bun run db:push && bun scripts/seed.ts`
+- Version: v0.7.0 (minor bump — เปลี่ยนชุดมิติเป็นมาตรฐานใหม่ + ฟีเจอร์ picker; API shape ไม่เปลี่ยน)
