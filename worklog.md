@@ -415,3 +415,22 @@ Stage Summary:
 - ฟังก์ชัน v0.5.0 ครบถ้วนไม่สูญหาย — ตรวจด้วย golden path จริงบนเบราว์เซอร์
 - Rollback Reference: ก่อนงานนี้ = `5cbd0d4` (v0.5.0) — กู้คืนด้วย `git reset --hard 5cbd0d4 && bun run db:push && bunx tsx scripts/seed.ts`
 - Version: v0.6.0 (minor bump — ฟีเจอร์ใหม่ด้าน UX, ไม่มี breaking change ต่อ API)
+
+---
+## Task ID: 13
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: v0.6.0 (push + remote verification — no code change)
+**Task**: Push v0.6.0 ขึ้น GitHub ด้วย token ใหม่ที่ผู้ใช้แนบ (one-time URL ตาม workflow) + verify remote
+
+Work Log:
+- สถานะก่อน push: local main = `65a5ac6` (v0.6.0 + worklog Task 12 รวมใน commit เดียวกัน), tag `v0.6.0` ชี้ `65a5ac6` — พบว่า remote ได้รับ v0.6.0 ไปแล้วจาก session ก่อนหน้า (tracking ref + ls-remote ตรงกัน) ผู้ใช้ส่ง token ใหม่พร้อมข้อความ "ช่วย push ที" — รัน push จริงเพื่อยืนยันแบบ definitive
+- Pre-flight ผ่าน: `git show --stat 65a5ac6` ครบ 6 ไฟล์ (page.tsx rewrite, app-sidebar.tsx ใหม่, platform-overview.tsx ใหม่, views.ts ใหม่, core-features-console.tsx ปรับ, worklog.md), `git config --list | rg -i "github_pat|token"` = clean, dev server HTTP 200
+- Push ด้วย one-time token URL ตรงในคำสั่ง (ไม่แก้ origin, ไม่บันทึกลง git config ทุกรูปแบบ) + redact token ออกจาก output ทุกขั้น: `git push <url> main` → **Everything up-to-date** (EXIT=0), `git push <url> tag v0.6.0` → **Everything up-to-date** (EXIT=0) — ยืนยันว่า remote มี v0.6.0 ครบแล้วจริง
+- Verify ด้วย `git ls-remote origin` (public read ไม่ใช้ token): refs/heads/main = `65a5ac6` และ refs/tags/v0.6.0 = `65a5ac6` — ตรงกับ local HEAD เป๊ะทุก hash
+- บันทึก worklog Task 13 (ส่วนนี้) → commit → push ด้วย token เดิม → verify รอบสุดท้าย + `git fetch origin` sync tracking ref + ตรวจ config ปิดท้าย
+
+Stage Summary:
+- **Remote main = `65a5ac6` (v0.6.0 Enterprise UX/UI) + tag `v0.6.0` ครบสมบูรณ์บน GitHub** — sync กับ local 100%
+- v0.6.0 สรุป: sidebar ซ้าย 3 กลุ่มเมนู (ภาพรวม/คุณภาพข้อมูล/การกำกับดูแล) + live badges, sticky header/footer, mobile drawer, skip link + focus management (WCAG 2.2 AA), ฟังก์ชัน v0.5.0 ครบถ้วน (dataset preview + column picker, กฎใช้ร่วมหลายชุดข้อมูล, คลังเงื่อนไขส่วนกลาง)
+- Rollback point ก่อนหน้า: `v0.5.0` (d0c979e)
+- Token ถูกใช้เฉพาะใน push command (one-time URL) ไม่มีบันทึกลงไฟล์/config ใดๆ — config ตรวจ clean ทุกครั้ง
