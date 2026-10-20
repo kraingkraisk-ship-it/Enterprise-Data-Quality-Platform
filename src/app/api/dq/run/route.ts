@@ -12,6 +12,14 @@ import {
   type DimensionKey,
   type Row,
 } from '@/lib/dq'
+import {
+  buildRuleVerdict,
+  buildRunSummary,
+  DAMA_STANDARDS,
+  fixHintFor,
+  gradeOf,
+  type DimensionResultView,
+} from '@/lib/dama'
 import { resolveOperator } from '@/lib/operator'
 
 export async function GET(req: NextRequest) {
@@ -72,7 +80,7 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    // ---------- รันกฎทุกข้อ (enabled) ----------
+    // ---------- รันกฎทุกข้อ (enabled) — ประเมินภายใต้มาตราของมิติที่กฎสังกัด ----------
     interface RunResult {
       ruleId: string
       column: string
@@ -81,7 +89,13 @@ export async function POST(req: NextRequest) {
       severity: string
       dimension: DimensionKey
       dimensionTh: string
+      dimensionEn: string
+      clauseNo: number
       sentence: string
+      /** คำตัดสินตามมาตรา (ภาษาไทยอ่านง่าย) — ผ่าน/ไม่ผ่านมาตราใด เพราะอะไร */
+      verdict: string
+      /** คำแนะนำการแก้ไข (เฉพาะเมื่อล้มเหลว) — เป็นข้อแนะนำ ไม่ใช่การแก้ข้อมูลแทนผู้ใช้ */
+      advice: string | null
       status: 'PASSED' | 'FAILED'
       totalRows: number
       failedRows: number
@@ -89,7 +103,10 @@ export async function POST(req: NextRequest) {
       failedSamples: string[]
     }
     const results: RunResult[] = []
+    // สะสมผลรายมิติ: อัตราผ่านของกฎแต่ละข้อ + จำนวนกฎ + จำนวนกฎที่ล้มเหลว (เพื่อจัดเกรดตามมาตรา)
     const byDimension = new Map<DimensionKey, number[]>()
+    const rulesCountByDimension = new Map<DimensionKey, number>()
+    const failedRulesByDimension = new Map<DimensionKey, number>()
     let skipped = 0
 
     // cache ค่าอ้างอิงของเอนจิน EXISTS_IN_DATASET (INTEGRITY) — กันโหลดซ้ำในกฎที่อ้างชุดข้อมูลเดียวกัน
@@ -161,6 +178,10 @@ export async function POST(req: NextRequest) {
       const status = evaluation.failedRows === 0 ? 'PASSED' : 'FAILED'
       const passRate = evaluation.totalRows > 0 ? (evaluation.totalRows - evaluation.failedRows) / evaluation.totalRows : 1
 
+      // คำตัดสินตามมาตรา — อ่านง่าย: ผ่าน/ไม่ผ่านมาตราใด เพราะอะไร
+      const verdict = buildRuleVerdict({ status, totalRows: evaluation.totalRows, failedRows: evaluation.failedRows, dimension: dimensionKey, engineType })
+      const advice = status === 'FAILED' ? fixHintFor(engineType, dimensionKey) : null
+
       await db.dqRun.create({
         data: {
           ruleId: rule.id,
@@ -183,6 +204,10 @@ export async function POST(req: NextRequest) {
       const arr = byDimension.get(dimensionKey) ?? []
       arr.push(passRate * 100)
       byDimension.set(dimensionKey, arr)
+      rulesCountByDimension.set(dimensionKey, (rulesCountByDimension.get(dimensionKey) ?? 0) + 1)
+      if (status === 'FAILED') {
+        failedRulesByDimension.set(dimensionKey, (failedRulesByDimension.get(dimensionKey) ?? 0) + 1)
+      }
 
       results.push({
         ruleId: rule.id,
@@ -192,6 +217,8 @@ export async function POST(req: NextRequest) {
         severity: rule.severity,
         dimension: dimensionKey,
         dimensionTh: DIMENSION_LABELS[dimensionKey].th,
+        dimensionEn: DIMENSION_LABELS[dimensionKey].en,
+        clauseNo: DAMA_STANDARDS[dimensionKey].clauseNo,
         sentence: buildRuleSentence({
           datasetName: dataset.name,
           column: rule.column,
@@ -203,6 +230,8 @@ export async function POST(req: NextRequest) {
           severity: rule.severity,
           filter: rule.filter,
         }),
+        verdict,
+        advice,
         status,
         totalRows: evaluation.totalRows,
         failedRows: evaluation.failedRows,
@@ -259,18 +288,45 @@ export async function POST(req: NextRequest) {
       newSignals++
     }
 
-    // ---------- สรุปคะแนน ----------
-    const dimensionScores: Array<{ dimension: DimensionKey; th: string; en: string; score: number | null }> = (
+    // ---------- สรุปคะแนนรายมาตรา (ครบทั้ง 9 มาตรา — score = null เมื่อไม่มีกฎในมิตินั้น) ----------
+    const dimensionScores: DimensionResultView[] = (
       Object.keys(DIMENSION_LABELS) as DimensionKey[]
     ).map((k) => {
       const arr = byDimension.get(k)
       const score = arr && arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null
-      return { dimension: k, th: DIMENSION_LABELS[k].th, en: DIMENSION_LABELS[k].en, score }
+      const grade = gradeOf(score)
+      const rulesCount = rulesCountByDimension.get(k) ?? 0
+      const failedRules = failedRulesByDimension.get(k) ?? 0
+      return {
+        dimension: k,
+        th: DIMENSION_LABELS[k].th,
+        en: DIMENSION_LABELS[k].en,
+        clauseNo: DAMA_STANDARDS[k].clauseNo,
+        statement: DAMA_STANDARDS[k].statement,
+        measure: DAMA_STANDARDS[k].measure,
+        formula: DAMA_STANDARDS[k].formula,
+        score,
+        grade: grade
+          ? { band: grade.band, label: grade.label, badgeClass: grade.badgeClass, barClass: grade.barClass, textClass: grade.textClass }
+          : null,
+        rulesCount,
+        failedRules,
+        advice: grade && (grade.band === 'FAIR' || grade.band === 'POOR') ? DAMA_STANDARDS[k].advice : null,
+      }
     })
     const scored = dimensionScores.filter((d) => d.score !== null) as Array<{ score: number }>
     const overallScore = scored.length > 0 ? scored.reduce((a, b) => a + b.score, 0) / scored.length : null
 
     const passedCount = results.filter((r) => r.status === 'PASSED').length
+    const failedCount = results.length - passedCount
+    const summary = buildRunSummary({
+      rowsCount: rows.length,
+      rulesCount: rulesForDataset.length,
+      passedRules: passedCount,
+      failedRules: failedCount,
+      overallScore,
+    })
+    const overallGrade = gradeOf(overallScore)
 
     await db.auditLog.create({
       data: {
@@ -289,7 +345,12 @@ export async function POST(req: NextRequest) {
       results,
       newSignals,
       overallScore,
-      dimensionScores: dimensionScores.filter((d) => d.score !== null),
+      overallGrade: overallGrade
+        ? { band: overallGrade.band, label: overallGrade.label, badgeClass: overallGrade.badgeClass, textClass: overallGrade.textClass }
+        : null,
+      summary,
+      // ครบทั้ง 9 มาตรา — มิติที่ไม่มีกฎจะมี score = null (แสดงว่า "ยังไม่ได้ประเมิน")
+      dimensionScores,
     })
   } catch (e) {
     console.error('POST /api/dq/run', e)

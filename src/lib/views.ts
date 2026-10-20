@@ -15,7 +15,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.8.0'
+export const APP_VERSION = 'v0.9.0'
 
 /** มุมมองที่อยู่ในคอนโซลคุณภาพข้อมูลหลัก (CoreFeaturesConsole) */
 export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'exceptions' | 'dashboard'

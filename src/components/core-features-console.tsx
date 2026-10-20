@@ -20,6 +20,9 @@ import {
   Table2,
   Plus,
   Lock,
+  Scale,
+  Lightbulb,
+  BookOpen,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -44,7 +47,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { DimensionBadge, DimensionHint, DimensionPicker } from '@/components/dimension-picker'
+import { DIMENSION_ICONS, DimensionBadge, DimensionHint, DimensionPicker } from '@/components/dimension-picker'
 import { EngineBadge, EngineHint, EnginePicker } from '@/components/engine-picker'
 import {
   buildRuleSentence,
@@ -148,7 +151,23 @@ interface RunResponse {
   skipped?: number
   newSignals: number
   overallScore: number | null
-  dimensionScores: Array<{ dimension: string; th: string; en: string; score: number }>
+  overallGrade: { band: string; label: string; badgeClass: string; textClass: string } | null
+  summary: string
+  /** ครบทั้ง 9 มาตรา — score = null เมื่อไม่มีกฎในมิตินั้น (ยังไม่ได้ประเมิน) */
+  dimensionScores: Array<{
+    dimension: string
+    th: string
+    en: string
+    clauseNo: number
+    statement: string
+    measure: string
+    formula: string
+    score: number | null
+    grade: { band: string; label: string; badgeClass: string; barClass: string; textClass: string } | null
+    rulesCount: number
+    failedRules: number
+    advice: string | null
+  }>
   results: Array<{
     ruleId: string
     column: string
@@ -157,7 +176,12 @@ interface RunResponse {
     severity: string
     dimension: string
     dimensionTh: string
+    dimensionEn: string
+    clauseNo: number
     sentence: string
+    /** คำตัดสินตามมาตรา (ภาษาไทยอ่านง่าย) */
+    verdict: string
+    advice: string | null
     status: 'PASSED' | 'FAILED'
     totalRows: number
     failedRows: number
@@ -1627,29 +1651,100 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-emerald-50/50 p-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">คะแนนคุณภาพข้อมูลรวม</p>
-                    <p className={`text-3xl font-bold ${scoreColor(runResult.overallScore)}`}>
+                {/* สรุปผลรวมตามมาตรา — คะแนนรวม + เกรด + ประโยคสรุปภาษาคน */}
+                <div className="flex flex-col gap-3 rounded-lg border bg-emerald-50/50 p-4 sm:flex-row sm:items-center">
+                  <div className="shrink-0">
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Scale className="size-3.5" aria-hidden="true" />
+                      คะแนนคุณภาพข้อมูลรวม (เฉลี่ย 9 มาตรา)
+                    </p>
+                    <p className={`text-3xl font-bold ${runResult.overallGrade?.textClass ?? scoreColor(runResult.overallScore)}`}>
                       {runResult.overallScore !== null ? runResult.overallScore.toFixed(1) : '—'}
                       <span className="text-base">/100</span>
                     </p>
                   </div>
-                  <div className="flex-1 space-y-1.5">
-                    {runResult.dimensionScores.map((d) => (
-                      <div key={d.dimension} className="flex items-center gap-2 text-xs">
-                        <span className="w-40 shrink-0 truncate">{d.th}</span>
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
-                          <div
-                            className={`h-full rounded-full ${d.score >= 90 ? 'bg-emerald-500' : d.score >= 75 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                            style={{ width: `${d.score}%` }}
-                          />
+                  {runResult.overallGrade && (
+                    <Badge variant="outline" className={`w-fit border text-xs font-semibold ${runResult.overallGrade.badgeClass}`}>
+                      เกรด {runResult.overallGrade.label}
+                    </Badge>
+                  )}
+                  <p className="text-xs leading-relaxed text-slate-700 sm:border-l sm:border-emerald-200 sm:pl-3" role="note">
+                    {runResult.summary}
+                  </p>
+                </div>
+
+                {/* บัตรคะแนนรายมาตรา 9 ใบ — เรียงมาตรา 1–9 ตามลำดับ DAMA-DMBOK */}
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-slate-700">
+                    ผลประเมินรายมาตรา — เรียงตามมาตรฐาน DAMA-DMBOK (มาตราที่ 1–9)
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {runResult.dimensionScores.map((d) => {
+                      const Icon = DIMENSION_ICONS[d.dimension as keyof typeof DIMENSION_ICONS]
+                      return (
+                        <div
+                          key={d.dimension}
+                          className={`rounded-lg border p-3 ${d.score !== null ? 'bg-white' : 'border-dashed bg-slate-50/60 opacity-75'}`}
+                          title={d.score !== null ? `${d.statement}\nมาตราการวัด: ${d.measure}\nสูตร: ${d.formula}` : `${d.statement} — ยังไม่มีกฎที่เปิดใช้ในมิตินี้`}
+                        >
+                          <div className="mb-1.5 flex items-center gap-1.5">
+                            {Icon && <Icon className={`size-3.5 shrink-0 ${d.score !== null ? 'text-slate-700' : 'text-slate-400'}`} aria-hidden="true" />}
+                            <span className="truncate text-xs font-semibold text-slate-800">มาตรา {d.clauseNo}: {d.th}</span>
+                            {d.grade && (
+                              <Badge variant="outline" className={`ml-auto shrink-0 border text-[10px] font-semibold ${d.grade.badgeClass}`}>
+                                {d.grade.label}
+                              </Badge>
+                            )}
+                          </div>
+                          {d.score !== null ? (
+                            <>
+                              <div className="flex items-baseline gap-1">
+                                <span className={`text-xl font-bold ${d.grade?.textClass ?? scoreColor(d.score)}`}>{d.score.toFixed(0)}</span>
+                                <span className="text-[10px] text-muted-foreground">/100</span>
+                                <span className="ml-auto text-[10px] text-muted-foreground">
+                                  กฎ {d.rulesCount} ข้อ{d.failedRules > 0 ? ` · ล้มเหลว ${d.failedRules}` : ' · ผ่านทั้งหมด'}
+                                </span>
+                              </div>
+                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                                <div className={`h-full rounded-full ${d.grade?.barClass ?? 'bg-slate-400'}`} style={{ width: `${d.score}%` }} />
+                              </div>
+                              {d.advice && (
+                                <p className="mt-1.5 flex items-start gap-1 text-[10.5px] leading-snug text-amber-800">
+                                  <Lightbulb className="mt-0.5 size-3 shrink-0 text-amber-500" aria-hidden="true" />
+                                  {d.advice}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-[11px] text-muted-foreground">ยังไม่ได้ประเมิน — ไม่มีกฎที่เปิดใช้ในมิตินี้</p>
+                          )}
                         </div>
-                        <span className={`w-12 text-right font-mono ${scoreColor(d.score)}`}>{d.score.toFixed(0)}</span>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
+
+                {/* มาตราฉบับเต็ม — ข้อกำหนด + มาตราการวัด + สูตร ของทั้ง 9 มาตรา (ช่วยให้ผู้ใช้เข้าใจวิธีตัดสิน) */}
+                <details className="rounded-lg border bg-slate-50/60 p-3">
+                  <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-700">
+                    <BookOpen className="size-3.5 text-emerald-700" aria-hidden="true" />
+                    ดูข้อกำหนดและวิธีคำนวณของมาตราทั้ง 9 (DAMA-DMBOK)
+                  </summary>
+                  <ol className="mt-2 space-y-2">
+                    {runResult.dimensionScores.map((d) => (
+                      <li key={d.dimension} className="rounded-md border bg-white p-2.5 text-[11.5px] leading-relaxed">
+                        <p className="font-semibold text-slate-800">
+                          มาตราที่ {d.clauseNo} — {d.th} ({d.en})
+                        </p>
+                        <p className="text-slate-600">{d.statement}</p>
+                        <p className="mt-0.5 text-muted-foreground">
+                          <span className="font-medium text-slate-600">มาตราการวัด:</span> {d.measure}
+                        </p>
+                        <p className="font-mono text-[11px] text-emerald-800">สูตร: {d.formula}</p>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
 
                 <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
                   {runResult.results.map((r) => (
@@ -1664,14 +1759,30 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                           {SEVERITY_LABELS[r.severity as keyof typeof SEVERITY_LABELS]?.th ?? r.severity}
                         </Badge>
                         <DimensionBadge dimension={r.dimension} />
+                        <Badge variant="outline" className="gap-1 text-[11px]">
+                          <Scale className="size-3" aria-hidden="true" />
+                          มาตรา {r.clauseNo} · {r.dimensionTh}
+                        </Badge>
                         <Badge variant="outline" className="text-[11px]">
                           {r.conditionName}
                         </Badge>
                         <span className={`text-xs font-semibold ${r.status === 'PASSED' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                          {r.status === 'PASSED' ? 'ผ่าน' : `ล้มเหลว ${r.failedRows}/${r.totalRows} แถว`}
+                          {r.status === 'PASSED' ? 'ผ่าน' : `ล้มเหลว ${r.failedRows}/${r.totalRows} แถว (${Math.round(r.passRate * 100)}%)`}
                         </span>
                       </div>
                       <p className="font-mono text-[12px] text-slate-700">{r.sentence}</p>
+                      {/* คำตัดสินตามมาตรา — อ่านง่าย รู้ทันทีว่าผ่าน/ไม่ผ่านมาตราใด เพราะอะไร */}
+                      <p className={`mt-1.5 text-[12.5px] leading-relaxed ${r.status === 'PASSED' ? 'text-emerald-800' : 'text-rose-800'}`} role="note">
+                        {r.verdict}
+                      </p>
+                      {r.advice && (
+                        <p className="mt-1 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11.5px] leading-relaxed text-amber-900">
+                          <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden="true" />
+                          <span>
+                            <strong>คำแนะนำ:</strong> {r.advice} <span className="text-amber-700">(เป็นข้อแนะนำ — การแก้ไขข้อมูลต้องดำเนินการโดยมนุษย์)</span>
+                          </span>
+                        </p>
+                      )}
                       {r.failedSamples.length > 0 && (
                         <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-rose-800">
                           {r.failedSamples.map((s) => (
