@@ -11,7 +11,7 @@ async function loadTemplateMap() {
 
 export async function GET() {
   try {
-    const [rules, templateMap] = await Promise.all([
+    const [rules, templateMap, allDatasets] = await Promise.all([
       db.dqRule.findMany({
         orderBy: { createdAt: 'desc' },
         include: {
@@ -20,7 +20,9 @@ export async function GET() {
         },
       }),
       loadTemplateMap(),
+      db.dataset.findMany({ select: { id: true, name: true } }),
     ])
+    const datasetNameMap = new Map(allDatasets.map((d) => [d.id, d.name]))
 
     return NextResponse.json({
       rules: rules.map((r) => {
@@ -28,6 +30,16 @@ export async function GET() {
         const template = templateMap.get(r.condition)
         const datasetNames = datasets.map((d) => d.name)
         const primaryDataset = datasets[0]
+        // เอนจิน EXISTS_IN_DATASET — แสดงชื่อชุดข้อมูลอ้างอิงในประโยคกฎแทน id
+        let refDatasetName: string | undefined
+        if (template?.engineType === 'EXISTS_IN_DATASET') {
+          try {
+            const p = JSON.parse(r.parameters || '{}') as Record<string, unknown>
+            refDatasetName = datasetNameMap.get(String(p.refDatasetId ?? ''))
+          } catch {
+            refDatasetName = undefined
+          }
+        }
         return {
           id: r.id,
           datasetIds: datasets.map((d) => d.id),
@@ -51,6 +63,7 @@ export async function GET() {
             condition: r.condition,
             conditionSentence: template?.sentence,
             engineType: template?.engineType,
+            refDatasetName,
             parameters: r.parameters,
             severity: r.severity,
             filter: r.filter,
@@ -124,6 +137,25 @@ function validateParamsForTemplate(engineType: string, parameters: string): stri
     case 'MAX_AGE_DAYS': {
       const days = Number(p.days)
       if (!Number.isFinite(days) || days <= 0) return 'กรุณาระบุจำนวนวันเป็นตัวเลขมากกว่า 0'
+      return null
+    }
+    case 'REFERENCE_MATCH': {
+      const values = String(p.values ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (values.length === 0) return 'กรุณาระบุค่ามาตรฐานจากระบบต้นทางอย่างน้อย 1 ค่า'
+      return null
+    }
+    case 'MAX_AGE_HOURS': {
+      const hours = Number(p.hours)
+      if (!Number.isFinite(hours) || hours <= 0) return 'กรุณาระบุจำนวนชั่วโมงเป็นตัวเลขมากกว่า 0'
+      return null
+    }
+    case 'EXISTS_IN_DATASET': {
+      if (!String(p.refDatasetId ?? '').trim() || !String(p.refColumn ?? '').trim()) {
+        return 'กรุณาเลือกชุดข้อมูลอ้างอิงและคอลัมน์อ้างอิงให้ครบถ้วน'
+      }
       return null
     }
     default:
@@ -215,6 +247,20 @@ export async function POST(req: NextRequest) {
     })
 
     const datasetNames = created.datasets.map((rd) => rd.dataset.name)
+    // ชื่อชุดข้อมูลอ้างอิง (สำหรับเอนจิน EXISTS_IN_DATASET)
+    let refDatasetName: string | undefined
+    if (template.engineType === 'EXISTS_IN_DATASET') {
+      try {
+        const p = JSON.parse(parameters || '{}') as Record<string, unknown>
+        const refId = String(p.refDatasetId ?? '').trim()
+        if (refId) {
+          const refDataset = await db.dataset.findUnique({ where: { id: refId }, select: { name: true } })
+          refDatasetName = refDataset?.name ?? undefined
+        }
+      } catch {
+        refDatasetName = undefined
+      }
+    }
     await db.auditLog.create({
       data: {
         action: 'CREATE_RULE',
@@ -226,6 +272,7 @@ export async function POST(req: NextRequest) {
           condition,
           conditionSentence: template.sentence,
           engineType: template.engineType,
+          refDatasetName,
           parameters,
           severity,
           filter: filter || null,
@@ -243,6 +290,7 @@ export async function POST(req: NextRequest) {
             condition,
             conditionSentence: template.sentence,
             engineType: template.engineType,
+            refDatasetName,
             parameters,
             severity,
             filter: filter || null,

@@ -55,7 +55,7 @@ export const DIMENSION_META: Record<DimensionKey, DimensionMeta> = {
     question: 'ค่านี้ตรงกับความจริงหรือแหล่งอ้างอิงหรือไม่?',
     description: 'ข้อมูลถูกต้องตรงตามความเป็นจริงหรือแหล่งข้อมูลมาตรฐาน เช่น รหัสกลุ่มลูกค้า ยอดเงิน ที่อยู่',
     examples: ['รหัสกลุ่มลูกค้าตรงตามมาตรฐานที่กำหนด', 'ค่าที่บันทึกต้องตรงกับระบบต้นทาง'],
-    recommendedEngines: ['IN_LIST', 'RANGE', 'REGEX'],
+    recommendedEngines: ['REFERENCE_MATCH', 'IN_LIST', 'REGEX'],
     badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
     icon: 'target',
   },
@@ -105,7 +105,7 @@ export const DIMENSION_META: Record<DimensionKey, DimensionMeta> = {
     question: 'การอ้างอิงข้ามตาราง/ระบบถูกต้องหรือไม่?',
     description: 'ค่าที่อ้างอิงถึงข้อมูลอื่นต้องมีอยู่จริงและสัมพันธ์ถูกต้อง (Referential Integrity)',
     examples: ['รหัสสาขาต้องมีอยู่ในทะเบียนสาขาหลัก', 'รหัสลูกค้าต้องมีในระบบหลัก'],
-    recommendedEngines: ['IN_LIST', 'NOT_NULL'],
+    recommendedEngines: ['EXISTS_IN_DATASET', 'IN_LIST'],
     badgeClass: 'bg-rose-50 text-rose-800 border-rose-200',
     icon: 'link',
   },
@@ -115,7 +115,7 @@ export const DIMENSION_META: Record<DimensionKey, DimensionMeta> = {
     question: 'ข้อมูลมาถึง/พร้อมใช้ตามเวลาที่กำหนดหรือไม่?',
     description: 'ข้อมูลอัปเดตตามรอบเวลาที่กำหนด เช่น รายวัน รายชั่วโมง ตาม SLA',
     examples: ['ข้อมูลต้องอัปเดตตามรอบรายวัน', 'ไฟล์รายวันต้องมาไม่เกินเวลาที่กำหนด'],
-    recommendedEngines: ['MAX_AGE_DAYS'],
+    recommendedEngines: ['MAX_AGE_HOURS'],
     badgeClass: 'bg-orange-50 text-orange-800 border-orange-200',
     icon: 'clock',
   },
@@ -143,6 +143,12 @@ export const DIMENSION_META: Record<DimensionKey, DimensionMeta> = {
 
 export const DIMENSION_KEYS = Object.keys(DIMENSION_META) as DimensionKey[]
 
+/** เอนจินประเมินผลที่อยู่ในแต่ละมิติ (จัดกลุ่มตาม CONDITIONS[c].dimension) — ใช้ใน EnginePicker */
+export const DIMENSION_ENGINES: Record<DimensionKey, ConditionKey[]> = Object.fromEntries(
+  DIMENSION_KEYS.map((k) => [k, [] as ConditionKey[]]),
+) as Record<DimensionKey, ConditionKey[]>
+// หมายเหตุ: เติมกลุ่มเอนจินต่อท้ายไฟล์ หลังประกาศ CONDITIONS ครบแล้ว (fillDimensionEngines)
+
 /** ป้ายชื่อมิติ (th/en) — อนุพันธ์จาก DIMENSION_META เพื่อให้เป็นแหล่งเดียวกัน */
 export const DIMENSION_LABELS: Record<DimensionKey, { th: string; en: string }> = Object.fromEntries(
   DIMENSION_KEYS.map((k) => [k, { th: DIMENSION_META[k].th, en: DIMENSION_META[k].en }]),
@@ -158,6 +164,9 @@ export type ConditionKey =
   | 'IN_LIST'
   | 'UNIQUE'
   | 'MAX_AGE_DAYS'
+  | 'REFERENCE_MATCH'
+  | 'MAX_AGE_HOURS'
+  | 'EXISTS_IN_DATASET'
 
 export type SeverityKey = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 
@@ -171,7 +180,8 @@ export interface ConditionDefinition {
   params: Array<{
     key: string
     label: string
-    type: 'number' | 'text'
+    /** number = ช่องตัวเลข, text = ช่องข้อความ, dataset = เลือกชุดข้อมูลอ้างอิง, dataset-column = เลือกคอลัมน์ของชุดข้อมูลอ้างอิง */
+    type: 'number' | 'text' | 'dataset' | 'dataset-column'
     placeholder?: string
   }>
 }
@@ -236,9 +246,46 @@ export const CONDITIONS: Record<ConditionKey, ConditionDefinition> = {
     dimension: 'CURRENTNESS',
     params: [{ key: 'days', label: 'จำนวนวันที่ยอมรับได้', type: 'number', placeholder: '7' }],
   },
+  REFERENCE_MATCH: {
+    key: 'REFERENCE_MATCH',
+    th: 'ตรงกับค่ามาตรฐานจากระบบต้นทาง',
+    en: 'Must match reference values',
+    sentence: 'match the reference value from the trusted source system',
+    dimension: 'ACCURACY',
+    params: [
+      { key: 'values', label: 'ค่ามาตรฐานจากระบบต้นทาง (คั่นด้วยเครื่องหมาย ,)', type: 'text', placeholder: 'ENTERPRISE, SME, RETAIL' },
+    ],
+  },
+  MAX_AGE_HOURS: {
+    key: 'MAX_AGE_HOURS',
+    th: 'ข้อมูลไม่เก่าเกินกี่ชั่วโมง',
+    en: 'Must not be older than N hours',
+    sentence: 'not be older than',
+    dimension: 'TIMELINESS',
+    params: [{ key: 'hours', label: 'จำนวนชั่วโมงที่ยอมรับได้ (ตาม SLA)', type: 'number', placeholder: '72' }],
+  },
+  EXISTS_IN_DATASET: {
+    key: 'EXISTS_IN_DATASET',
+    th: 'มีอยู่จริงในชุดข้อมูลอ้างอิง',
+    en: 'Must exist in reference dataset',
+    sentence: 'exist in the reference dataset column',
+    dimension: 'INTEGRITY',
+    params: [
+      { key: 'refDatasetId', label: 'ชุดข้อมูลอ้างอิง (ทะเบียนหลัก)', type: 'dataset' },
+      { key: 'refColumn', label: 'คอลัมน์ในชุดข้อมูลอ้างอิง', type: 'dataset-column' },
+    ],
+  },
 }
 
 export const CONDITION_KEYS = Object.keys(CONDITIONS) as ConditionKey[]
+
+/** เติมกลุ่มเอนจินของแต่ละมิติ (ใช้โดย EnginePicker — จัดกลุ่มตามมิติ) */
+function fillDimensionEngines(): void {
+  for (const key of CONDITION_KEYS) {
+    DIMENSION_ENGINES[CONDITIONS[key].dimension].push(key)
+  }
+}
+fillDimensionEngines()
 
 export const SEVERITY_LABELS: Record<SeverityKey, { th: string; className: string }> = {
   CRITICAL: { th: 'วิกฤต', className: 'bg-rose-50 text-rose-800 border-rose-200' },
@@ -267,9 +314,13 @@ export function isDimensionKey(v: string): v is DimensionKey {
 export interface TemplateParamDef {
   key: string
   label: string
-  type: 'number' | 'text'
+  /** number = ช่องตัวเลข, text = ช่องข้อความ, dataset = เลือกชุดข้อมูลอ้างอิง, dataset-column = เลือกคอลัมน์ของชุดข้อมูลอ้างอิง */
+  type: 'number' | 'text' | 'dataset' | 'dataset-column'
   placeholder?: string
 }
+
+/** ชนิดพารามิเตอร์ที่ระบบรองรับทั้งหมด — ใช้ตรวจฝั่ง API */
+export const TEMPLATE_PARAM_TYPES: TemplateParamDef['type'][] = ['number', 'text', 'dataset', 'dataset-column']
 
 /** แปลง JSON string เป็นรายการนิยามพารามิเตอร์ — คืน [] หาก JSON ไม่ถูกต้อง (fail-safe) */
 export function parseTemplateParams(json: string): TemplateParamDef[] {
@@ -287,7 +338,9 @@ export function parseTemplateParams(json: string): TemplateParamDef[] {
       .map((p) => ({
         key: p.key,
         label: p.label,
-        type: p.type === 'number' ? 'number' : 'text',
+        type: (TEMPLATE_PARAM_TYPES as string[]).includes(p.type as string)
+          ? (p.type as TemplateParamDef['type'])
+          : 'text',
         placeholder: typeof p.placeholder === 'string' ? p.placeholder : undefined,
       }))
   } catch {
@@ -304,6 +357,9 @@ export const ENGINE_DESCRIPTIONS: Record<ConditionKey, string> = {
   IN_LIST: 'ตรวจค่าในรายการที่อนุญาต — ต้องมีพารามิเตอร์ values',
   UNIQUE: 'ตรวจค่าซ้ำในชุดข้อมูล (ไม่ต้องมีพารามิเตอร์)',
   MAX_AGE_DAYS: 'ตรวจอายุข้อมูล (วัน) — ต้องมีพารามิเตอร์ days',
+  REFERENCE_MATCH: 'ตรวจว่าค่าตรงกับค่ามาตรฐานที่ระบบต้นทางยืนยัน — ต้องมีพารามิเตอร์ values',
+  MAX_AGE_HOURS: 'ตรวจอายุข้อมูลแบบชั่วโมง (ตาม SLA เช่น feed รายชั่วโมง) — ต้องมีพารามิเตอร์ hours',
+  EXISTS_IN_DATASET: 'ตรวจ Referential Integrity — ค่าต้องมีอยู่จริงในคอลัมน์ของชุดข้อมูลอ้างอิง (ต้องมีพารามิเตอร์ refDatasetId และ refColumn)',
 }
 
 /** คีย์พารามิเตอร์ที่เอนจินบังคับ — ใช้ตรวจขณะสร้างเงื่อนไขส่วนกลางใหม่ */
@@ -315,6 +371,9 @@ export const ENGINE_REQUIRED_PARAM_KEYS: Record<ConditionKey, string[]> = {
   IN_LIST: ['values'],
   UNIQUE: [],
   MAX_AGE_DAYS: ['days'],
+  REFERENCE_MATCH: ['values'],
+  MAX_AGE_HOURS: ['hours'],
+  EXISTS_IN_DATASET: ['refDatasetId', 'refColumn'],
 }
 
 /** สร้างรหัสเงื่อนไขส่วนกลางใหม่ที่ไม่ซ้ำ เช่น CUSTOM_LX2Q8A */
@@ -341,20 +400,27 @@ export interface RuleLike {
   conditionSentence?: string
   /** เอนจินประเมินผล (ใช้จัดรูปแบบ using) — เช่น REGEX, RANGE */
   engineType?: string
+  /** ชื่อชุดข้อมูลอ้างอิง (สำหรับเอนจิน EXISTS_IN_DATASET — แสดงชื่อที่อ่านง่ายแทน id) */
+  refDatasetName?: string
 }
 
-function formatParamValue(engineType: string, params: Record<string, unknown>): string {
+function formatParamValue(engineType: string, params: Record<string, unknown>, refDatasetName?: string): string {
   switch (engineType) {
     case 'RANGE':
       return `[${String(params.min ?? '?')} – ${String(params.max ?? '?')}]`
-    case 'IN_LIST': {
+    case 'IN_LIST':
+    case 'REFERENCE_MATCH': {
       const raw = String(params.values ?? '')
       return `[${raw}]`
     }
     case 'MAX_AGE_DAYS':
       return `${String(params.days ?? '?')} days`
+    case 'MAX_AGE_HOURS':
+      return `${String(params.hours ?? '?')} hours`
     case 'REGEX':
       return `/${String(params.pattern ?? '')}/`
+    case 'EXISTS_IN_DATASET':
+      return `exists in ${refDatasetName ?? String(params.refDatasetName ?? params.refDatasetId ?? '?')}.${String(params.refColumn ?? '?')}`
     default:
       return ''
   }
@@ -375,7 +441,7 @@ export function buildRuleSentence(rule: RuleLike): string {
   } catch {
     params = {}
   }
-  const usingPart = engine ? formatParamValue(engine, params) : '[Parameters]'
+  const usingPart = engine ? formatParamValue(engine, params, rule.refDatasetName) : '[Parameters]'
   const severityTh = isSeverityKey(rule.severity) ? SEVERITY_LABELS[rule.severity].th : rule.severity
 
   let sentence = `For ${datasetPart}, ${rule.column} must ${mustSentence}`
@@ -395,6 +461,12 @@ export interface RuleEvaluation {
   failedRows: number
 }
 
+/** บริบทเพิ่มเติมของการประเมิน — เช่น ค่าอ้างอิงจากชุดข้อมูลหลัก (INTEGRITY) */
+export interface EvaluationContext {
+  /** ค่าที่มีอยู่จริงในคอลัมน์อ้างอิง (ใช้กับเอนจิน EXISTS_IN_DATASET) */
+  refValues?: Set<string>
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function valueOf(row: Row, column: string): unknown {
@@ -405,6 +477,7 @@ function valueOf(row: Row, column: string): unknown {
 export function evaluateRule(
   rule: { column: string; engineType: string; parameters: string },
   rows: Row[],
+  context?: EvaluationContext,
 ): RuleEvaluation {
   let params: Record<string, unknown> = {}
   try {
@@ -474,6 +547,34 @@ export function evaluateRule(
           Number.isNaN(date.getTime()) ||
           Number.isNaN(days) ||
           (Date.now() - date.getTime()) / 86_400_000 > days
+        break
+      }
+      case 'REFERENCE_MATCH': {
+        // ความถูกต้อง (ACCURACY) — ค่าต้องตรงกับค่ามาตรฐานที่ระบบต้นทางยืนยัน
+        const allowed = String(params.values ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+        failed = value === null || value === undefined || !allowed.includes(String(value).trim())
+        break
+      }
+      case 'MAX_AGE_HOURS': {
+        // ความทันเวลา (TIMELINESS) — อายุข้อมูลหน่วยชั่วโมง ตาม SLA
+        const hours = Number(params.hours)
+        const date = new Date(String(value ?? ''))
+        failed =
+          value === null ||
+          value === undefined ||
+          String(value).trim() === '' ||
+          Number.isNaN(date.getTime()) ||
+          Number.isNaN(hours) ||
+          (Date.now() - date.getTime()) / 3_600_000 > hours
+        break
+      }
+      case 'EXISTS_IN_DATASET': {
+        // ความเชื่อมโยงถูกต้อง (INTEGRITY) — ค่าต้องมีอยู่จริงในชุดข้อมูลอ้างอิง
+        const key = String(value ?? '').trim()
+        failed = key === '' || !context?.refValues || !context.refValues.has(key)
         break
       }
       default:

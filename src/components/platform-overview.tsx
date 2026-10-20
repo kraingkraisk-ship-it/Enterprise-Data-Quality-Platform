@@ -31,7 +31,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { DIMENSION_KEYS, DIMENSION_META } from '@/lib/dq'
+import { DIMENSION_ENGINES, DIMENSION_KEYS, DIMENSION_META, CONDITIONS } from '@/lib/dq'
 import type { ViewKey } from '@/lib/views'
 
 /* ---------------------------------- data ---------------------------------- */
@@ -44,6 +44,7 @@ const DIMENSIONS = DIMENSION_KEYS.map((key) => ({
   en: DIMENSION_META[key].en,
   desc: DIMENSION_META[key].description,
   badgeClass: DIMENSION_META[key].badgeClass,
+  engines: DIMENSION_ENGINES[key].map((e) => CONDITIONS[e].th),
 }))
 
 const FEATURES = [
@@ -277,6 +278,14 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
               </CardHeader>
               <CardContent className="pt-0">
                 <p className="text-sm text-muted-foreground">{d.desc}</p>
+                <p className="mt-2 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+                  <span className="font-medium text-slate-600">เอนจินประเมินผล:</span>
+                  {d.engines.map((e) => (
+                    <Badge key={e} variant="outline" className="text-[9.5px]">
+                      {e}
+                    </Badge>
+                  ))}
+                </p>
               </CardContent>
             </Card>
           ))}

@@ -27,6 +27,7 @@ const DATASETS = [
   { name: 'คำร้องเรียนลูกค้า', sourceType: 'EXCEL', piiEnabled: true },
   { name: 'อัตราแลกเปลี่ยน (API)', sourceType: 'REST_API', piiEnabled: false },
   { name: 'ข้อมูลพนักงาน HR', sourceType: 'CSV', piiEnabled: true },
+  { name: 'ทะเบียนบัญชีธนาคาร', sourceType: 'POSTGRESQL', piiEnabled: false },
 ]
 
 const GRANTS: Array<{ dataset: string; roles: Array<[string, string]> }> = [
@@ -87,6 +88,17 @@ const GRANTS: Array<{ dataset: string; roles: Array<[string, string]> }> = [
       ['SYS_ADMIN', 'MANAGE'],
     ],
   },
+  {
+    dataset: 'ทะเบียนบัญชีธนาคาร',
+    roles: [
+      ['DATA_OWNER', 'MANAGE'],
+      ['DQ_ANALYST', 'VIEW'],
+      ['DATA_ENGINEER', 'MANAGE'],
+      ['BUSINESS_USER', 'VIEW'],
+      ['EXECUTIVE', 'VIEW'],
+      ['SYS_ADMIN', 'MANAGE'],
+    ],
+  },
 ]
 
 /* ------------------- sandbox rows (มีข้อผิดพลาดแฝงจงใจ) ------------------- */
@@ -94,6 +106,15 @@ const GRANTS: Array<{ dataset: string; roles: Array<[string, string]> }> = [
 function daysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString()
 }
+
+// ทะเบียนบัญชีธนาคาร — ชุดข้อมูลอ้างอิง (ทะเบียนหลัก) สำหรับเอนจิน EXISTS_IN_DATASET (INTEGRITY)
+// จงใจไม่มี ACC-77019 และ ACC-77020 เพื่อให้กฎ INTEGRITY ของธุรกรรมจับข้อมูลไม่เชื่อมโยงได้จริง
+const ACCOUNT_ROWS: Record<string, unknown>[] = Array.from({ length: 18 }, (_, i) => ({
+  account_no: `ACC-77${String(i + 1).padStart(3, '0')}`,
+  account_name: `บัญชีกระแสรายวันหมายเลข ${i + 1}`,
+  status: i === 17 ? 'CLOSED' : 'ACTIVE',
+  opened_at: daysAgo(400 - i * 10),
+}))
 
 const CUSTOMER_ROWS: Record<string, unknown>[] = [
   { customer_id: 'C-1001', full_name: 'สมศรี ใจดี', email: 'somsri@acme.co.th', phone: '0812345678', segment: 'ENTERPRISE', credit_limit: 850000, updated_at: daysAgo(1) },
@@ -197,6 +218,37 @@ const CONDITION_TEMPLATES: Array<{
     params: '[{"key":"days","label":"จำนวนวันที่ยอมรับได้","type":"number","placeholder":"7"}]',
     isSystem: true,
   },
+  // เอนจินมาตรฐานเพิ่มเติม — ให้ทุกมิติ DAMA-DMBOK มีเอนจินของตัวเอง (ACCURACY / TIMELINESS / INTEGRITY)
+  {
+    key: 'REFERENCE_MATCH',
+    name: 'ตรงกับค่ามาตรฐานจากระบบต้นทาง',
+    nameEn: 'Matches reference values',
+    sentence: 'match the reference value from the trusted source system',
+    dimension: 'ACCURACY',
+    engineType: 'REFERENCE_MATCH',
+    params: '[{"key":"values","label":"ค่ามาตรฐานจากระบบต้นทาง (คั่นด้วยเครื่องหมาย ,)","type":"text","placeholder":"ENTERPRISE, SME, RETAIL"}]',
+    isSystem: true,
+  },
+  {
+    key: 'MAX_AGE_HOURS',
+    name: 'ข้อมูลไม่เก่าเกินกี่ชั่วโมง',
+    nameEn: 'Max age in hours',
+    sentence: 'not be older than',
+    dimension: 'TIMELINESS',
+    engineType: 'MAX_AGE_HOURS',
+    params: '[{"key":"hours","label":"จำนวนชั่วโมงที่ยอมรับได้ (ตาม SLA)","type":"number","placeholder":"72"}]',
+    isSystem: true,
+  },
+  {
+    key: 'EXISTS_IN_DATASET',
+    name: 'มีอยู่จริงในชุดข้อมูลอ้างอิง',
+    nameEn: 'Exists in reference dataset',
+    sentence: 'exist in the reference dataset column',
+    dimension: 'INTEGRITY',
+    engineType: 'EXISTS_IN_DATASET',
+    params: '[{"key":"refDatasetId","label":"ชุดข้อมูลอ้างอิง (ทะเบียนหลัก)","type":"dataset"},{"key":"refColumn","label":"คอลัมน์ในชุดข้อมูลอ้างอิง","type":"dataset-column"}]',
+    isSystem: true,
+  },
   // ตัวอย่างเงื่อนไขส่วนกลางที่ผู้ใช้สร้าง — ใช้ร่วมกันทั้งระบบได้
   {
     key: 'CUSTOM_TH_PHONE',
@@ -241,12 +293,12 @@ const CONDITION_TEMPLATES: Array<{
   // ตัวอย่างเพิ่มเติมให้คลุมครบทั้ง 9 มิติ DAMA-DMBOK — Accuracy / Integrity / Timeliness
   {
     key: 'CUSTOM_SEGMENT_STD',
-    name: 'รหัสกลุ่มลูกค้าตามมาตรฐาน',
+    name: 'รหัสกลุ่มลูกค้าตามมาตรฐาน CRM',
     nameEn: 'Standard customer segment',
-    sentence: 'be one of the standard customer segments defined by the CRM system',
+    sentence: 'match the standard customer segment defined by the CRM system',
     dimension: 'ACCURACY',
-    engineType: 'IN_LIST',
-    params: '[{"key":"values","label":"ค่าที่อนุญาต (คั่นด้วยเครื่องหมาย ,)","type":"text","placeholder":"ENTERPRISE, SME, RETAIL"}]',
+    engineType: 'REFERENCE_MATCH',
+    params: '[{"key":"values","label":"ค่ามาตรฐานจากระบบต้นทาง (คั่นด้วยเครื่องหมาย ,)","type":"text","placeholder":"ENTERPRISE, SME, RETAIL"}]',
     isSystem: false,
   },
   {
@@ -301,13 +353,30 @@ const RULES: Array<{
   },
   { datasets: ['รายการธุรกรรมรายวัน'], column: 'txn_date', condition: 'MAX_AGE_DAYS', parameters: '{"days":30}', severity: 'LOW' },
   { datasets: ['รายการธุรกรรมรายวัน'], column: 'amount', condition: 'CUSTOM_NON_NEGATIVE', parameters: '{"min":0,"max":1000000}', severity: 'HIGH' },
-  // กฎมิติ Accuracy — รหัสกลุ่มลูกค้าต้องตรงตามมาตรฐาน
+  // กฎมิติ Accuracy — รหัสกลุ่มลูกค้าต้องตรงกับค่ามาตรฐานจาก CRM (เอนจิน REFERENCE_MATCH)
   {
     datasets: ['ลูกค้าองค์กร — Master'],
     column: 'segment',
     condition: 'CUSTOM_SEGMENT_STD',
     parameters: '{"values":"ENTERPRISE, SME, RETAIL"}',
     severity: 'MEDIUM',
+  },
+  // กฎมิติ Timeliness — ธุรกรรมต้องทันตาม SLA 72 ชั่วโมง (เอนจิน MAX_AGE_HOURS)
+  {
+    datasets: ['รายการธุรกรรมรายวัน'],
+    column: 'txn_date',
+    condition: 'MAX_AGE_HOURS',
+    parameters: '{"hours":72}',
+    severity: 'MEDIUM',
+  },
+  // กฎมิติ Integrity — เลขบัญชีต้องมีอยู่จริงในทะเบียนบัญชี (เอนจิน EXISTS_IN_DATASET)
+  // refDatasetId จะถูกแทนที่ด้วย id จริงของชุดข้อมูล "ทะเบียนบัญชีธนาคาร" ตอน seed
+  {
+    datasets: ['รายการธุรกรรมรายวัน'],
+    column: 'account_no',
+    condition: 'EXISTS_IN_DATASET',
+    parameters: '{"refDatasetId":"__ACCOUNT_REGISTRY__","refColumn":"account_no"}',
+    severity: 'HIGH',
   },
 ]
 
@@ -346,6 +415,7 @@ async function main() {
   for (const [name, rows] of [
     ['ลูกค้าองค์กร — Master', CUSTOMER_ROWS],
     ['รายการธุรกรรมรายวัน', TXN_ROWS],
+    ['ทะเบียนบัญชีธนาคาร', ACCOUNT_ROWS],
   ] as const) {
     const datasetId = datasetMap.get(name)
     if (!datasetId) continue
@@ -376,11 +446,15 @@ async function main() {
   for (const r of RULES) {
     const datasetIds = r.datasets.map((name) => datasetMap.get(name)).filter((id): id is string => Boolean(id))
     if (datasetIds.length === 0) continue
+    // แทน placeholder ของกฎ INTEGRITY ด้วย id จริงของชุดข้อมูลทะเบียนบัญชีธนาคาร
+    const parameters = r.parameters.includes('__ACCOUNT_REGISTRY__')
+      ? r.parameters.replaceAll('"__ACCOUNT_REGISTRY__"', JSON.stringify(datasetMap.get('ทะเบียนบัญชีธนาคาร') ?? ''))
+      : r.parameters
     await db.dqRule.create({
       data: {
         column: r.column,
         condition: r.condition,
-        parameters: r.parameters,
+        parameters,
         severity: r.severity,
         enabled: true,
         datasets: { create: datasetIds.map((datasetId) => ({ datasetId })) },
@@ -459,7 +533,7 @@ async function main() {
       action: 'CREATE_CONDITION',
       actor: 'system@seed',
       target: `${CONDITION_TEMPLATES.length} conditions`,
-      detail: 'Seed เริ่มต้นระบบ: ตั้งค่าคลังเงื่อนไขส่วนกลาง (เงื่อนไขมาตรฐาน 7 รายการ + ตัวอย่างที่ผู้ใช้สร้าง 7 รายการ)',
+      detail: 'Seed เริ่มต้นระบบ: ตั้งค่าคลังเงื่อนไขส่วนกลาง (เงื่อนไขมาตรฐาน 10 รายการครอบคลุมเอนจินครบ 9 มิติ DAMA-DMBOK + ตัวอย่างที่ผู้ใช้สร้าง 7 รายการ)',
     },
   })
   await db.auditLog.create({
@@ -467,7 +541,7 @@ async function main() {
       action: 'CREATE_RULE',
       actor: 'system@seed',
       target: `${RULES.length} rules`,
-      detail: 'Seed เริ่มต้นระบบ: สร้างกฎคุณภาพข้อมูลเริ่มต้น 9 ข้อ (มีกฎที่ใช้ร่วมหลายชุดข้อมูล) + ข้อมูลตัวอย่าง sandbox',
+      detail: 'Seed เริ่มต้นระบบ: สร้างกฎคุณภาพข้อมูลเริ่มต้น 11 ข้อ (ครอบคลุมเอนจินใหม่ REFERENCE_MATCH / MAX_AGE_HOURS / EXISTS_IN_DATASET + มีกฎที่ใช้ร่วมหลายชุดข้อมูล) + ข้อมูลตัวอย่าง sandbox',
     },
   })
 

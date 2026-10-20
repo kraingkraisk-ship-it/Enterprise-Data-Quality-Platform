@@ -8,6 +8,7 @@ import {
   isConditionKey,
   isDimensionKey,
   parseTemplateParams,
+  TEMPLATE_PARAM_TYPES,
   type TemplateParamDef,
 } from '@/lib/dq'
 import { resolveOperator } from '@/lib/operator'
@@ -106,7 +107,9 @@ export async function POST(req: NextRequest) {
       paramDefs.push({
         key,
         label: label.slice(0, 80),
-        type: p.type === 'number' ? 'number' : 'text',
+        type: (TEMPLATE_PARAM_TYPES as string[]).includes(String(p.type))
+          ? (String(p.type) as TemplateParamDef['type'])
+          : 'text',
         placeholder: typeof p.placeholder === 'string' && p.placeholder.trim() ? p.placeholder.trim().slice(0, 80) : undefined,
       })
     }

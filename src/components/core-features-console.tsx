@@ -6,6 +6,7 @@ import {
   Play,
   BrainCircuit,
   ClipboardCheck,
+  Check,
   CheckCircle2,
   XCircle,
   Trash2,
@@ -44,12 +45,13 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { DimensionBadge, DimensionHint, DimensionPicker } from '@/components/dimension-picker'
+import { EngineBadge, EngineHint, EnginePicker } from '@/components/engine-picker'
 import {
   buildRuleSentence,
   CONDITIONS,
-  CONDITION_KEYS,
+  DIMENSION_KEYS,
   DIMENSION_LABELS,
-  ENGINE_DESCRIPTIONS,
+  DIMENSION_META,
   SEVERITY_KEYS,
   SEVERITY_LABELS,
   type TemplateParamDef,
@@ -288,7 +290,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
   const [cnDimension, setCnDimension] = useState('VALIDITY')
   const [cnEngine, setCnEngine] = useState('REGEX')
   // เติมนิยามพารามิเตอร์ของเอนจินเริ่มต้น (REGEX) ให้พร้อมแก้ไขทันที
-  const [cnParams, setCnParams] = useState<Array<{ key: string; label: string; type: 'number' | 'text'; placeholder: string }>>(
+  const [cnParams, setCnParams] = useState<Array<{ key: string; label: string; type: TemplateParamDef['type']; placeholder: string }>>(
     CONDITIONS.REGEX.params.map((p) => ({ key: p.key, label: p.label, type: p.type, placeholder: p.placeholder ?? '' })),
   )
   const [cnOperator, setCnOperator] = useState('anucha.analyst@company.co.th')
@@ -442,6 +444,55 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
   const customConditions = useMemo(() => conditions.filter((c) => !c.isSystem && c.enabled), [conditions])
   const rbTemplate = useMemo(() => conditions.find((c) => c.key === rbCondition) ?? null, [conditions, rbCondition])
 
+  // เงื่อนไขที่มีพารามิเตอร์ชนิด "เลือกชุดข้อมูลอ้างอิง" (เช่นเอนจิน EXISTS_IN_DATASET) —
+  // โหลดคอลัมน์ของชุดข้อมูลอ้างอิงจากข้อมูลจริง เพื่อให้เลือกคอลัมน์อ้างอิงได้จาก dropdown
+  const rbRefDatasetIds = useMemo(() => {
+    const ids: string[] = []
+    for (const p of rbTemplate?.params ?? []) {
+      if (p.type !== 'dataset') continue
+      const v = rbParams[p.key]
+      if (v && !ids.includes(v)) ids.push(v)
+    }
+    return ids
+  }, [rbTemplate, rbParams])
+
+  const [refPreview, setRefPreview] = useState<MultiPreviewData | null>(null)
+
+  useEffect(() => {
+    if (rbRefDatasetIds.length === 0) {
+      setRefPreview(null)
+      return
+    }
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/dq/dataset-preview?datasetIds=${rbRefDatasetIds.join(',')}&role=${rbOperatorRole}&rows=5`)
+        const data = (await res.json()) as MultiPreviewData & { error?: string }
+        if (!alive) return
+        setRefPreview(data.error ? null : data)
+      } catch {
+        if (alive) setRefPreview(null)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [rbRefDatasetIds, rbOperatorRole])
+
+  const refColumnsByDataset = useMemo(
+    () => new Map((refPreview?.previews ?? []).map((p) => [p.datasetId, p.columns])),
+    [refPreview],
+  )
+
+  // ชุดข้อมูลอ้างอิงตัวแรกของเงื่อนไข (พารามิเตอร์ชนิด dataset) — ใช้กับพารามิเตอร์ชนิด dataset-column
+  const rbRefDatasetParam = useMemo(() => rbTemplate?.params.find((p) => p.type === 'dataset') ?? null, [rbTemplate])
+  const rbRefDatasetId = rbRefDatasetParam ? (rbParams[rbRefDatasetParam.key] ?? '') : ''
+  const rbRefDatasetName = useMemo(
+    () => (rbRefDatasetId ? (datasets.find((d) => d.id === rbRefDatasetId)?.name ?? undefined) : undefined),
+    [rbRefDatasetId, datasets],
+  )
+  const rbRefColumnOptions = useMemo(() => refColumnsByDataset.get(rbRefDatasetId) ?? [], [refColumnsByDataset, rbRefDatasetId])
+
   const rbDatasetNames = useMemo(
     () => rbDatasets.map((id) => datasets.find((d) => d.id === id)?.name ?? '').filter(Boolean),
     [rbDatasets, datasets],
@@ -455,11 +506,12 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
       condition: rbCondition || 'NOT_NULL',
       conditionSentence: template?.sentence,
       engineType: template?.engineType,
+      refDatasetName: rbRefDatasetName,
       parameters: JSON.stringify(rbParams),
       severity: rbSeverity,
       filter: rbFilter || null,
     })
-  }, [rbDatasetNames, rbColumn, rbCondition, rbTemplate, rbParams, rbSeverity, rbFilter])
+  }, [rbDatasetNames, rbColumn, rbCondition, rbTemplate, rbRefDatasetName, rbParams, rbSeverity, rbFilter])
 
   // คอลัมน์ที่เลือกได้ — union จากข้อมูลตัวอย่างของทุกชุดข้อมูลที่เลือก
   const rbColumnOptions = useMemo(() => rbPreview?.columns ?? [], [rbPreview])
@@ -491,6 +543,16 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
   const decidedExceptions = useMemo(() => exceptions.filter((x) => x.status !== 'PENDING'), [exceptions])
   const pendingSignals = useMemo(() => signals.filter((s) => s.status === 'PENDING_REVIEW'), [signals])
   const decidedSignals = useMemo(() => signals.filter((s) => s.status !== 'PENDING_REVIEW'), [signals])
+
+  // ความครอบคลุมมิติของคลังเงื่อนไข (เฉพาะที่เปิดใช้งาน) — แสดง "ครอบคลุม X/9 มิติ"
+  const coveredDimensions = useMemo(() => new Set(conditions.filter((c) => c.enabled && c.dimension).map((c) => c.dimension)), [conditions])
+  const coveredCount = useMemo(() => DIMENSION_KEYS.filter((k) => coveredDimensions.has(k)).length, [coveredDimensions])
+
+  /** เปลี่ยนเอนจินในฟอร์มสร้างเงื่อนไข — เติมนิยามพารามิเตอร์เริ่มต้นของเอนจินให้อัตโนมัติ */
+  function applyCnEngine(engine: keyof typeof CONDITIONS) {
+    setCnEngine(engine)
+    setCnParams(CONDITIONS[engine].params.map((p) => ({ key: p.key, label: p.label, type: p.type, placeholder: p.placeholder ?? '' })))
+  }
 
   /* ------------------------------ actions -------------------------------- */
 
@@ -1009,29 +1071,104 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                   <Badge variant="outline" className="border-emerald-200 bg-white text-[10.5px] text-emerald-800">
                     {DIMENSION_LABELS[rbTemplate.dimension as keyof typeof DIMENSION_LABELS]?.th ?? rbTemplate.dimension}
                   </Badge>
+                  <EngineBadge engine={rbTemplate.engineType} className="border-emerald-200 bg-white text-emerald-800" />
                 </div>
               )}
 
-              {/* dynamic parameters — จากนิยามของเงื่อนไขในคลัง */}
+              {/* dynamic parameters — จากนิยามของเงื่อนไขในคลัง (รองรับทุกชนิดพารามิเตอร์รวมถึงเลือกชุดข้อมูล/คอลัมน์อ้างอิง) */}
               {rbTemplate && rbTemplate.params.length > 0 && (
                 <div className="grid gap-3 rounded-lg border bg-emerald-50/50 p-3 sm:grid-cols-2">
                   <p className="text-xs font-medium text-emerald-900 sm:col-span-2">
                     พารามิเตอร์ของเงื่อนไข “{rbTemplate.name}” (using)
                   </p>
-                  {rbTemplate.params.map((p) => (
-                    <div key={p.key} className="space-y-1.5">
-                      <Label htmlFor={`rb-param-${p.key}`} className="text-xs">
-                        {p.label}
-                      </Label>
-                      <Input
-                        id={`rb-param-${p.key}`}
-                        type={p.type}
-                        value={rbParams[p.key] ?? ''}
-                        placeholder={p.placeholder}
-                        onChange={(e) => setRbParams((prev) => ({ ...prev, [p.key]: e.target.value }))}
-                      />
-                    </div>
-                  ))}
+                  {rbTemplate.params.map((p) => {
+                    // ชนิดพิเศษ: เลือกชุดข้อมูลอ้างอิงจากรายการชุดข้อมูลในระบบ
+                    if (p.type === 'dataset') {
+                      return (
+                        <div key={p.key} className="space-y-1.5">
+                          <Label htmlFor={`rb-param-${p.key}`} className="text-xs">
+                            {p.label}
+                          </Label>
+                          <Select
+                            value={rbParams[p.key] ?? ''}
+                            onValueChange={(v) =>
+                              setRbParams((prev) => {
+                                const next = { ...prev, [p.key]: v }
+                                // เปลี่ยนชุดข้อมูลอ้างอิง → ล้างคอลัมน์อ้างอิงที่เลือกไว้ก่อนหน้า
+                                for (const q of rbTemplate.params) {
+                                  if (q.type === 'dataset-column') delete next[q.key]
+                                }
+                                return next
+                              })
+                            }
+                          >
+                            <SelectTrigger id={`rb-param-${p.key}`}>
+                              <SelectValue placeholder="เลือกชุดข้อมูลอ้างอิง" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-64">
+                              {datasets.map((d) => (
+                                <SelectItem key={d.id} value={d.id}>
+                                  {d.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )
+                    }
+                    // ชนิดพิเศษ: เลือกคอลัมน์อ้างอิงจากคอลัมน์จริงของชุดข้อมูลอ้างอิง
+                    if (p.type === 'dataset-column') {
+                      return (
+                        <div key={p.key} className="space-y-1.5">
+                          <Label htmlFor={`rb-param-${p.key}`} className="text-xs">
+                            {p.label}
+                          </Label>
+                          {rbRefDatasetId ? (
+                            rbRefColumnOptions.length > 0 ? (
+                              <Select value={rbParams[p.key] ?? ''} onValueChange={(v) => setRbParams((prev) => ({ ...prev, [p.key]: v }))}>
+                                <SelectTrigger id={`rb-param-${p.key}`}>
+                                  <SelectValue placeholder="เลือกคอลัมน์อ้างอิง" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-64">
+                                  {rbRefColumnOptions.map((col) => (
+                                    <SelectItem key={col} value={col}>
+                                      {col}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                id={`rb-param-${p.key}`}
+                                value={rbParams[p.key] ?? ''}
+                                placeholder="ชุดข้อมูลอ้างอิงยังไม่มีข้อมูลตัวอย่าง — พิมพ์ชื่อคอลัมน์"
+                                onChange={(e) => setRbParams((prev) => ({ ...prev, [p.key]: e.target.value }))}
+                              />
+                            )
+                          ) : (
+                            <p className="rounded-md border border-dashed px-3 py-2 text-[11px] text-muted-foreground">
+                              เลือกชุดข้อมูลอ้างอิงก่อน แล้วคอลัมน์จะแสดงจากข้อมูลจริง
+                            </p>
+                          )}
+                        </div>
+                      )
+                    }
+                    // ชนิดทั่วไป: ตัวเลข / ข้อความ
+                    return (
+                      <div key={p.key} className="space-y-1.5">
+                        <Label htmlFor={`rb-param-${p.key}`} className="text-xs">
+                          {p.label}
+                        </Label>
+                        <Input
+                          id={`rb-param-${p.key}`}
+                          type={p.type}
+                          value={rbParams[p.key] ?? ''}
+                          placeholder={p.placeholder}
+                          onChange={(e) => setRbParams((prev) => ({ ...prev, [p.key]: e.target.value }))}
+                        />
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -1053,7 +1190,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
               </div>
 
               {/* live sentence preview */}
-              <div className="rounded-lg bg-slate-900 p-3.5 font-mono text-[12.5px] leading-relaxed text-emerald-300" aria-live="polite">
+              <div className="rounded-lg bg-slate-900 p-3.5 font-mono text-[12.5px] leading-relaxed break-words text-emerald-300" aria-live="polite">
                 {previewSentence}
               </div>
 
@@ -1159,9 +1296,9 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
 
       {/* ====================== TAB 2: CONDITION LIBRARY ====================== */}
       <TabsContent value="conditions" className="mt-4">
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[1fr_1fr]">
           {/* create new global condition */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Library className="size-4 text-emerald-700" aria-hidden="true" />
@@ -1195,36 +1332,28 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
 
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="cn-dimension">มิติคุณภาพข้อมูล — 9 มิติตาม DAMA-DMBOK</Label>
+                  <Label htmlFor="cn-dimension">ขั้นที่ 1 — มิติคุณภาพข้อมูล: 9 มิติตาม DAMA-DMBOK</Label>
                   <p className="text-[11px] text-muted-foreground">
-                    เลือกมิติที่เงื่อนไขนี้ช่วยรับประกัน — ใช้เป็นมาตรฐานรายงานผลและคะแนนคุณภาพขององค์กร
+                    เลือกมิติที่เงื่อนไขนี้ช่วยรับประกัน — ระบบจะแนะนำเอนจินที่เหมาะกับมิตินั้นให้อัตโนมัติ
                   </p>
-                  <DimensionPicker value={cnDimension} onChange={setCnDimension} />
+                  <DimensionPicker
+                    value={cnDimension}
+                    onChange={(dim) => {
+                      setCnDimension(dim)
+                      // Guided flow — เปลี่ยนมิติ → สลับไปเอนจินแรกที่แนะนำของมิตินั้น + เติมพารามิเตอร์เริ่มต้น
+                      const rec = DIMENSION_META[dim].recommendedEngines[0]
+                      if (rec) applyCnEngine(rec)
+                    }}
+                  />
                   <DimensionHint value={cnDimension} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="cn-engine">เอนจินประเมินผล</Label>
-                  <Select
-                    value={cnEngine}
-                    onValueChange={(v) => {
-                      setCnEngine(v)
-                      // เติมนิยามพารามิเตอร์ตามที่เอนจินต้องการ — แก้ป้ายชื่อ/placeholder ต่อได้
-                      const def = CONDITIONS[v as keyof typeof CONDITIONS]
-                      setCnParams(def.params.map((p) => ({ key: p.key, label: p.label, type: p.type, placeholder: p.placeholder ?? '' })))
-                    }}
-                  >
-                    <SelectTrigger id="cn-engine">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CONDITION_KEYS.map((k) => (
-                        <SelectItem key={k} value={k}>
-                          {CONDITIONS[k].th}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[11px] text-muted-foreground">{ENGINE_DESCRIPTIONS[cnEngine as keyof typeof ENGINE_DESCRIPTIONS]}</p>
+                  <Label>ขั้นที่ 2 — เอนจินประเมินผล (จัดกลุ่มตามมิติ — ครบทั้ง 9 มิติ)</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    เอนจินของมิติที่เลือกถูกไฮไลต์เป็น “มิติที่เลือก” — เลือกเอนจินที่ตรงกับวิธีตรวจสอบของเงื่อนไขนี้
+                  </p>
+                  <EnginePicker value={cnEngine} onChange={applyCnEngine} recommendedFor={cnDimension} />
+                  <EngineHint value={cnEngine} />
                 </div>
               </div>
 
@@ -1250,7 +1379,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                   <p className="text-[11px] text-muted-foreground">เอนจินนี้ไม่ต้องใช้พารามิเตอร์</p>
                 )}
                 {cnParams.map((p, i) => (
-                  <div key={i} className="grid gap-2 sm:grid-cols-[1fr_1.4fr_1.2fr_auto]">
+                  <div key={i} className="grid gap-2 sm:grid-cols-[1fr_1.4fr_0.9fr_1.2fr_auto]">
                     <Input
                       aria-label={`คีย์พารามิเตอร์ ${i + 1}`}
                       value={p.key}
@@ -1267,6 +1396,22 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                         setCnParams((prev) => prev.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))
                       }
                     />
+                    <Select
+                      value={p.type}
+                      onValueChange={(v) =>
+                        setCnParams((prev) => prev.map((x, j) => (j === i ? { ...x, type: v as TemplateParamDef['type'] } : x)))
+                      }
+                    >
+                      <SelectTrigger aria-label={`ชนิดพารามิเตอร์ ${i + 1}`} className="h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="text">ข้อความ</SelectItem>
+                        <SelectItem value="number">ตัวเลข</SelectItem>
+                        <SelectItem value="dataset">เลือกชุดข้อมูล</SelectItem>
+                        <SelectItem value="dataset-column">เลือกคอลัมน์อ้างอิง</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Input
                       aria-label={`ตัวอย่างพารามิเตอร์ ${i + 1}`}
                       value={p.placeholder}
@@ -1294,7 +1439,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                 <OperatorSelect id="cn-operator" value={cnOperator} onChange={setCnOperator} permission={PERMISSIONS_BY_ACTION.MANAGE_RULES} />
               </div>
 
-              <div className="rounded-lg bg-slate-900 p-3.5 font-mono text-[12.5px] leading-relaxed text-emerald-300" aria-live="polite">
+              <div className="rounded-lg bg-slate-900 p-3.5 font-mono text-[12.5px] leading-relaxed break-words text-emerald-300" aria-live="polite">
                 {cnSentencePreview}
               </div>
 
@@ -1310,7 +1455,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
           </Card>
 
           {/* condition list */}
-          <Card>
+          <Card className="min-w-0">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base">เงื่อนไขในระบบ ({conditions.length})</CardTitle>
@@ -1319,6 +1464,29 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                 </Button>
               </div>
               <CardDescription>เงื่อนไขมาตรฐานของระบบลบ/แก้ไม่ได้ — เงื่อนไขที่สร้างเองลบได้เมื่อไม่มีกฎใช้อ้างอิง</CardDescription>
+              {/* ความครอบคลุมมิติ DAMA-DMBOK ของคลังเงื่อนไข */}
+              <div
+                className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-slate-50/60 px-2.5 py-1.5"
+                role="status"
+                aria-label={`คลังเงื่อนไขครอบคลุม ${coveredCount} จาก 9 มิติ DAMA-DMBOK`}
+              >
+                <span className="text-[11px] font-medium text-slate-600">ครอบคลุมมิติ {coveredCount}/9:</span>
+                {DIMENSION_KEYS.map((k) => {
+                  const covered = coveredDimensions.has(k)
+                  return (
+                    <span
+                      key={k}
+                      title={`${DIMENSION_META[k].th} (${DIMENSION_META[k].en})${covered ? ' — มีเงื่อนไขแล้ว' : ' — ยังไม่มีเงื่อนไข'}`}
+                      className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9.5px] ${
+                        covered ? `${DIMENSION_META[k].badgeClass} font-medium` : 'border-dashed border-slate-300 bg-white text-slate-400'
+                      }`}
+                    >
+                      {covered ? <Check className="size-2.5" aria-hidden="true" /> : <span className="size-1.5 rounded-full bg-slate-300" aria-hidden="true" />}
+                      {DIMENSION_META[k].en}
+                    </span>
+                  )
+                })}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="max-h-[36rem] space-y-2.5 overflow-y-auto pr-1">
@@ -1342,9 +1510,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
                         )}
                       </Badge>
                       <DimensionBadge dimension={c.dimension} />
-                      <Badge variant="outline" className="text-[10.5px]">
-                        เอนจิน: {c.engineLabel}
-                      </Badge>
+                      <EngineBadge engine={c.engineType} />
                       <Badge variant="outline" className="text-[10.5px]">
                         ใช้ใน {c.usageCount} กฎ
                       </Badge>

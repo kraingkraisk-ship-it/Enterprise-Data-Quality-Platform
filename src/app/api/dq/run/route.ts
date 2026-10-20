@@ -4,6 +4,7 @@ import {
   buildRuleSentence,
   evaluateRule,
   generateMlSignals,
+  CONDITIONS,
   DIMENSION_LABELS,
   isConditionKey,
   isDimensionKey,
@@ -91,6 +92,10 @@ export async function POST(req: NextRequest) {
     const byDimension = new Map<DimensionKey, number[]>()
     let skipped = 0
 
+    // cache ค่าอ้างอิงของเอนจิน EXISTS_IN_DATASET (INTEGRITY) — กันโหลดซ้ำในกฎที่อ้างชุดข้อมูลเดียวกัน
+    const refValuesCache = new Map<string, Set<string>>()
+    const refDatasetNameCache = new Map<string, string | null>()
+
     for (const rule of rulesForDataset) {
       // เงื่อนไขของกฎต้องมาจากคลังเงื่อนไข (หรือเป็นคีย์ระบบเดิม) — ถ้าไม่พบให้ข้ามกฎนี้อย่างชัดเจน
       const template = templateMap.get(rule.condition)
@@ -100,9 +105,59 @@ export async function POST(req: NextRequest) {
         continue
       }
       const dimensionKey: DimensionKey =
-        template && isDimensionKey(template.dimension) ? template.dimension : engineType === 'NOT_NULL' ? 'COMPLETENESS' : 'VALIDITY'
+        template && isDimensionKey(template.dimension)
+          ? template.dimension
+          : isConditionKey(engineType)
+            ? CONDITIONS[engineType].dimension
+            : 'VALIDITY'
 
-      const evaluation = evaluateRule({ column: rule.column, engineType, parameters: rule.parameters }, rows)
+      // เอนจิน EXISTS_IN_DATASET — โหลดค่าอ้างอิงจากชุดข้อมูลอ้างอิงที่กำหนดในพารามิเตอร์ของกฎ
+      let evalContext: { refValues?: Set<string> } | undefined
+      let refDatasetName: string | undefined
+      if (engineType === 'EXISTS_IN_DATASET') {
+        let refDatasetId = ''
+        let refColumn = ''
+        try {
+          const p = JSON.parse(rule.parameters || '{}') as Record<string, unknown>
+          refDatasetId = String(p.refDatasetId ?? '').trim()
+          refColumn = String(p.refColumn ?? '').trim()
+        } catch {
+          refDatasetId = ''
+          refColumn = ''
+        }
+        if (!refDatasetId || !refColumn) {
+          // พารามิเตอร์อ้างอิงไม่ครบ — ประเมินไม่ได้ ข้ามและนับใน skipped
+          skipped++
+          continue
+        }
+        const cacheKey = `${refDatasetId}|${refColumn}`
+        let refValues = refValuesCache.get(cacheKey)
+        if (!refValues) {
+          const refRows = await db.sampleRow.findMany({ where: { datasetId: refDatasetId }, orderBy: { createdAt: 'asc' } })
+          refValues = new Set(
+            refRows
+              .map((r) => {
+                try {
+                  const row = JSON.parse(r.payload) as Row
+                  const v = row[refColumn]
+                  return v === null || v === undefined ? '' : String(v).trim()
+                } catch {
+                  return ''
+                }
+              })
+              .filter((v) => v !== ''),
+          )
+          refValuesCache.set(cacheKey, refValues)
+        }
+        evalContext = { refValues }
+        if (!refDatasetNameCache.has(refDatasetId)) {
+          const refDataset = await db.dataset.findUnique({ where: { id: refDatasetId }, select: { name: true } })
+          refDatasetNameCache.set(refDatasetId, refDataset?.name ?? null)
+        }
+        refDatasetName = refDatasetNameCache.get(refDatasetId) ?? undefined
+      }
+
+      const evaluation = evaluateRule({ column: rule.column, engineType, parameters: rule.parameters }, rows, evalContext)
       const status = evaluation.failedRows === 0 ? 'PASSED' : 'FAILED'
       const passRate = evaluation.totalRows > 0 ? (evaluation.totalRows - evaluation.failedRows) / evaluation.totalRows : 1
 
@@ -143,6 +198,7 @@ export async function POST(req: NextRequest) {
           condition: rule.condition,
           conditionSentence: template?.sentence,
           engineType,
+          refDatasetName,
           parameters: rule.parameters,
           severity: rule.severity,
           filter: rule.filter,

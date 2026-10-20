@@ -476,3 +476,24 @@ Stage Summary:
 - Rollback points บน remote: `v0.7.0` (03801bf, 9 มิติ DAMA-DMBOK) ← ย้อนกลับได้ที่ `v0.6.0` (65a5ac6) / `v0.5.0` (d0c979e) / `v0.4.0` (567f586)
 - Token ใช้เฉพาะใน push command (one-time URL) ไม่มีบันทึกลงไฟล์/config ใดๆ — ผู้ใช้ควร revoke หลังใช้งาน
 - คำสั่ง rollback กลับไป v0.6.0 บนเครื่อง local: `git reset --hard 65a5ac6 && bun run db:push && bun scripts/seed.ts`
+
+---
+## Task ID: 15
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: v0.8.0 (feat — เอนจินประเมินผลครอบคลุม 9/9 มิติ DAMA-DMBOK + Engine Picker UX ใหม่)
+**Task**: ผู้ใช้ขอให้ "เอนจินประเมินผลกำหนด Rule ให้เป็นไปตาม 9 มิติของ DAMA-DMBOK และทำให้ใช้งาน/เข้าใจง่าย"
+
+Work Log:
+- **เอนจินใหม่ 3 ตัว (src/lib/dq.ts)** ให้ทุกมิติมีเอนจินของตัวเอง — รวม 10 เอนจิน: (1) REFERENCE_MATCH→ACCURACY ตรงค่ามาตรฐานระบบต้นทาง (2) MAX_AGE_HOURS→TIMELINESS อายุข้อมูลหน่วยชั่วโมงตาม SLA (3) EXISTS_IN_DATASET→INTEGRITY Referential Integrity ข้ามชุดข้อมูลจริง — เพิ่มชนิดพารามิเตอร์ 'dataset'/'dataset-column' + TEMPLATE_PARAM_TYPES + DIMENSION_ENGINES (กลุ่มเอนจินต่อมิติ) + evaluateRule รับ EvaluationContext (refValues) + formatParamValue แสดง "exists in {ชื่อทะเบียน}.{คอลัมน์}"
+- **EnginePicker (src/components/engine-picker.tsx ใหม่)**: EngineBadge (ไอคอน+tooltip) / EnginePicker (radio การ์ด 10 เอนจิน จัดกลุ่มตาม 9 มิติ — กลุ่มมิติที่เลือกไฮไลต์ + ป้าย "มิติที่เลือก") / EngineHint (อธิบายวิธีตรวจ + พารามิเตอร์ + มิติที่ผูก)
+- **Guided flow ฟอร์มสร้างเงื่อนไข**: ขั้นที่ 1 เลือกมิติ (DimensionPicker) → ระบบสลับไปเอนจินแนะนำแรกของมิตินั้น + เติมนิยามพารามิเตอร์อัตโนมัติ → ขั้นที่ 2 เลือกเอนจินจากการ์ดจัดกลุ่มมิติ — เพิ่ม type select (ข้อความ/ตัวเลข/เลือกชุดข้อมูล/เลือกคอลัมน์อ้างอิง) ต่อแถวพารามิเตอร์ + coverage strip "ครอบคลุมมิติ X/9" ในรายการคลัง + EngineBadge ทุกการ์ดเงื่อนไข
+- **Rule Builder**: พารามิเตอร์ชนิด dataset → dropdown ชุดข้อมูลทั้งระบบ / dataset-column → dropdown คอลัมน์จริงของชุดข้อมูลอ้างอิง (โหลดผ่าน dataset-preview API พร้อม cache + ล้างค่าคอลัมน์เมื่อเปลี่ยนทะเบียนอ้างอิง) + EngineBadge ในแถบข้อมูลเงื่อนไข + ประโยคพรีวิวแสดงชื่อทะเบียนอ้างอิงจริง
+- **API**: /api/dq/run รองรับ EXISTS_IN_DATASET (โหลดค่าอ้างอิงจากทะเบียน + cache + พารามิเตอร์ไม่ครบ→skip อย่างชัดเจน) และ fallback มิติจาก CONDITIONS / /api/dq/rules validateParamsForTemplate เพิ่ม 3 เอนจิน + GET/POST ส่ง refDatasetName ให้ประโยค / /api/dq/conditions รับชนิดพารามิเตอร์ใหม่ 4 แบบ
+- **Seed v0.8.0**: เท็มเพลตระบบเพิ่ม 3 (REFERENCE_MATCH/MAX_AGE_HOURS/EXISTS_IN_DATASET) = มาตรฐาน 10 + ผู้ใช้สร้าง 7 = 17; ชุดข้อมูลใหม่ "ทะเบียนบัญชีธนาคาร" (18 แถว จงใจไม่มี ACC-77019/77020); กฎใหม่ 2 (TIMELINESS txn_date SLA 72 ชม. + INTEGRITY account_no อ้างทะเบียนบัญชี) + CUSTOM_SEGMENT_STD สลับเป็น REFERENCE_MATCH — re-seed สำเร็จ (17 templates / 11 rules / 7 datasets / 58 rows)
+- **ตรวจจริงด้วย agent-browser + API (ผ่านหมด)**: (1) run API — TIMELINESS fail 16/20, INTEGRITY fail 2/20 (ACC-77019/77020 ตามที่จงใจ), ACCURACY pass 0 fail, skipped=0 (2) ประโยคกฎ "For รายการธุรกรรมรายวัน, account_no must exist in the reference dataset column using exists in ทะเบียนบัญชีธนาคาร.account_no" (3) EnginePicker 10 เอนจิน 9 กลุ่มมิติ (4) guided flow คลิก Accuracy → เอนจินสลับ REFERENCE_MATCH + hint ทันที (5) Rule Builder เลือกทะเบียนบัญชีธนาคาร → dropdown คอลัมน์จริง (account_no/account_name/status/opened_at) → พรีวิวประโยคถูกต้อง (6) แท็บรันตรวจแสดง badge ความทันเวลา/ความเชื่อมโยงถูกต้อง (7) มือถือ 390px ไม่มี horizontal overflow (แก้ grid blowout ด้วย min-w-0 + break-words) (8) ไม่มี console/page error (แก้บั๊ก <dIcon> casing) — lint สะอาด
+
+Stage Summary:
+- **v0.8.0 = เอนจินประเมินผลครอบคลุม 9/9 มิติ DAMA-DMBOK ครบถ้วน** — มิติไหนก็มีเอนจินตรวจของตัวเอง: ACCURACY=REFERENCE_MATCH, COMPLETENESS=NOT_NULL, CONSISTENCY=IN_LIST, VALIDITY=EMAIL/REGEX, UNIQUENESS=UNIQUE, INTEGRITY=EXISTS_IN_DATASET, TIMELINESS=MAX_AGE_HOURS, CURRENTNESS=MAX_AGE_DAYS, REASONABLENESS=RANGE
+- **UX ใหม่**: การ์ดเอนจินจัดกลุ่มตามมิติ + guided flow มิติ→เอนจิน→พารามิเตอร์อัตโนมัติ + coverage strip 9 มิติ — ผู้ใช้ไม่ต้องเดาว่ามิติไหนใช้เอนจินอะไร
+- Rollback point: ก่อนงานนี้ = `a71edf5` (v0.7.0 + worklog Task 14-result) — กู้คืน `git reset --hard a71edf5 && bun run db:push && bun scripts/seed.ts`
+- Version: v0.8.0 (minor bump — ฟีเจอร์เอนจินใหม่ 3 ตัว + guided UX; schema ไม่เปลี่ยน)
