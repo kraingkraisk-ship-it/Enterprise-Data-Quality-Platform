@@ -394,3 +394,24 @@ Stage Summary:
 - Tags บน remote ครบ 9 ตัว รวม `v0.5.0` — rollback point ล่าสุดก่อนหน้า: `v0.4.0` (567f586)
 - Token ถูกใช้เฉพาะใน push command (one-time URL) ไม่มีการบันทึกลงไฟล์/config ใดๆ
 - Commit นี้ (worklog Task 11) จะถูก push ตามด้วยเพื่อให้ remote สะท้อนบันทึกฉบับเต็ม
+
+---
+## Task ID: 12
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: v0.6.0 (feat — Enterprise UX/UI: left sidebar navigation shell)
+**Task**: ผู้ใช้ขอ "ออกแบบหน้า UX/UI ให้ดูทันสมัย ระดับ enterprise ต้องการ menu อยู่ทางด้านซ้ายมือ" — ปรับ layout ทั้งแอปเป็น App Shell แบบ sidebar โดยคงฟังก์ชัน v0.5.0 ทั้งหมด
+
+Work Log:
+- **กู้คืนสภาพแวดล้อมก่อนพัฒนา (sandbox rebuild ระหว่าง session)**: พบ local git ถูกย้อนกลับเป็นสแนปช็อตเก่า (HEAD=1565367 ก่อน v0.5.0, tag หาย 5 ตัว, v0.4.0 ชี้ hash ต่างจากเดิม) → ยืนยัน remote ยังครบ (origin/main=5cbd0d4, tag v0.5.0=d0c979e) → `git fetch origin --tags --prune` + `git reset --hard origin/main` กู้คืนโค้ด v0.5.0 เต็ม → db:push + re-seed (rules 8, ruleDatasetLinks 9) → รีสตาร์ท dev server แบบ double-detach → HTTP 200 + API คลังเงื่อนไขทำงาน
+- **ไฟล์ใหม่ 3 ไฟล์**: (1) `src/lib/views.ts` — View registry ศูนย์กลาง: APP_VERSION, ViewKey (dashboard/rules/conditions/run/exceptions/rbac/about), VIEWS metadata (ไทย/อังกฤษ/คำอธิบาย/ไอคอน), NAV_GROUPS 3 กลุ่ม, isCoreView() (2) `src/components/app-sidebar.tsx` — sidebar ซ้ายด้วย shadcn/ui sidebar primitives: brand block, กลุ่มเมนู ภาพรวม/คุณภาพข้อมูล/การกำกับดูแล, live badges (สัญญาณรอทบทวน/ข้อยกเว้นรออนุมัติ/จำนวนเงื่อนไข — ดึงทุก 45 วิ + ตอนสลับหน้า), sidebar footer (สถานะระบบ + version + PDPA), SidebarRail, ปิด drawer เองเมื่อคลิกบนมือถือ, aria-current (3) `src/components/platform-overview.tsx` — เนื้อหาแนะนำเดิม (hero, 9 มิติ, ฟีเจอร์, workflow 5 ขั้น, security, sources, standards) ย้ายมาเป็น view "เกี่ยวกับแพลตฟอร์ม" + CTA นำทางเข้าหน้าจริง
+- **Rewrite `src/app/page.tsx`** เป็น App Shell: SidebarProvider → AppSidebar + SidebarInset (header sticky / main / footer mt-auto) — header มี SidebarTrigger + ชื่อหน้า+คำอธิบายตาม view + ป้ายภาษาอังกฤษ + version badge, skip link "ข้ามไปยังเนื้อหาหลัก" (WCAG), scroll-to-top + focus main เมื่อสลับหน้า, สลับ view ด้วย state เดียว — RBAC + CoreConsole คง mounted ตลอด (สลับด้วย .hidden) เพื่อไม่ให้สถานะฟอร์ม/ข้อมูลหาย, footer dark เดิมติดล่าง (mt-auto + min-h-svh)
+- **แก้ `core-features-console.tsx` แบบ minimal**: เปลี่ยน Tabs จาก uncontrolled เป็น controlled ด้วย props {activeView, onViewChange} จาก sidebar, ลบ TabsList (เมนูซ้ายแทนที่), ลบ icon LayoutDashboard/imports ที่ไม่ใช้ — TabsContent ทั้ง 5 บล็อกและ logic ภายในไม่แตะต้อง
+- **Lint**: แก้ react-hooks/set-state-in-effect (ย้าย initial fetch เป็น IIFE ใน effect + helper fetchNavCountsInto สำหรับ interval) → ผ่านสะอาด
+- **ทดสอบ agent-browser ครบ**: desktop 1440px — sidebar + badges live (11 เงื่อนไข/2 สัญญาณ/1 ข้อยกเว้น), สลับครบ 7 view; **golden path Rule Builder**: เลือก dataset → ตาราง preview 5 แถว (PII masked) → dropdown คอลัมน์จากข้อมูลจริง 7 ตัว → เงื่อนไขจากคลัง → ประโยคถูกต้อง → บันทึก → toast "สร้างกฎใหม่สำเร็จ" + กฎ 9 ข้อ (ยืนยันผ่าน API) + form reset; RBAC permission matrix 8×8; มือถือ 390px — hamburger → drawer overlay → คลิกแดชบอร์ด → ปิดเอง + layout ปรับตัว; footer ติดล่างจอทั้งหน้าสั้นและยาว; ไม่มี page error / console error
+- หมายเหตุ: agent-browser `select` command ใช้กับ Radix combobox ไม่ได้ (ต้อง click เปิดแล้ว click option) — เป็นข้อจำกัดของเครื่องมือ ไม่ใช่ bug ของแอป
+
+Stage Summary:
+- **v0.6.0 = UX ระดับ enterprise**: เมนูซ้าย 3 กลุ่ม (ภาพรวม/คุณภาพข้อมูล/การกำกับดูแล) + header sticky แสดงบริบทหน้า + live badges + footer sticky + skip link + focus management (WCAG 2.2 AA) + มือถือเป็น drawer
+- ฟังก์ชัน v0.5.0 ครบถ้วนไม่สูญหาย — ตรวจด้วย golden path จริงบนเบราว์เซอร์
+- Rollback Reference: ก่อนงานนี้ = `5cbd0d4` (v0.5.0) — กู้คืนด้วย `git reset --hard 5cbd0d4 && bun run db:push && bunx tsx scripts/seed.ts`
+- Version: v0.6.0 (minor bump — ฟีเจอร์ใหม่ด้าน UX, ไม่มี breaking change ต่อ API)

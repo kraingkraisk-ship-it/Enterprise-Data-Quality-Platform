@@ -6,7 +6,6 @@ import {
   Play,
   BrainCircuit,
   ClipboardCheck,
-  LayoutDashboard,
   CheckCircle2,
   XCircle,
   Trash2,
@@ -42,7 +41,7 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import {
   buildRuleSentence,
@@ -55,6 +54,7 @@ import {
   type TemplateParamDef,
 } from '@/lib/dq'
 import { ROLE_KEYS, ROLE_LIST, type PermissionKey, type RoleKey } from '@/lib/rbac'
+import { isCoreView, type ViewKey } from '@/lib/views'
 
 /* ------------------------------- types ---------------------------------- */
 
@@ -246,7 +246,14 @@ const PERMISSIONS_BY_ACTION: Record<string, PermissionKey> = {
 
 /* ----------------------------- component --------------------------------- */
 
-export default function CoreFeaturesConsole() {
+interface CoreFeaturesConsoleProps {
+  /** มุมมองปัจจุบัน — ควบคุมจาก App Sidebar (controlled) */
+  activeView: ViewKey
+  /** เรียกเมื่อผู้ใช้เปลี่ยนมุมมองภายในคอนโซล (ถ้ามี) */
+  onViewChange: (view: ViewKey) => void
+}
+
+export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFeaturesConsoleProps) {
   const { toast } = useToast()
 
   // shared data
@@ -805,44 +812,11 @@ export default function CoreFeaturesConsole() {
   /* -------------------------------- render -------------------------------- */
 
   return (
-    <Tabs defaultValue="rules" className="w-full">
-      <TabsList className="h-auto w-full flex-wrap justify-start gap-1 sm:h-10">
-        <TabsTrigger value="rules" className="gap-1.5">
-          <GitBranch className="size-4" aria-hidden="true" />
-          Rule Builder
-        </TabsTrigger>
-        <TabsTrigger value="conditions" className="gap-1.5">
-          <Library className="size-4" aria-hidden="true" />
-          คลังเงื่อนไข (must)
-          {conditions.length > 0 && (
-            <Badge variant="secondary" className="ml-1 h-5 rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-700">
-              {conditions.length}
-            </Badge>
-          )}
-        </TabsTrigger>
-        <TabsTrigger value="run" className="gap-1.5">
-          <Play className="size-4" aria-hidden="true" />
-          รันตรวจสอบ &amp; สัญญาณ AI
-          {signalStats.pending > 0 && (
-            <Badge variant="secondary" className="ml-1 h-5 rounded-full bg-amber-100 px-1.5 text-[11px] text-amber-900">
-              {signalStats.pending}
-            </Badge>
-          )}
-        </TabsTrigger>
-        <TabsTrigger value="exceptions" className="gap-1.5">
-          <ClipboardCheck className="size-4" aria-hidden="true" />
-          ข้อยกเว้น
-          {pendingExceptions.length > 0 && (
-            <Badge variant="secondary" className="ml-1 h-5 rounded-full bg-emerald-100 px-1.5 text-[11px] text-emerald-900">
-              {pendingExceptions.length}
-            </Badge>
-          )}
-        </TabsTrigger>
-        <TabsTrigger value="dashboard" className="gap-1.5">
-          <LayoutDashboard className="size-4" aria-hidden="true" />
-          แดชบอร์ด
-        </TabsTrigger>
-      </TabsList>
+    <Tabs
+      value={isCoreView(activeView) ? activeView : 'rules'}
+      onValueChange={(v) => onViewChange(v as ViewKey)}
+      className="w-full"
+    >
 
       {/* ============================ TAB 1: RULE BUILDER ============================ */}
       <TabsContent value="rules" className="mt-4">
