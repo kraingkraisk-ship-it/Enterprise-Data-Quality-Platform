@@ -456,3 +456,23 @@ Stage Summary:
 - **UX ตั้งค่าใหม่**: เลือกมิติด้วยการ์ดไอคอน + คำถามช่วยตัดสินใจ + ตัวอย่าง + เอนจินแนะนำ — ลดการเดาความหมาย ผู้ไม่ใช่ IT ก็เข้าใจได้
 - Rollback Reference: ก่อนงานนี้ = `bd8cfaf` (v0.6.0 + worklog Task 13) — กู้คืนด้วย `git reset --hard bd8cfaf && bun run db:push && bun scripts/seed.ts`
 - Version: v0.7.0 (minor bump — เปลี่ยนชุดมิติเป็นมาตรฐานใหม่ + ฟีเจอร์ picker; API shape ไม่เปลี่ยน)
+
+---
+
+## Task ID: 14-result
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: Push v0.7.0 ขึ้น GitHub + remote verification (บันทึกผล push ครั้งแรกของ v0.7.0)
+
+Work Log:
+- ตรวจสถานะก่อน push: local HEAD = `03801bf` (v0.7.0, commit ค้างจาก session ก่อน), tag `v0.7.0` ชี้ตรง HEAD, remote main ยังอยู่ที่ `bd8cfaf` — working tree สะอาด
+- ตรวจคุณภาพก่อน push: `bun run lint` สะอาด + dev.log ไม่มี error (API ทุกเส้น 200) + agent-browser smoke test — หน้าแดชบอร์ดขึ้น v0.7.0, คลังเงื่อนไขมี Dimension Picker แสดงครบ 9 การ์ดมิติ ตรงลำดับ DAMA-DMBOK ที่ผู้ใช้กำหนด (Accuracy → Completeness → Consistency → Validity → Uniqueness → Integrity → Timeliness → Currentness → Reasonableness), ไม่มี page/console error
+- Push ด้วย token ใหม่จากผู้ใช้ (one-time URL ตรงในคำสั่ง push, ไม่บันทึกลง git config) สำเร็จ EXIT=0:
+  - `bd8cfaf..03801bf  main -> main`
+  - `* [new tag]  v0.7.0 -> v0.7.0` (tag ถูกสร้างครั้งแรกบน remote)
+- Verify remote ด้วย `git ls-remote origin main refs/tags/v0.7.0`: ทั้ง `refs/heads/main` และ `refs/tags/v0.7.0` = `03801bf5c530dd06e58f30f70ce4d5c9ca4f0c8f` ตรง local HEAD/แท็กทุกประการ
+
+Stage Summary:
+- **v0.7.0 อยู่บน GitHub remote สมบูรณ์** (main + tag) — remote = local = `03801bf`
+- Rollback points บน remote: `v0.7.0` (03801bf, 9 มิติ DAMA-DMBOK) ← ย้อนกลับได้ที่ `v0.6.0` (65a5ac6) / `v0.5.0` (d0c979e) / `v0.4.0` (567f586)
+- Token ใช้เฉพาะใน push command (one-time URL) ไม่มีบันทึกลงไฟล์/config ใดๆ — ผู้ใช้ควร revoke หลังใช้งาน
+- คำสั่ง rollback กลับไป v0.6.0 บนเครื่อง local: `git reset --hard 65a5ac6 && bun run db:push && bun scripts/seed.ts`
