@@ -497,3 +497,23 @@ Stage Summary:
 - **UX ใหม่**: การ์ดเอนจินจัดกลุ่มตามมิติ + guided flow มิติ→เอนจิน→พารามิเตอร์อัตโนมัติ + coverage strip 9 มิติ — ผู้ใช้ไม่ต้องเดาว่ามิติไหนใช้เอนจินอะไร
 - Rollback point: ก่อนงานนี้ = `a71edf5` (v0.7.0 + worklog Task 14-result) — กู้คืน `git reset --hard a71edf5 && bun run db:push && bun scripts/seed.ts`
 - Version: v0.8.0 (minor bump — ฟีเจอร์เอนจินใหม่ 3 ตัว + guided UX; schema ไม่เปลี่ยน)
+
+---
+## Task ID: 16
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: v0.9.0 (feat — ชั้น "มาตราการประเมิน" 9 มาตรา DAMA-DMBOK + คำตัดสินภาษาคน + scorecard UX)
+**Task**: ผู้ใช้ขอให้ "เอนจินประเมินผลประเมิน Rule ให้เป็นไปตามมาตราตาม 9 มิติของ DAMA-DMBOK และทำให้ใช้งาน/เข้าใจง่าย"
+
+Work Log:
+- **พบ commit+tag v0.8.0 (bcfd1b2) ค้างในเครื่อง** จาก session ก่อน (Task 15 — เอนจินครอบคลุม 9 มิติ + EnginePicker) ยังไม่ได้ push → ตรวจสภาพ working tree สะอาด → สร้างงานใหม่ต่อบนฐานนั้นเป็น v0.9.0 และจะ push ทั้ง main + tag v0.8.0 + tag v0.9.0 พร้อมกัน
+- **src/lib/dama.ts (ไฟล์ใหม่ — แหล่งเดียวของ "มาตรา")**: มาตราที่ 1–9 ตามลำดับมาตรฐานผู้ใช้กำหนด (1 Accuracy 2 Completeness 3 Consistency 4 Validity 5 Uniqueness 6 Integrity 7 Timeliness 8 Currentness 9 Reasonableness) แต่ละมาตรามี statement (ข้อกำหนด) + measure (มาตราการวัด) + formula (สูตรอ่านง่าย) + advice (คำแนะนำเมื่อไม่ผ่าน) / เกณฑ์เกรดเดียวกันทั้งระบบ GRADE_DEFS: ≥95 ดีเยี่ยม (emerald), ≥85 ดี (teal), ≥70 ต้องปรับปรุง (amber), <70 วิกฤต (rose) + gradeOf() / ENGINE_FAILURE_REASONS + ENGINE_FIX_HINTS (เหตุผลล้มเหลว + คำแนะนำรายเอนจิน 10 เอนจิน) / buildRuleVerdict() ประกอบคำตัดสินภาษาไทย / buildRunSummary() สรุปทั้งรัน / DAMA_CLAUSES + DimensionResultView — pure logic ใช้ร่วม backend/frontend ไม่มี circular import (dama → dq เท่านั้น)
+- **/api/dq/run ประเมินตามมาตรา**: ทุกกฎได้ verdict (ผ่าน/ไม่ผ่านมาตราที่ N เพราะอะไร) + advice เฉพาะเมื่อล้มเหลว / สะสม rulesCount + failedRules รายมิติ / dimensionScores คืนครบทั้ง 9 มาตรา (score=null เมื่อไม่มีกฎ = "ยังไม่ได้ประเมิน") พร้อม grade + advice เมื่อ FAIR/POOR / คืน overallGrade + summary ประโยคสรุปภาษาไทย — ไม่ทำลาย response เดิม (เพิ่ม field เท่านั้น)
+- **UI ผลประเมิน (Tab รันตรวจสอบ)**: แถบสรุปใหม่ = คะแนนรวม + Badge เกรด + ประโยคสรุปภาษาคน / บัตรคะแนนรายมาตรา 9 ใบ เรียงมาตรา 1–9 (ไอคอนมิติ + เกรด badge + bar สีเกรด + จำนวนกฎ/ล้มเหลว + คำแนะนำเมื่อต้องปรับปรุง, มาตราที่ไม่มีกฎแสดง dashed "ยังไม่ได้ประเมิน") / details ขยาย "ข้อกำหนดและวิธีคำนวณของมาตราทั้ง 9" (statement + measure + formula) / แถวรายกฎเพิ่ม badge "มาตรา N · ชื่อมิติ" + verdict เขียว/แดง + กล่องคำแนะนำสีเกษตร "เป็นข้อแนะนำ — การแก้ไขข้อมูลต้องดำเนินการโดยมนุษย์" / APP_VERSION v0.8.0→v0.9.0
+- **ตรวจจริง (ผ่านหมด)**: (1) bun run lint สะอาด (2) API รันจริง "ลูกค้าองค์กร — Master": overall 94.4 เกรด "ดี", 9 มาตราครบ, verdict "ไม่ผ่านมาตราที่ 4 …เพราะรูปแบบอีเมลไม่ถูกต้อง…" + advice ถูกต้อง, PII masked ตามบทบาท (3) agent-browser golden path: เลือก dataset → รัน → สรุป+เกรด+ประโยคสรุปแสดง, การ์ด 9 มาตราครบตามลำดับ, ขยายมาตราฉบับเต็มครบ 9 พร้อมสูตร, verdict+คำแนะนำรายกฎแสดงครบ, ไม่มี page/console error (error rbTemplate ใน dev.log เป็นของ session เก่ากลางการ Fast Refresh — ปัจจุบัน log ท้ายสะอาด 200 ทั้งหมด) (4) มือถือ 390px: การ์ดเรียง 1 คอลัมน์ สรุป stack แนวตั้ง ไม่มี overflow
+
+Stage Summary:
+- **v0.9.0 = เอนจินประเมินผลอ้างอิง "มาตรา" DAMA-DMBOK อย่างเป็นระบบ** — ทุกผลลัพธ์ตอบครบ: ผ่าน/ไม่ผ่านมาตราที่เท่าไร เพราะอะไร คะแนนเท่าไร เกรดอะไร และควรทำอย่างไรต่อ (โดยมนุษย์เท่านั้น)
+- เกณฑ์เกรดรวมศูนย์ที่เดียว (GRADE_DEFS) ใช้ทั้งรายมาตราและคะแนนรวม — เปลี่ยนเกณฑ์แก้ที่เดียวทั้งระบบ
+- ผู้ใช้เรียนรู้นิยามมาตราได้ในหน้าผลรัน (มาตราฉบับเต็ม + สูตร) — ลดการเดาความหมายมิติ
+- Rollback point: ก่อนงานนี้ = `bcfd1b2` (v0.8.0) — กู้คืน `git reset --hard bcfd1b2 && bun run db:push && bun scripts/seed.ts`
+- Push ครั้งนี้ส่งทั้ง main (a71edf5 → v0.9.0) + 2 tags: v0.8.0 (bcfd1b2, ค้างจาก session ก่อน) และ v0.9.0 (fc52ed2 นี้)
