@@ -6,6 +6,7 @@
 import { PrismaClient } from '@prisma/client'
 import { evaluateRule, DIMENSION_LABELS, type DimensionKey, type Row } from '../src/lib/dq'
 import { inferColumnType } from '../src/lib/asset'
+import { profileRows, PROFILE_MAX_ROWS } from '../src/lib/profiling'
 
 const db = new PrismaClient()
 
@@ -761,6 +762,148 @@ async function main() {
     })
   }
 
+  // ---------- Data Profiling + DQ Issues ตัวอย่าง (v0.13.0) ----------
+  // โปรไฟล์ตัวอย่าง 2 ชุดข้อมูล (ทำงานเฉพาะเมื่อยังไม่มีข้อมูล — กันซ้ำเมื่อรัน seed ซ้ำ)
+  if ((await db.dqProfileRun.count()) === 0) {
+    for (const dsName of ['ลูกค้าองค์กร — Master', 'รายการธุรกรรมรายวัน']) {
+      const ds = await db.dataset.findFirst({ where: { name: dsName }, select: { id: true, name: true } })
+      if (!ds) continue
+      const rows: Row[] = (await db.sampleRow.findMany({ where: { datasetId: ds.id }, select: { payload: true }, take: PROFILE_MAX_ROWS })).map((r) => {
+        try {
+          return JSON.parse(r.payload) as Row
+        } catch {
+          return {}
+        }
+      })
+      if (rows.length === 0) continue
+      const result = profileRows(rows)
+      const run = await db.dqProfileRun.create({
+        data: {
+          datasetId: ds.id,
+          totalRows: result.totalRows,
+          totalColumns: result.totalColumns,
+          avgCompleteness: result.avgCompleteness,
+          avgUniqueness: result.avgUniqueness,
+          piiColumnCount: result.piiColumnCount,
+          durationMs: 42,
+          createdBy: 'preecha.engineer@company.co.th',
+        },
+      })
+      await db.dqProfileColumn.createMany({
+        data: result.columns.map((c) => ({
+          profileRunId: run.id,
+          columnName: c.columnName,
+          dataType: c.dataType,
+          totalRows: c.totalRows,
+          nullCount: c.nullCount,
+          nullPct: c.nullPct,
+          distinctCount: c.distinctCount,
+          distinctPct: c.distinctPct,
+          minValue: c.minValue,
+          maxValue: c.maxValue,
+          meanValue: c.meanValue,
+          minLength: c.minLength,
+          maxLength: c.maxLength,
+          topValues: JSON.stringify(c.topValues),
+          piiSuspected: c.piiSuspected,
+        })),
+      })
+      await db.auditLog.create({
+        data: {
+          action: 'RUN_PROFILE',
+          actor: 'preecha.engineer@company.co.th',
+          target: ds.name,
+          detail: `Seed เริ่มต้นระบบ: โปรไฟล์ข้อมูล "${ds.name}" — ${result.totalRows} แถว / ${result.totalColumns} คอลัมน์ · ความสมบูรณ์เฉลี่ย ${result.avgCompleteness ?? '—'}%`,
+        },
+      })
+    }
+  }
+
+  // ปัญหาตัวอย่าง 3 สถานะ (MANUAL / SIGNAL / RESOLVED) — กันซ้ำเมื่อรัน seed ซ้ำ
+  if ((await db.dqIssue.count()) === 0) {
+    const dsCust = await db.dataset.findFirst({ where: { name: 'ลูกค้าองค์กร — Master' }, select: { id: true, name: true } })
+    if (dsCust) {
+      const i1 = await db.dqIssue.create({
+        data: {
+          code: 'ISS-0001',
+          datasetId: dsCust.id,
+          title: 'อีเมลลูกค้าไม่ครบถ้วนในบางสาขา',
+          description: 'พบอีเมลว่างในแถวที่นำเข้าจากสาขาใหม่ — กระทบการส่งเอกสารอัตโนมัติ',
+          source: 'MANUAL',
+          dimension: 'COMPLETENESS',
+          severity: 'HIGH',
+          reportedBy: 'somchai.owner@company.co.th',
+          assignedTo: 'malee.steward@company.co.th',
+        },
+      })
+      await db.auditLog.create({
+        data: {
+          action: 'CREATE_ISSUE',
+          actor: 'somchai.owner@company.co.th',
+          target: `${i1.code} — ${dsCust.name}`,
+          detail: `Seed เริ่มต้นระบบ: เปิดปัญหาคุณภาพข้อมูล ${i1.code} (ที่มา: รายงานเอง) [ความครบถ้วน/HIGH]: ${i1.title}`,
+        },
+      })
+    }
+
+    const dsTxn = await db.dataset.findFirst({ where: { name: 'รายการธุรกรรมรายวัน' }, select: { id: true, name: true } })
+    if (dsTxn) {
+      // ปัญหาจากสัญญาณ AI ที่ยืนยันแล้ว (ถ้ามี) — เทียบเท่า flow ยืนยันสัญญาณ → เปิดปัญหาอัตโนมัติ
+      const confirmedSignal = await db.dqSignal.findFirst({ where: { datasetId: dsTxn.id, status: 'CONFIRMED' } })
+      if (confirmedSignal) {
+        const i2 = await db.dqIssue.create({
+          data: {
+            code: 'ISS-0002',
+            datasetId: dsTxn.id,
+            title: confirmedSignal.title,
+            description: `เปิดอัตโนมัติจากการยืนยันสัญญาณ AI — ${confirmedSignal.detail}`,
+            source: 'SIGNAL',
+            sourceId: confirmedSignal.id,
+            dimension: confirmedSignal.dimension,
+            severity: confirmedSignal.severity,
+            reportedBy: 'anucha.analyst@company.co.th',
+            status: 'IN_PROGRESS',
+            assignedTo: 'anucha.analyst@company.co.th',
+          },
+        })
+        await db.auditLog.create({
+          data: {
+            action: 'CREATE_ISSUE',
+            actor: 'anucha.analyst@company.co.th',
+            target: `${i2.code} — ${dsTxn.name}`,
+            detail: `Seed เริ่มต้นระบบ: เปิดปัญหาคุณภาพข้อมูลอัตโนมัติ ${i2.code} (ที่มา: จากสัญญาณ AI): ${i2.title}`,
+          },
+        })
+      }
+
+      // ปัญหาที่แก้ไขแล้ว รอผู้อนุมัติปิด
+      const i3 = await db.dqIssue.create({
+        data: {
+          code: 'ISS-0003',
+          datasetId: dsTxn.id,
+          title: 'รูปแบบเวลาธุรกรรมไม่ตรงมาตรฐาน ISO ในบางชุด',
+          description: 'ตรวจพบจากกฎ REGEX ของคอลัมน์ txn_time — ปรับตัวแปลงรูปแบบที่ขั้นตอนนำเข้าแล้ว',
+          source: 'MANUAL',
+          dimension: 'VALIDITY',
+          severity: 'MEDIUM',
+          reportedBy: 'anucha.analyst@company.co.th',
+          assignedTo: 'preecha.engineer@company.co.th',
+          status: 'RESOLVED',
+          resolutionNote: 'แก้ตัวแปลงรูปแบบเวลาที่ pipeline นำเข้าแล้ว และรันตรวจซ้ำผ่านทั้งหมด',
+          resolvedAt: new Date(),
+        },
+      })
+      await db.auditLog.create({
+        data: {
+          action: 'RESOLVE_ISSUE',
+          actor: 'preecha.engineer@company.co.th',
+          target: `${i3.code} — ${dsTxn.name}`,
+          detail: 'Seed เริ่มต้นระบบ: เปลี่ยนสถานะปัญหา ISS-0003 → "แก้ไขแล้ว (รอปิด)" (วิธีแก้: แก้ตัวแปลงรูปแบบเวลาที่ pipeline นำเข้าแล้ว)',
+        },
+      })
+    }
+  }
+
   console.log('Seed complete:', {
     users: await db.user.count(),
     datasets: await db.dataset.count(),
@@ -772,6 +915,8 @@ async function main() {
     runs: await db.dqRun.count(),
     signals: await db.dqSignal.count(),
     exceptions: await db.dqException.count(),
+    profileRuns: await db.dqProfileRun.count(),
+    issues: await db.dqIssue.count(),
     dataAssets: await db.dataAsset.count(),
     dataAssetRecords: await db.dataAssetRecord.count(),
   })

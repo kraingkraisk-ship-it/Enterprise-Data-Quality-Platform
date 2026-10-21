@@ -38,6 +38,8 @@ model Dataset {
   signals    DqSignal[]
   exceptions DqException[]
   batches    DqValidationBatch[]
+  profileRuns DqProfileRun[]
+  issues     DqIssue[]
 
   @@index([status])
 }
@@ -192,6 +194,86 @@ model DqFailureRecord {
   @@unique([runId, rowNo])
   @@index([datasetId, status])
   @@index([batchId])
+}
+
+// ---------------------------------------------------------------------------
+// Data Profiling (v0.13.0) — สำรวจลักษณะข้อมูลจริงรายคอลัมน์ (READ-ONLY ไม่แตะต้นทาง)
+// ---------------------------------------------------------------------------
+
+// รอบการโปรไฟล์ 1 รอบ (กดรัน 1 ครั้ง = 1 profile run ของชุดข้อมูลนั้น)
+model DqProfileRun {
+  id              String   @id @default(cuid())
+  datasetId       String
+  totalRows       Int      @default(0)
+  totalColumns    Int      @default(0)
+  avgCompleteness Float? // ความสมบูรณ์เฉลี่ย (100 - avg null%) 0–100
+  avgUniqueness   Float? // ความไม่ซ้ำเฉลี่ย (distinct%) 0–100
+  piiColumnCount  Int      @default(0) // จำนวนคอลัมน์ที่สงสัยเป็น PII
+  durationMs      Int      @default(0)
+  createdBy       String // email ผู้รัน
+  createdAt       DateTime @default(now())
+
+  dataset Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  columns DqProfileColumn[]
+
+  @@index([datasetId, createdAt])
+}
+
+// สถิติรายคอลัมน์ของรอบโปรไฟล์ — topValues อาจมีค่า PII → ปิดบังตอนอ่านตามบทบาท (PDPA)
+model DqProfileColumn {
+  id            String  @id @default(cuid())
+  profileRunId  String
+  columnName    String
+  dataType      String // TEXT | INTEGER | NUMBER | BOOLEAN | DATE | DATETIME | EMPTY | MIXED
+  totalRows     Int     @default(0)
+  nullCount     Int     @default(0)
+  nullPct       Float   @default(0)
+  distinctCount Int     @default(0)
+  distinctPct   Float   @default(0)
+  minValue      String?
+  maxValue      String?
+  meanValue     String?
+  minLength     Int?
+  maxLength     Int?
+  topValues     String  @default("[]") // JSON [{value,count}] สูงสุด 5 อันดับ — mask ตอนอ่านตามบทบาท
+  piiSuspected  Boolean @default(false)
+
+  profileRun DqProfileRun @relation(fields: [profileRunId], references: [id], onDelete: Cascade)
+
+  @@unique([profileRunId, columnName])
+  @@index([profileRunId])
+}
+
+// ---------------------------------------------------------------------------
+// DQ Issues (v0.13.0) — ทะเบียนปัญหาคุณภาพข้อมูลที่มี lifecycle จริง
+// OPEN → IN_PROGRESS → RESOLVED → CLOSED (ปิดโดยผู้อนุมัติ — แยกจากผู้แก้)
+// ---------------------------------------------------------------------------
+
+model DqIssue {
+  id             String    @id @default(cuid())
+  code           String    @unique // ISS-0001 …
+  datasetId      String
+  title          String
+  description    String    @default("")
+  source         String    @default("MANUAL") // MANUAL | SIGNAL | FAILURE | EXCEPTION — ที่มาของปัญหา
+  sourceId       String    @default("") // id ของต้นทาง (DqSignal / DqFailureRecord) — กันสร้างซ้ำ
+  dimension      String // มิติ DAMA-DMBOK
+  severity       String    @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
+  status         String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | CLOSED
+  reportedBy     String // email ผู้รายงาน
+  assignedTo     String? // email ผู้รับผิดชอบ
+  resolutionNote String    @default("")
+  detectedAt     DateTime  @default(now())
+  resolvedAt     DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([datasetId, status])
+  @@index([source, sourceId])
 }
 
 // สัญญาณที่ต้องมนุษย์ทบทวนเสมอ — ML เป็นเพียง "สัญญาณ" ไม่มีการแก้ข้อมูลอัตโนมัติ

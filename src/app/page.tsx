@@ -13,6 +13,8 @@ import AssetImport from '@/components/asset-import'
 import AssetInventory from '@/components/asset-inventory'
 import DqScorecard from '@/components/dq/scorecard'
 import DqFailedRecords from '@/components/dq/failed-records'
+import DqProfiling from '@/components/dq/profiling'
+import DqIssues from '@/components/dq/issues'
 import { APP_VERSION, VIEWS, isConsoleView, type ViewKey } from '@/lib/views'
 
 /* ------------------------------------------------------------------ */
@@ -89,12 +91,18 @@ export default function Home() {
             <AssetInventory active={view === 'asset-inventory'} />
           </div>
 
-          {/* หน้าใหม่ของโมดูล Data Quality (v0.12.0) — บัตรคะแนน + ข้อมูลที่ไม่ผ่าน */}
+          {/* หน้าใหม่ของโมดูล Data Quality — บัตรคะแนน + ข้อมูลที่ไม่ผ่าน + โปรไฟล์ + ปัญหา */}
           <div className={view === 'scorecard' ? '' : 'hidden'} aria-hidden={view !== 'scorecard'}>
             <DqScorecard active={view === 'scorecard'} onGoValidations={() => setView('validation-results')} />
           </div>
           <div className={view === 'failed-records' ? '' : 'hidden'} aria-hidden={view !== 'failed-records'}>
             <DqFailedRecords active={view === 'failed-records'} />
+          </div>
+          <div className={view === 'profiling' ? '' : 'hidden'} aria-hidden={view !== 'profiling'}>
+            <DqProfiling active={view === 'profiling'} />
+          </div>
+          <div className={view === 'issues' ? '' : 'hidden'} aria-hidden={view !== 'issues'}>
+            <DqIssues active={view === 'issues'} />
           </div>
 
           {/* RBAC Console — คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}

@@ -5,7 +5,6 @@ import {
   GitBranch,
   Play,
   BrainCircuit,
-  ClipboardCheck,
   Check,
   CheckCircle2,
   XCircle,
@@ -15,7 +14,6 @@ import {
   ShieldAlert,
   EyeOff,
   Sparkles,
-  Send,
   Library,
   Table2,
   Plus,
@@ -132,19 +130,6 @@ interface ApiSignal {
   reviewedBy: string | null
   reviewedAt: string | null
   createdAt: string
-}
-
-interface ApiException {
-  id: string
-  datasetName: string
-  ruleId: string | null
-  ruleLabel: string | null
-  reason: string
-  requestedBy: string
-  status: string
-  expiresAt: string
-  decidedBy: string | null
-  decidedAt: string | null
 }
 
 interface RunResponse {
@@ -282,7 +267,7 @@ interface CoreFeaturesConsoleProps {
   activeView: ViewKey
   /** เรียกเมื่อผู้ใช้เปลี่ยนมุมมองภายในคอนโซล (ถ้ามี) */
   onViewChange: (view: ViewKey) => void
-  /** 'full' = หน้าตรง (ผลการตรวจ/ข้อยกเว้น/แดชบอร์ด) · 'library' = หน้าคลังกฎ (สลับกฎ/เงื่อนไขภายในหน้า) */
+  /** 'full' = หน้าตรง (ผลการตรวจ/แดชบอร์ด) · 'library' = หน้าคลังกฎ (สลับกฎ/เงื่อนไขภายในหน้า) */
   mode?: 'full' | 'library'
 }
 
@@ -299,7 +284,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [conditions, setConditions] = useState<ApiCondition[]>([])
   const [signals, setSignals] = useState<ApiSignal[]>([])
   const [signalStats, setSignalStats] = useState({ pending: 0, confirmed: 0, dismissed: 0 })
-  const [exceptions, setExceptions] = useState<ApiException[]>([])
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [reloadTick, setReloadTick] = useState(0)
@@ -333,14 +317,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [runResult, setRunResult] = useState<RunResponse | null>(null)
   const [reviewerEmail, setReviewerEmail] = useState('anucha.analyst@company.co.th')
 
-  // tab 4 — exceptions
-  const [exDataset, setExDataset] = useState('')
-  const [exRule, setExRule] = useState('')
-  const [exReason, setExReason] = useState('')
-  const [exExpires, setExExpires] = useState('')
-  const [exRequester, setExRequester] = useState('malee.steward@company.co.th')
-  const [exApprover, setExApprover] = useState('somchai.owner@company.co.th')
-
 
   const refetch = useCallback(() => setReloadTick((t) => t + 1), [])
 
@@ -370,11 +346,10 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     let alive = true
     ;(async () => {
       try {
-        const [r, c, s, x, dash] = await Promise.all([
+        const [r, c, s, dash] = await Promise.all([
           fetch('/api/dq/rules').then((r) => r.json()),
           fetch('/api/dq/conditions').then((r) => r.json()),
           fetch('/api/dq/signals').then((r) => r.json()),
-          fetch('/api/dq/exceptions').then((r) => r.json()),
           fetch('/api/dq/dashboard').then((r) => r.json()),
         ])
         if (!alive) return
@@ -382,7 +357,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         setConditions(c.conditions ?? [])
         setSignals(s.signals ?? [])
         setSignalStats(s.stats ?? { pending: 0, confirmed: 0, dismissed: 0 })
-        setExceptions(x.exceptions ?? [])
         setDashboard(dash.error ? null : dash)
       } catch {
         if (!alive) return
@@ -543,13 +517,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     [cnEngine, cnSentence],
   )
 
-  const rulesOfDataset = useMemo(
-    () => rules?.filter((r) => r.enabled && r.datasetIds.includes(exDataset)) ?? [],
-    [rules, exDataset],
-  )
-
-  const pendingExceptions = useMemo(() => exceptions.filter((x) => x.status === 'PENDING'), [exceptions])
-  const decidedExceptions = useMemo(() => exceptions.filter((x) => x.status !== 'PENDING'), [exceptions])
   const pendingSignals = useMemo(() => signals.filter((s) => s.status === 'PENDING_REVIEW'), [signals])
   const decidedSignals = useMemo(() => signals.filter((s) => s.status !== 'PENDING_REVIEW'), [signals])
 
@@ -753,37 +720,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       { action, reviewerEmail },
       `signal-${id}`,
       action === 'CONFIRM' ? 'ยืนยันสัญญาณแล้ว (บันทึกผู้ทบทวน)' : 'ปลดสัญญาณแล้ว (บันทึกผู้ทบทวน)',
-    )
-    if (ok) refetch()
-  }
-
-  async function handleCreateException() {
-    const ok = await postJson(
-      '/api/dq/exceptions',
-      {
-        datasetId: exDataset,
-        ruleId: exRule || undefined,
-        reason: exReason,
-        expiresAt: exExpires ? new Date(exExpires).toISOString() : '',
-        requestedByEmail: exRequester,
-      },
-      'create-exception',
-      'ส่งคำขอข้อยกเว้นแล้ว (รอผู้อนุมัติ)',
-    )
-    if (ok) {
-      setExReason('')
-      setExExpires('')
-      setExRule('')
-      refetch()
-    }
-  }
-
-  async function handleDecideException(id: string, action: 'APPROVE' | 'REJECT') {
-    const ok = await patchJson(
-      `/api/dq/exceptions/${id}`,
-      { action, approverEmail: exApprover },
-      `exception-${id}`,
-      action === 'APPROVE' ? 'อนุมัติคำขอแล้ว' : 'ปฏิเสธคำขอแล้ว',
     )
     if (ok) refetch()
   }
@@ -1893,160 +1829,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         </div>
       </TabsContent>
 
-      {/* ===================== TAB 4: EXCEPTIONS ===================== */}
-      <TabsContent value="exceptions" className="mt-4">
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <ClipboardCheck className="size-4 text-emerald-700" aria-hidden="true" />
-                ขอข้อยกเว้นกฎ
-              </CardTitle>
-              <CardDescription>ทุกคำขอต้องระบุเหตุผลและวันหมดอายุ พร้อมรอการอนุมัติจากบทบาทที่มีสิทธิ์</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="ex-dataset">ชุดข้อมูล</Label>
-                <Select
-                  value={exDataset}
-                  onValueChange={(v) => {
-                    setExDataset(v)
-                    setExRule('')
-                  }}
-                >
-                  <SelectTrigger id="ex-dataset">
-                    <SelectValue placeholder="เลือกชุดข้อมูล" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {datasets.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="ex-rule">กฎที่ขอยกเว้น (ไม่บังคับ)</Label>
-                <Select value={exRule || 'none'} onValueChange={(v) => setExRule(v === 'none' ? '' : v)} disabled={!exDataset}>
-                  <SelectTrigger id="ex-rule">
-                    <SelectValue placeholder={exDataset ? 'เลือกกฎ (หรือไม่ระบุ)' : 'เลือกชุดข้อมูลก่อน'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">— ไม่ระบุกฎ —</SelectItem>
-                    {rulesOfDataset.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.column} ({r.conditionName})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="ex-reason">เหตุผล (อย่างน้อย 10 ตัวอักษร)</Label>
-                <textarea
-                  id="ex-reason"
-                  className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={exReason}
-                  onChange={(e) => setExReason(e.target.value)}
-                  placeholder="อธิบายเหตุผลและระยะเวลาที่จำเป็น เพื่อการตรวจสอบย้อนหลัง"
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="ex-expires">วันหมดอายุ</Label>
-                  <Input id="ex-expires" type="date" value={exExpires} onChange={(e) => setExExpires(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ex-requester">ผู้ขอ (ต้องมีสิทธิ์ MANAGE_RULES)</Label>
-                  <OperatorSelect id="ex-requester" value={exRequester} onChange={setExRequester} permission={PERMISSIONS_BY_ACTION.MANAGE_RULES} />
-                </div>
-              </div>
-
-              <Button
-                className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={handleCreateException}
-                disabled={!exDataset || exReason.trim().length < 10 || !exExpires || busy !== null}
-              >
-                <Send className="size-4" aria-hidden="true" />
-                {busy === 'create-exception' ? 'กำลังส่ง…' : 'ส่งคำขอข้อยกเว้น'}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">รอการอนุมัติ ({pendingExceptions.length})</CardTitle>
-              <CardDescription>เฉพาะบทบาทที่มีสิทธิ์ APPROVE_EXCEPTIONS เท่านั้นที่อนุมัติได้ (ลองเลือกบทบาทอื่นเพื่อทดสอบ)</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="ex-approver">ผู้อนุมัติ</Label>
-                <OperatorSelect id="ex-approver" value={exApprover} onChange={setExApprover} permission={PERMISSIONS_BY_ACTION.APPROVE_EXCEPTIONS} />
-              </div>
-
-              <div className="max-h-80 space-y-2.5 overflow-y-auto pr-1">
-                {pendingExceptions.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">ไม่มีคำขอรออนุมัติ</p>}
-                {pendingExceptions.map((x) => (
-                  <div key={x.id} className="rounded-lg border p-3">
-                    <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                      <Badge variant="outline" className="text-[11px]">
-                        {x.datasetName}
-                      </Badge>
-                      {x.ruleLabel && <Badge variant="outline" className="text-[11px]">กฎ: {x.ruleLabel}</Badge>}
-                      <span>หมดอายุ {fmtDate(x.expiresAt)}</span>
-                    </div>
-                    <p className="text-sm">{x.reason}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">ขอโดย {x.requestedBy} · {fmtTime(x.createdAt)}</p>
-                    <div className="mt-2 flex gap-2">
-                      <Button
-                        size="sm"
-                        className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
-                        onClick={() => handleDecideException(x.id, 'APPROVE')}
-                        disabled={busy !== null}
-                      >
-                        <CheckCircle2 className="size-3.5" aria-hidden="true" />
-                        อนุมัติ
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 text-rose-700 hover:bg-rose-50"
-                        onClick={() => handleDecideException(x.id, 'REJECT')}
-                        disabled={busy !== null}
-                      >
-                        <XCircle className="size-3.5" aria-hidden="true" />
-                        ปฏิเสธ
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {decidedExceptions.length > 0 && (
-                <details className="rounded-lg border bg-slate-50/60 p-3">
-                  <summary className="cursor-pointer text-xs font-medium text-slate-700">
-                    ตัดสินแล้ว ({decidedExceptions.length} รายการ)
-                  </summary>
-                  <ul className="mt-2 space-y-1 text-[11.5px] text-muted-foreground">
-                    {decidedExceptions.slice(0, 12).map((x) => (
-                      <li key={x.id}>
-                        {x.status === 'APPROVED' ? '✅' : '❌'} {x.datasetName} — {x.status === 'APPROVED' ? 'อนุมัติ' : 'ปฏิเสธ'}โดย {x.decidedBy} ·{' '}
-                        {fmtTime(x.decidedAt)}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </TabsContent>
-
-      {/* ===================== TAB 5: DASHBOARD — 5 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Regulation / Risk / Data Classification) ===================== */}
+      {/* ===================== TAB 4: DASHBOARD — 5 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Regulation / Risk / Data Classification) ===================== */}
       <TabsContent value="dashboard" className="mt-4">
         <DqDashboard datasets={datasets} users={users} reloadTick={reloadTick} onRefetch={refetch} />
       </TabsContent>

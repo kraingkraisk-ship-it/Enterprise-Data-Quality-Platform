@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Eye,
   FileWarning,
+  Flag,
   RefreshCw,
   RotateCcw,
   Search,
@@ -190,6 +191,47 @@ export default function DqFailedRecords({ active }: FailedRecordsProps) {
     { key: 'FIXED' as const, label: 'แก้ไขแล้ว', cls: 'text-emerald-700' },
     { key: 'IGNORED' as const, label: 'ยกเว้น', cls: 'text-slate-600' },
   ]
+
+  /** เปิดแถวที่ล้มเหลวเป็นปัญหาคุณภาพข้อมูล (DQ Issue) — ผู้รายงานต้องมีสิทธิ์ MANAGE_ISSUES */
+  async function openAsIssue(item: FailureItem) {
+    const reporter = viewerEmail || users.find((u) => u.role === 'DATA_OWNER')?.email || ''
+    if (!reporter) {
+      toast({ title: 'กรุณาเลือกผู้ดำเนินการก่อน', variant: 'destructive' })
+      return
+    }
+    setBusy(`issue-${item.id}`)
+    try {
+      const res = await fetch('/api/dq/issues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          datasetId: item.datasetId,
+          title: `แถว #${item.rowNo} ไม่ผ่านกฎ ${item.ruleColumn}`,
+          description: `เปิดจากข้อมูลที่ไม่ผ่าน — เหตุผล: ${item.reason}`,
+          dimension: item.dimension,
+          severity: item.severity,
+          source: 'FAILURE',
+          sourceId: item.id,
+          reportedByEmail: reporter,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        toast({ title: 'เปิดปัญหาไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      if (data.existing) {
+        toast({ title: `ปัญหา ${data.issue.code} เปิดไว้แล้วสำหรับแถวนี้ — ติดตามที่เมนูปัญหาคุณภาพข้อมูล` })
+      } else {
+        toast({ title: `เปิดปัญหา ${data.issue.code} จากแถว #${item.rowNo} เรียบร้อย — ติดตามที่เมนูปัญหาคุณภาพข้อมูล` })
+      }
+      setDetail(null)
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setBusy(null)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -474,6 +516,19 @@ export default function DqFailedRecords({ active }: FailedRecordsProps) {
                   </dl>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 border-amber-300 text-amber-900 hover:bg-amber-50"
+                    onClick={() => {
+                      void openAsIssue(detail)
+                    }}
+                    disabled={busy !== null}
+                    title="เปิดเป็นปัญหาในทะเบียน DQ Issues (ผู้รายงานต้องมีสิทธิ์ MANAGE_ISSUES)"
+                  >
+                    <Flag className="size-3.5" aria-hidden="true" />
+                    {busy === `issue-${detail.id}` ? 'กำลังเปิด…' : 'เปิดเป็น Issue'}
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"

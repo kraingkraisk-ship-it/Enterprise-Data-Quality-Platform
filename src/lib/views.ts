@@ -6,8 +6,10 @@ import {
   GitBranch,
   LayoutDashboard,
   Library,
+  ListChecks,
   PackageSearch,
   Play,
+  ScanSearch,
   ScrollText,
   ShieldCheck,
   type LucideIcon,
@@ -19,21 +21,22 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.12.0'
+export const APP_VERSION = 'v0.13.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
  * - 'rules' / 'conditions' — ใช้ภายในโหมด DQ Rule Library (กดสลับแท็บภายใน)
  * - 'run' — ใช้เป็นเนื้อหาของหน้า Validation Results
- * - 'exceptions' / 'dashboard' — หน้าตรง
+ * - 'dashboard' — หน้าตรง
+ * (v0.13.0 — 'exceptions' ย้ายไปเป็นแท็บของหน้า DQ Issues แล้ว)
  */
-export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'exceptions' | 'dashboard'
+export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'dashboard'
 
 /** มุมมองของโมดูล Data Asset */
 export type AssetViewKey = 'asset-import' | 'asset-inventory'
 
-/** มุมมองหน้าใหม่ของโมดูล Data Quality (v0.12.0 — โครงสร้าง enterprise) */
-export type DqViewKey = 'scorecard' | 'rule-library' | 'validation-results' | 'failed-records'
+/** มุมมองหน้าใหม่ของโมดูล Data Quality */
+export type DqViewKey = 'scorecard' | 'rule-library' | 'profiling' | 'validation-results' | 'failed-records' | 'issues'
 
 /** มุมมองทั้งหมดของแอป (รวม Data Asset, RBAC และหน้าแนะนำแพลตฟอร์ม) */
 export type ViewKey = CoreViewKey | AssetViewKey | DqViewKey | 'rbac' | 'about'
@@ -68,6 +71,13 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     desc: 'ศูนย์รวมกฎตรวจสอบทั้งหมด: กฎที่ใช้งาน · สร้างกฎแบบ no-code · คลังเงื่อนไข (must) ส่วนกลาง',
     icon: Library,
   },
+  profiling: {
+    key: 'profiling',
+    th: 'โปรไฟล์ข้อมูล',
+    en: 'Data Profiling',
+    desc: 'สำรวจลักษณะข้อมูลจริงรายคอลัมน์: ค่าว่าง ความไม่ซ้ำ ช่วงค่า ค่าที่พบบ่อย และการแจ้งเตือน PII (อ่านอย่างเดียว)',
+    icon: ScanSearch,
+  },
   'validation-results': {
     key: 'validation-results',
     th: 'ผลการตรวจสอบ',
@@ -81,6 +91,13 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     en: 'Failed Records',
     desc: 'รายการข้อมูลรายแถวที่ไม่ผ่านการตรวจ พร้อมเหตุผล สถานะการจัดการ และ PII masking ตามบทบาท',
     icon: FileWarning,
+  },
+  issues: {
+    key: 'issues',
+    th: 'ปัญหาคุณภาพข้อมูล',
+    en: 'DQ Issues',
+    desc: 'ทะเบียนปัญหาพร้อม lifecycle: เปิด → ดำเนินการ → แก้ไขแล้ว → ปิดโดยผู้อนุมัติ พร้อมแท็บข้อยกเว้น & การอนุมัติ',
+    icon: ListChecks,
   },
   rules: {
     key: 'rules',
@@ -102,13 +119,6 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     en: 'Validation Results',
     desc: 'รันการตรวจสอบคุณภาพข้อมูล และทบทวนสัญญาณความผิดปกติจาก AI (ต้องมีมนุษย์ทบทวนเสมอ)',
     icon: Play,
-  },
-  exceptions: {
-    key: 'exceptions',
-    th: 'ข้อยกเว้น & การอนุมัติ',
-    en: 'Exceptions & Approvals',
-    desc: 'คำขอยกเว้นผลตรวจที่ต้องผ่านการอนุมัติตามบทบาท พร้อมเหตุผลและวันหมดอายุ',
-    icon: ShieldCheck,
   },
   'asset-import': {
     key: 'asset-import',
@@ -140,20 +150,20 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
   },
 }
 
-export const CORE_VIEWS: CoreViewKey[] = ['rules', 'conditions', 'run', 'exceptions', 'dashboard']
+export const CORE_VIEWS: CoreViewKey[] = ['rules', 'conditions', 'run', 'dashboard']
 
 export function isCoreView(view: ViewKey): view is CoreViewKey {
   return (CORE_VIEWS as string[]).includes(view)
 }
 
-/** หน้าที่เรนเดอร์ผ่าน CoreFeaturesConsole โหมดเต็ม (dashboard / ผลการตรวจ / ข้อยกเว้น) */
+/** หน้าที่เรนเดอร์ผ่าน CoreFeaturesConsole โหมดเต็ม (แดชบอร์ด / ผลการตรวจ) */
 export function isConsoleView(view: ViewKey): view is CoreViewKey {
-  return view === 'dashboard' || view === 'run' || view === 'exceptions' || view === 'validation-results'
+  return view === 'dashboard' || view === 'run' || view === 'validation-results'
 }
 
 /* กลุ่มเมนูของ sidebar — เรียงตามลำดับการใช้งานจริง
-   โครงสร้าง Data Quality แบบ enterprise (v0.12.0): แสดงเฉพาะเมนูที่ใช้ได้จริง
-   — Data Profiling / DQ Issues / Root Cause / Remediation / Alerts จะเพิ่มตามเวอร์ชันถัดไป */
+   โครงสร้าง Data Quality แบบ enterprise (v0.13.0)
+   — Alerts จะเพิ่มในเวอร์ชันถัดไป (v0.14.0) */
 export interface NavGroup {
   labelTh: string
   labelEn: string
@@ -170,7 +180,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     labelTh: 'คุณภาพข้อมูล',
     labelEn: 'Data Quality',
-    items: ['scorecard', 'rule-library', 'validation-results', 'failed-records', 'exceptions'],
+    items: ['scorecard', 'rule-library', 'profiling', 'validation-results', 'failed-records', 'issues'],
   },
   {
     labelTh: 'การกำกับดูแล',

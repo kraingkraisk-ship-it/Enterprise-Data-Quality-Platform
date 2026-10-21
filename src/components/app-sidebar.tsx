@@ -25,19 +25,19 @@ import { NAV_GROUPS, VIEWS, APP_VERSION, type ViewKey } from '@/lib/views'
 
 interface NavCounts {
   pendingSignals: number
-  pendingExceptions: number
+  openIssues: number
   conditions: number
   newFailures: number
 }
 
-const INITIAL_COUNTS: NavCounts = { pendingSignals: 0, pendingExceptions: 0, conditions: 0, newFailures: 0 }
+const INITIAL_COUNTS: NavCounts = { pendingSignals: 0, openIssues: 0, conditions: 0, newFailures: 0 }
 
 /** ดึงตัวเลขสำหรับ badge ของเมนู (เรียกจาก timer callback — ไม่อยู่ใน effect body) */
 async function fetchNavCountsInto(onDone: (counts: NavCounts) => void) {
   try {
-    const [s, x, c, f] = await Promise.all([
+    const [s, i, c, f] = await Promise.all([
       fetch('/api/dq/signals').then((r) => r.json()),
-      fetch('/api/dq/exceptions').then((r) => r.json()),
+      fetch('/api/dq/issues?status=OPEN&take=1').then((r) => r.json()),
       fetch('/api/dq/conditions').then((r) => r.json()),
       fetch('/api/dq/failures?status=NEW&take=1').then((r) => r.json()),
     ])
@@ -45,9 +45,7 @@ async function fetchNavCountsInto(onDone: (counts: NavCounts) => void) {
       pendingSignals:
         s?.stats?.pending ??
         (Array.isArray(s?.signals) ? s.signals.filter((v: { status: string }) => v.status === 'PENDING_REVIEW').length : 0),
-      pendingExceptions: Array.isArray(x?.exceptions)
-        ? x.exceptions.filter((v: { status: string }) => v.status === 'PENDING').length
-        : 0,
+      openIssues: i?.stats?.OPEN ?? 0,
       conditions: Array.isArray(c?.conditions) ? c.conditions.length : 0,
       newFailures: f?.stats?.NEW ?? 0,
     })
@@ -63,9 +61,9 @@ function useNavCounts(reloadKey: ViewKey): NavCounts {
     let alive = true
     ;(async () => {
       try {
-        const [s, x, c, f] = await Promise.all([
+        const [s, i, c, f] = await Promise.all([
           fetch('/api/dq/signals').then((r) => r.json()),
-          fetch('/api/dq/exceptions').then((r) => r.json()),
+          fetch('/api/dq/issues?status=OPEN&take=1').then((r) => r.json()),
           fetch('/api/dq/conditions').then((r) => r.json()),
           fetch('/api/dq/failures?status=NEW&take=1').then((r) => r.json()),
         ])
@@ -74,9 +72,7 @@ function useNavCounts(reloadKey: ViewKey): NavCounts {
           pendingSignals:
             s?.stats?.pending ??
             (Array.isArray(s?.signals) ? s.signals.filter((v: { status: string }) => v.status === 'PENDING_REVIEW').length : 0),
-          pendingExceptions: Array.isArray(x?.exceptions)
-            ? x.exceptions.filter((v: { status: string }) => v.status === 'PENDING').length
-            : 0,
+          openIssues: i?.stats?.OPEN ?? 0,
           conditions: Array.isArray(c?.conditions) ? c.conditions.length : 0,
           newFailures: f?.stats?.NEW ?? 0,
         })
@@ -114,7 +110,7 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
 
   function badgeFor(view: ViewKey): number | undefined {
     if (view === 'validation-results' && counts.pendingSignals > 0) return counts.pendingSignals
-    if (view === 'exceptions' && counts.pendingExceptions > 0) return counts.pendingExceptions
+    if (view === 'issues' && counts.openIssues > 0) return counts.openIssues
     if (view === 'rule-library' && counts.conditions > 0) return counts.conditions
     if (view === 'failed-records' && counts.newFailures > 0) return counts.newFailures
     return undefined
@@ -162,12 +158,12 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
                       {badge !== undefined && (
                         <SidebarMenuBadge
                           className={
-                            key === 'failed-records'
+                            key === 'issues'
                               ? 'bg-rose-100 text-rose-900'
-                              : key === 'validation-results'
-                                ? 'bg-amber-100 text-amber-900'
-                                : key === 'exceptions'
-                                  ? 'bg-emerald-100 text-emerald-900'
+                              : key === 'failed-records'
+                                ? 'bg-rose-100 text-rose-900'
+                                : key === 'validation-results'
+                                  ? 'bg-amber-100 text-amber-900'
                                   : 'bg-slate-100 text-slate-700'
                           }
                         >

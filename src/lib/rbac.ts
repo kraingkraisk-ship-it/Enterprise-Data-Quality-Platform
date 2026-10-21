@@ -24,6 +24,7 @@ export const PERMISSION_KEYS = [
   'RUN_VALIDATION',
   'REVIEW_SIGNALS',
   'APPROVE_EXCEPTIONS',
+  'MANAGE_ISSUES',
   'VIEW_DASHBOARDS',
   'MANAGE_USERS',
 ] as const
@@ -37,6 +38,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, { th: string; en: string }
   RUN_VALIDATION: { th: 'รันการตรวจสอบ', en: 'Run Validation' },
   REVIEW_SIGNALS: { th: 'ทบทวนสัญญาณ AI', en: 'Review ML Signals' },
   APPROVE_EXCEPTIONS: { th: 'อนุมัติข้อยกเว้น', en: 'Approve Exceptions' },
+  MANAGE_ISSUES: { th: 'จัดการปัญหาคุณภาพข้อมูล', en: 'Manage DQ Issues' },
   VIEW_DASHBOARDS: { th: 'ดูแดชบอร์ด', en: 'View Dashboards' },
   MANAGE_USERS: { th: 'จัดการผู้ใช้และสิทธิ์', en: 'Manage Users' },
 }
@@ -63,6 +65,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'MANAGE_RULES',
       'RUN_VALIDATION',
       'APPROVE_EXCEPTIONS',
+      'MANAGE_ISSUES',
       'VIEW_DASHBOARDS',
     ],
     scope: 'เห็นเฉพาะชุดข้อมูลที่ตนเป็นเจ้าของหรือได้รับมอบสิทธิ์',
@@ -78,6 +81,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'MANAGE_RULES',
       'RUN_VALIDATION',
       'REVIEW_SIGNALS',
+      'MANAGE_ISSUES',
       'VIEW_DASHBOARDS',
     ],
     scope: 'เห็นเฉพาะชุดข้อมูลในโดเมนที่รับผิดชอบ',
@@ -87,7 +91,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
     th: 'นักวิเคราะห์คุณภาพข้อมูล',
     en: 'Data Quality Analyst',
     desc: 'ทบทวนผลตรวจและสัญญาณ AI วิเคราะห์สาเหตุ และสร้างกฎเพิ่มเติม',
-    permissions: ['VIEW_DATASETS', 'MANAGE_RULES', 'RUN_VALIDATION', 'REVIEW_SIGNALS', 'VIEW_DASHBOARDS'],
+    permissions: ['VIEW_DATASETS', 'MANAGE_RULES', 'RUN_VALIDATION', 'REVIEW_SIGNALS', 'MANAGE_ISSUES', 'VIEW_DASHBOARDS'],
     scope: 'เห็นเฉพาะชุดข้อมูลที่ได้รับมอบหมายให้วิเคราะห์',
   },
   DATA_ENGINEER: {
@@ -95,7 +99,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
     th: 'วิศวกรข้อมูล',
     en: 'Data Engineer',
     desc: 'จัดการแหล่งข้อมูล การนำเข้า และประสิทธิภาพของการตรวจสอบ',
-    permissions: ['VIEW_DATASETS', 'MANAGE_DATASETS', 'RUN_VALIDATION', 'VIEW_DASHBOARDS'],
+    permissions: ['VIEW_DATASETS', 'MANAGE_DATASETS', 'RUN_VALIDATION', 'MANAGE_ISSUES', 'VIEW_DASHBOARDS'],
     scope: 'เห็นเฉพาะชุดข้อมูลที่รับผิดชอบด้านวิศวกรรม',
   },
   COMPLIANCE_OFFICER: {
@@ -132,6 +136,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'MANAGE_DATASETS',
       'MANAGE_RULES',
       'RUN_VALIDATION',
+      'MANAGE_ISSUES',
       'VIEW_DASHBOARDS',
       'MANAGE_USERS',
     ],
