@@ -604,3 +604,20 @@ Stage Summary:
 - ครบทุก tags บน remote: `v0.11.0` (c6c8198 เมนู Data Asset: นำเข้า CSV/JSON/Database + คลังข้อมูล) ← rollback ย้อนได้ที่ `v0.10.0` (7d3366f แดชบอร์ด 5 ส่วน) / `v0.9.0` (8663dba) / `v0.8.0` (bcfd1b2) / `v0.7.0` (03801bf) / `v0.6.0` (65a5ac6) / `v0.5.0` (d0c979e) / `v0.4.0` (567f586)
 - คำสั่ง rollback กลับไป v0.10.0 บนเครื่อง local: `git reset --hard 7d3366f && bun run db:push && bun scripts/seed.ts`
 - Token ใช้เฉพาะใน push command (one-time URL) ไม่มีบันทึกลงไฟล์/config ใดๆ — ผู้ใช้ควร revoke/rotate token หลังใช้งาน (GitHub → Settings → Developer settings → Fine-grained personal access tokens)
+
+---
+
+## Task ID: 19-plan
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: วางแผนปรับโครงสร้างเมนู Data Quality เป็น 11 รายการ (DQ Dashboard / DQ Scorecard / DQ Rule Library / Data Profiling / Validation Results / Failed Records / DQ Issues / Root Cause Analysis / Remediation Plans / Monitoring / Alerts) — ผู้ใช้ขอ "วางแผนก่อน ยังไม่รีบทำ"
+
+Work Log:
+- สำรวจโค้ดปัจจุบันครบ: views.ts (CoreViewKey 5 มุมมอง: rules/conditions/run/exceptions/dashboard), app-sidebar (NAV_GROUPS 4 กลุ่ม + live badges), page.tsx (shell + hidden-mounted switching), core-features-console.tsx (2,030 บรรทัด — Tabs 1:1 กับ core views), schema.prisma (Dataset/SampleRow/DqRule/RuleDataset/ConditionTemplate/DqRun/DqSignal/DqException + DataAsset*), run engine (evaluateRule มี failedIndexes ระดับแถวแต่เก็บเฉพาะ aggregate DqRun + failedSamples 3 แถว transient)
+- Gap สำคัญที่ค้นพบ: (1) ไม่มีการ persist ผลล้มเหลวระดับแถว → Failed Records/RCA/Remediation ต้องมีก่อน (2) ไม่มีแนวคิด "รอบการตรวจ" (batch) → drill-down ยาก (3) ไม่มี profiling (4) Signal/Exception กระจัดกระจาย ไม่มี Issue register ที่มี lifecycle (5) ไม่มี scheduler/alert
+- ออกแบบแผน 4 เฟส (v0.12–v0.15) + data model ใหม่ 11 models + API ใหม่ ~15 เส้น + หลัก UX enterprise — รายละเอียดเต็มอยู่ในข้อความนำเสนอผู้ใช้ (แผนฉบับนี้ย่อ)
+
+Stage Summary:
+- **แผน 4 เฟส**: v0.12.0 = โครงเมนูใหม่ + ผลตรวจระดับแถว (DqValidationBatch + DqFailureRecord + Scorecard + Validation Results + Failed Records + Rule Library รวม rules/conditions) / v0.13.0 = Data Profiling (adapter Dataset+DataAsset) + DQ Issues (register + lifecycle + exceptions เป็นแท็บ) / v0.14.0 = RCA (5-Why + evidence) + Remediation Plans (plan+task+ตรวจซ้ำ) / v0.15.0 = Monitoring (scheduler in-app + run-now) + Alerts (alert rules + inbox)
+- การตัดสินใจหลัก: (1) persist snapshot แถวที่ล้มเหลว cap 200/กฎ/รอบ + mask ตอนอ่านตามบทบาท (PDPA) (2) แนะนำเมนูแบบ "โตทีละขั้น" — แสดงเฉพาะรายการที่ใช้งานได้จริงทุกเวอร์ชัน (ไม่มีเมนูตาย) (3) DqSignal คงอยู่เป็น raw signal layer, DqIssue เป็น register ที่มี lifecycle, confirm signal → เปิด issue อัตโนมัติ (4) หลักเดิมคงครบ: READ-ONLY, RBAC+Audit ทุก action, ML เป็นสัญญาณ, deny-by-default
+- คำถามรอยืนยันจากผู้ใช้ 4 ข้อ: (1) เมนูโตทีละขั้น vs แสดง 11 แล้วขึ้น "กำลังพัฒนา" (2) ตกลง cap 200 แถว snapshot ไหม (3) รอบ Monitoring ที่ต้องการ (4) Exceptions ย้ายเป็นแท็บใน DQ Issues โดยคง flow อนุมัติ
+- **สถานะ: รอผู้ใช้อนุมัติแผน/ตอบคำถาม → ยังไม่เขียนโค้ด** (commit นี้เป็น docs-only, push พร้อม v0.12.0 หรือเมื่อผู้ใช้ส่ง token)
