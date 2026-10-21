@@ -541,3 +541,23 @@ Stage Summary:
 - ทุกสถานะบนแดชบอร์ดคำนวณจากผลรันตรวจล่าสุดจริง (ไม่ใช่ mock) — seed สร้างประวัติ 3 รอบด้วยเอนจินจริง
 - Rollback point: ก่อนงานนี้ = `8663dba` (v0.9.0 + worklog Task 16)
 - **รอ push**: main (8663dba → v0.10.0) + 3 tags ที่ยังไม่ได้ขึ้น remote: v0.8.0 (bcfd1b2), v0.9.0 (fc52ed2), v0.10.0 (งานนี้) — ต้องขอ token ใหม่จากผู้ใช้ก่อน push (token เดิมถูก redact ตาม workflow)
+
+---
+
+## Task ID: 17-result
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: Push v0.10.0 ขึ้น GitHub + remote verification (บันทึกผล push ด้วย token ใหม่จากผู้ใช้)
+
+Work Log:
+- ตรวจสถานะก่อน push: local main = `7d3366f` (v0.10.0 แดชบอร์ด 5 ส่วน, commit จาก session ก่อน), tag `v0.10.0` มีอยู่แล้วชี้ `7d3366f` ถูกต้อง (session ก่อนสร้างไว้ — ตรวจซ้ำด้วย `git rev-parse v0.10.0^{commit}`), remote main อยู่ที่ `8663dba`, remote มี tag v0.8.0 (bcfd1b2) + v0.9.0 (8663dba) แล้ว — working tree สะอาด, branch ahead 1
+- Pre-flight คุณภาพผ่านทั้งหมด: (1) `bun run lint` สะอาด (2) dev server HTTP 200 + dev.log ท้ายไฟล์ไม่มี error (มีแค่ prisma query ปกติ) (3) agent-browser smoke test — หน้าแดชบอร์ด v0.10.0 แสดงแท็บ 5 ส่วนครบ (ภาพรวม/รายละเอียดการตรวจ/Regulation/Risk/Data Classification), ส่วน 1 คะแนนรวม 85.7/100 เกรด "ดี" มาตรา 9/9 DAMA-DMBOK, ส่วน 2 verdict "ไม่ผ่าน 9" พร้อมคำตัดสินตามมาตรา, ส่วน 3 กรอบ DAMA-DMBOK + ISO/IEC 25012 + ISO 8000 + ISO/IEC 25024, ส่วน 4 Risk Matrix (โอกาส×ผลกระทบ) + ระดับสูงมาก, ส่วน 5 การ์ด 11 ประเภท (Enterprise Data Governance → 5.11) — **ไม่มี page error และไม่มี console error**
+- Push ด้วย token ใหม่จากผู้ใช้ (one-time URL ตรงในคำสั่ง push, ไม่บันทึกลง git config, redact ทุก output ด้วย sed) สำเร็จ EXIT=0 ทั้งคู่:
+  - `8663dba..7d3366f  main -> main`
+  - `* [new tag]  v0.10.0 -> v0.10.0`
+- Verify ด้วย `git ls-remote origin main refs/tags/v0.10.0 refs/tags/v0.9.0 refs/tags/v0.8.0` (public read ไม่ใช้ token): refs/heads/main = `7d3366f0f037ba26ee8db224cc8d3ac3bd48b547` ตรง local HEAD เป๊ะ, v0.10.0 = `7d3366f0…` ตรง, v0.9.0 = `8663dba9…` ตรง, v0.8.0 = `bcfd1b2d…` ตรง — ครบทุก hash
+
+Stage Summary:
+- **v0.10.0 อยู่บน GitHub remote สมบูรณ์** (main + tag) — remote = local = `7d3366f`, sync 100%
+- ครบทุก tags บน remote: `v0.10.0` (7d3366f แดชบอร์ด 5 ส่วน) ← rollback ย้อนได้ที่ `v0.9.0` (8663dba มาตรา 9 มาตรา) / `v0.8.0` (bcfd1b2 เอนจิน 9 มิติ) / `v0.7.0` (03801bf มิติ 9 มิติ + Dimension Picker) / `v0.6.0` (65a5ac6) / `v0.5.0` (d0c979e) / `v0.4.0` (567f586)
+- คำสั่ง rollback กลับไป v0.9.0 บนเครื่อง local: `git reset --hard 8663dba && bun run db:push && bun scripts/seed.ts`
+- Token ใช้เฉพาะใน push command (one-time URL) ไม่มีบันทึกลงไฟล์/config ใดๆ — ผู้ใช้ควร revoke/rotate token หลังใช้งาน (GitHub → Settings → Developer settings → Fine-grained personal access tokens)
