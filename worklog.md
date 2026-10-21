@@ -665,3 +665,37 @@ Stage Summary:
 - **v0.12.0 อยู่บน remote ครบถ้วน**: main = 368e61e + tag v0.12.0 (annotated) — ประวัติสะอาด (ไม่มี commit UUID), file modes ถูกต้องตามต้นฉบับ, sync 100%
 - ควร revoke token นี้หลังเซสชันตามแนวทางเดิม (แนะนำไว้แล้วใน Task 18-result)
 - สถานะถัดไป: v0.13.0 = Data Profiling + DQ Issues (exceptions ย้ายเป็นแท็บ) · v0.14.0 = RCA + Remediation + Alerts
+
+---
+## Task ID: 21
+Agent: Z.ai Code (main session)
+Task: v0.13.0 — เฟส 2/3 เมนู Data Quality: Data Profiling + DQ Issues (ผู้ใช้ส่ง token = อนุมัติดำเนินการต่อตามแผน)
+
+Work Log:
+- **Schema**: เพิ่ม DqProfileRun (รอบโปรไฟล์: rows/columns/avgCompleteness/avgUniqueness/piiColumnCount) + DqProfileColumn (สถิติรายคอลัมน์: null%/distinct%/min-max-mean/topValues JSON/piiSuspected) + DqIssue (code ISS-xxxx unique, source MANUAL|SIGNAL|FAILURE|EXCEPTION, status OPEN|IN_PROGRESS|RESOLVED|CLOSED, lifecycle timestamps) + Dataset relations → db:push สำเร็จ
+- **RBAC**: เพิ่มสิทธิ์ MANAGE_ISSUES ("จัดการปัญหาคุณภาพข้อมูล") ให้ DATA_OWNER / DATA_STEWARD / DQ_ANALYST / DATA_ENGINEER / SYS_ADMIN — ปิดโดย APPROVE_EXCEPTIONS (แยกผู้แก้กับผู้ปิด)
+- **Lib ใหม่**: `lib/profiling.ts` (เอนจินสถิติรายคอลัมน์ + heuristic ตรวจ PII จากชื่อคอลัมน์/รูปแบบค่า + PROFILE_MAX_ROWS 2000 + DATA_TYPE_LABELS) · `lib/issues.ts` (ISSUE_SOURCE_LABELS / STATUS_META / TRANSITIONS deny-by-default / nextIssueCode)
+- **API ใหม่ 4 เส้น**: POST/GET `/api/dq/profile` (รันต้อง RUN_VALIDATION, ประวัติ 12 รอบ) · GET `/api/dq/profile/[id]` (mask ตามบทบาท) · GET/POST `/api/dq/issues` (กรองครบ + stats + กันซ้ำด้วย source+sourceId) · PATCH `/api/dq/issues/[id]` (START/RESOLVE(note บังคับ)/CLOSE(REVIEW ผ่าน APPROVE_EXCEPTIONS)/REOPEN/ASSIGN + AuditLog ทุก action)
+- **signals/[id]**: CONFIRM → เปิด DQ Issue อัตโนมัติใน `$transaction` เดียว (atomic — กันสถานะค้าง)
+- **UI**: แตก ExceptionsPanel (self-contained) ออกจาก console (2,056→1,838 บรรทัด) · `dq/profiling.tsx` (KPI + ตารางรายคอลัมน์ + top values mask + ประวัติ + เลือกผู้ชม) · `dq/issues.tsx` (แท็บทะเบียนปัญหา/ข้อยกเว้น + KPI 4 สถานะ + กรอง 5 ช่อง + dialog lifecycle พร้อมเลือกผู้ดำเนินการ + มอบหมาย) · failed-records เพิ่มปุ่ม "เปิดเป็น Issue" · views/sidebar/page wiring + badge สด openIssues (แดง)
+- **Seed เสริม**: โปรไฟล์ 2 ชุดข้อมูล + ปัญหาตัวอย่าง (ISS-0001 MANUAL, ISS-0003 RESOLVED; ISS-0002 ข้ามเมื่อไม่มีสัญญาณยืนยัน) — guard count=0
+
+Stage Summary:
+- **บั๊กที่จับได้และแก้ระหว่างตรวจ**: (1) nextIssueCode ใช้ count+1 ชนรหัสเมื่อมีช่องว่าง → เปลี่ยนเป็น max+1 (2) signal CONFIRM ไม่ atomic → ครอบ $transaction (3) **PII leak**: minValue/maxValue คอลัมน์ข้อความไม่ถูก mask (เห็นอีเมลเต็มใน strict viewer) → mask ครบทุกสถิติ (4) Prisma client cache เก่าหลัง schema เปลี่ยน → รีสตาร์ท dev server
+- ตรวจผ่าน: lint สะอาด · API smoke ครบ (lifecycle START→RESOLVE→CLOSE, RBAC 403 BUSINESS_USER, duplicate guard, auto-issue ISS-0005, empty dataset guidance) · agent-browser ครบ (profiling ตาราง+mask email `s••••@acme.co.th`+รันผ่าน UI, issues แท็บ 2 อัน+START ผ่าน UI+ExceptionsPanel, เปิด ISS-0006 จากแถว #18 ผ่าน UI, scorecard/failed-records เดิมปกติ, มือถือ 390px ไม่ overflow, ZERO page errors — หมายเหตุ: error เดิมที่เจอคือ browser HTTP cache เซสชันเกิน เปิดเซสชันใหม่สะอาด)
+- สถานะเมนู Data Quality: **6 รายการใช้งานจริง** (บัตรคะแนน / คลังกฎ / โปรไฟล์ข้อมูล / ผลการตรวจ / ข้อมูลที่ไม่ผ่าน / ปัญหาคุณภาพข้อมูล[รวมข้อยกเว้น])
+
+---
+## Task ID: 21-result
+Agent: Z.ai Code (main session)
+Task: Push v0.13.0 (main + annotated tag) ด้วย token ที่ผู้ใช้ให้ (one-time URL, redact ทุก output)
+
+Work Log:
+- Commit `6969df7` + annotated tag v0.13.0 (tag object `369fe12`) → push สำเร็จ `8dc4e99..6969df7 main` + new tag (sed redact, ไม่บันทึกลง git config)
+- Verify: ls-remote → refs/heads/main = 6969df7 ตรง local · v0.13.0^{} = 6969df7 ตรงเป๊ะ
+- fetch + status in-sync (ไม่มี ahead/behind) · git config --list | rg -i "github_pat|token" = CONFIG CLEAN
+
+Stage Summary:
+- **v0.13.0 อยู่บน remote ครบถ้วน** (main + annotated tag) · sync 100% · config CLEAN
+- แนะนำ revoke token นี้หลังเซสชัน (แนวทางเดิมทุกครั้ง)
+- เหลือตามแผน: **v0.14.0 = RCA (5-Why) + Remediation Plan/Task (ในหน้า DQ Issues) + Alerts (สัญญาณ AI ย้ายไป Alerts) — เฟสสุดท้าย ครบ 8 เมนู**
