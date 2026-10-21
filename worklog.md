@@ -644,3 +644,24 @@ Stage Summary:
 - เหลือตามแผน: v0.13.0 = Data Profiling + DQ Issues (exceptions เป็นแท็บ) · v0.14.0 = RCA + Remediation + Alerts (สัญญาณ AI ย้ายไป Alerts)
 - Rollback point: ก่อนงานนี้ = `fda8a98` (v0.11.0 + worklog 17/18-result + 19-plan) — กู้คืน `git reset --hard fda8a98 && bun run db:push && bun scripts/seed.ts`
 - **รอ push**: main + tag v0.12.0 — ต้องขอ token จากผู้ใช้ก่อน push ตาม workflow
+
+---
+## Task ID: 20-result
+Agent: Z.ai Code (main session)
+Task: เก็บกวาดประวัติ git + push v0.12.0 (main + tag) ขึ้น GitHub ด้วย token ที่ผู้ใช้ให้ ตาม enforced workflow
+
+Work Log:
+- กลับมาในเซสชันใหม่: พบ v0.12.0 พัฒนา+ตรวจเสร็จแล้ว (commit 320cdd5 + lightweight tag) ค้าง push — แต่มี commit ขยะ 35b9870 (ชื่อ UUID, mode-only พลิก 644→755 ~118 ไฟล์ จากเครื่องมือภายนอก) แทรกในประวัติ
+- กันพลาด: สร้าง recovery branch backup/v0.12.0-pre-push → 320cdd5 + เก็บ commit message เดิมไว้
+- ตรวจชุดไฟล์ที่ควรเป็น executable จริงจาก fda8a98 = 13 ไฟล์ (.zscripts/*.sh, tests/*.sh, download/README.md, worklog.md)
+- ทำความสะอาดประวัติ: chmod 644 ไฟล์ tracked ทั้งหมด → คืน 755 เฉพาะ 13 ไฟล์ตาม fda8a98 → reset --soft fda8a98 → add -A → recommit เป็น commit เดียว 368e61e (ข้อความเดิมครบถ้วน) → ลบ lightweight tag แล้วสร้าง annotated tag v0.12.0 แทน (เทียบเคียง v0.4.0–v0.11.0)
+- ยืนยันเนื้อหา: diff backup(320cdd5) vs HEAD = 113 files, 0 insertions, 0 deletions (mode-only) — โค้ดไม่เปลี่ยนแม้แต่ไบต์เดียว · โหมดสุดท้าย 121×644 + 13×755 ถูกต้อง
+- Pre-flight ใหม่ทั้งชุด: lint สะอาด · HTTP 200 · API ใหม่ 3 เส้นคืนข้อมูลจริง (scorecard avgScore 91.46 / validations batch / failures 7 แถว) · agent-browser คลิกจริงบัตรคะแนน DQ + ข้อมูลที่ไม่ผ่าน ทำงานครบ ไม่มี page error, console สะอาด
+- Push: git push <one-time URL ฝัง token> main v0.12.0 → 6e114a7..368e61e main + new tag (output redact ด้วย sed ทุกบรรทัด, token ไม่ถูกบันทึกลง git config)
+- Verify remote: ls-remote → refs/heads/main = 368e61e ตรง local · refs/tags/v0.12.0 = f536f07 (annotated object) → ^{} = 368e61e ตรงเป๊ะ
+- ปิดท้าย: fetch + status in-sync (ไม่มี ahead/behind) · git config --list | rg -i "github_pat|token" = CONFIG CLEAN · ลบ backup branch แล้ว
+
+Stage Summary:
+- **v0.12.0 อยู่บน remote ครบถ้วน**: main = 368e61e + tag v0.12.0 (annotated) — ประวัติสะอาด (ไม่มี commit UUID), file modes ถูกต้องตามต้นฉบับ, sync 100%
+- ควร revoke token นี้หลังเซสชันตามแนวทางเดิม (แนะนำไว้แล้วใน Task 18-result)
+- สถานะถัดไป: v0.13.0 = Data Profiling + DQ Issues (exceptions ย้ายเป็นแท็บ) · v0.14.0 = RCA + Remediation + Alerts
