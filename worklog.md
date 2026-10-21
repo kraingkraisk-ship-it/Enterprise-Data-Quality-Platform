@@ -584,3 +584,23 @@ Stage Summary:
 - ความปลอดภัยตามหลักระบบ: RBAC (เฉพาะ 4 บทบาทจัดการ) + Audit Trail 100% (import/rename/toggle/delete) + PDPA masking ตามบทบาท + deny-by-default SQL (SELECT เท่านั้น) + ไม่เก็บรหัสผ่านการเชื่อมต่อ + จำกัดขนาด
 - Rollback point: ก่อนงานนี้ = `4f3cf86` (v0.10.0 + worklog Task 17-result) — กู้คืน `git reset --hard 4f3cf86 && bun run db:push && bun scripts/seed.ts`
 - **รอ push**: main (4f3cf86 → v0.11.0) + tag v0.11.0 — ต้องขอ token จากผู้ใช้ก่อน push (token เดิมถูก redact ตาม workflow)
+
+---
+
+## Task ID: 18-result
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: Push v0.11.0 (เมนู Data Asset) ขึ้น GitHub + remote verification (บันทึกผล push ด้วย token ใหม่จากผู้ใช้)
+
+Work Log:
+- ตรวจสถานะก่อน push: local main = `c6c8198` (v0.11.0 เมนู Data Asset, commit + tag จาก session ก่อนที่ context หมด), tag `v0.11.0` มีอยู่แล้วชี้ `c6c8198` ถูกต้อง (`git rev-parse v0.11.0^{commit}`), remote main อยู่ที่ `4f3cf86`, remote มี tags ถึง v0.10.0 (7d3366f) — working tree สะอาด, branch ahead 1
+- Pre-flight คุณภาพผ่านทั้งหมด: (1) `bun run lint` สะอาด (2) dev server HTTP 200 + dev.log ท้ายไฟล์มีแค่ prisma query ปกติ (3) agent-browser smoke test งาน Data Asset — เมนูใหม่ "นำเข้าข้อมูล" + "คลังข้อมูล" แสดงในกลุ่ม Data Asset, หน้านำเข้ามีการ์ดเลือกแหล่ง 3 ใบ (ไฟล์ CSV / ไฟล์ JSON / ฐานข้อมูล MySQL/PostgreSQL) + ขั้นตอน "2 · ตั้งชื่อ Data Asset" + ปุ่มนำเข้า disabled จนกรอกครบ, หน้าคลังข้อมูลแสดง seed 2 asset (ทะเบียนลูกค้าสาขาภาคเหนือ CSV + รายงานอัตราแลกเปลี่ยนรายวัน JSON), Dialog รายละเอียดเปิดได้พร้อมแท็บ 3 อัน (ข้อมูล 8 แถว / โครงสร้างคอลัมน์ 7 / รายละเอียดแหล่งข้อมูล) — **ไม่มี page error และไม่มี console error**
+- Push ด้วย token ใหม่จากผู้ใช้ (one-time URL ตรงในคำสั่ง push, ไม่บันทึกลง git config, redact ทุก output ด้วย sed) สำเร็จ EXIT=0 ทั้งคู่:
+  - `4f3cf86..c6c8198  main -> main`
+  - `* [new tag]  v0.11.0 -> v0.11.0`
+- Verify ด้วย `git ls-remote origin` (public read ไม่ใช้ token): refs/heads/main = `c6c81988994568b5ed7aecc4d94483273895c231` ตรง local HEAD เป๊ะ, refs/tags/v0.11.0 = `e9631dae…` (annotated tag object) และ dereference `refs/tags/v0.11.0^{}` = `c6c81988…` ตรง commit เป๊ะ, v0.10.0 = `7d3366f0…` ตรง — ครบทุก hash
+
+Stage Summary:
+- **v0.11.0 อยู่บน GitHub remote สมบูรณ์** (main + tag) — remote = local = `c6c8198`, sync 100%
+- ครบทุก tags บน remote: `v0.11.0` (c6c8198 เมนู Data Asset: นำเข้า CSV/JSON/Database + คลังข้อมูล) ← rollback ย้อนได้ที่ `v0.10.0` (7d3366f แดชบอร์ด 5 ส่วน) / `v0.9.0` (8663dba) / `v0.8.0` (bcfd1b2) / `v0.7.0` (03801bf) / `v0.6.0` (65a5ac6) / `v0.5.0` (d0c979e) / `v0.4.0` (567f586)
+- คำสั่ง rollback กลับไป v0.10.0 บนเครื่อง local: `git reset --hard 7d3366f && bun run db:push && bun scripts/seed.ts`
+- Token ใช้เฉพาะใน push command (one-time URL) ไม่มีบันทึกลงไฟล์/config ใดๆ — ผู้ใช้ควร revoke/rotate token หลังใช้งาน (GitHub → Settings → Developer settings → Fine-grained personal access tokens)
