@@ -5,6 +5,7 @@
  */
 import { PrismaClient } from '@prisma/client'
 import { evaluateRule, DIMENSION_LABELS, type DimensionKey, type Row } from '../src/lib/dq'
+import { inferColumnType } from '../src/lib/asset'
 
 const db = new PrismaClient()
 
@@ -391,6 +392,9 @@ const RUN_BATCHES: Array<{ daysAgo: number; label: string }> = [
 
 async function main() {
   await db.dqRun.deleteMany()
+  await db.dataAssetRecord.deleteMany()
+  await db.dataAssetColumn.deleteMany()
+  await db.dataAsset.deleteMany()
   await db.ruleDataset.deleteMany()
   await db.dqRule.deleteMany()
   await db.conditionTemplate.deleteMany()
@@ -675,6 +679,88 @@ async function main() {
     },
   })
 
+  // ---------- Data Asset ตัวอย่าง (โมดูล Data Asset — CSV / JSON) ----------
+  // ทำข้อมูลตัวอย่างให้คลังข้อมูล (Data Inventory) มีข้อมูลตั้งแต่เปิดหน้าแรก
+  interface SeedAsset {
+    name: string
+    description: string
+    sourceType: 'CSV' | 'JSON' | 'DATABASE'
+    sourceInfo: Record<string, unknown>
+    rows: Row[]
+    columns: string[]
+  }
+
+  const ASSET_BRANCH_CSV = 'ทะเบียนลูกค้าสาขาภาคเหนือ (CSV)'
+  const branchRows: Row[] = [
+    { customer_id: 'NC-1001', full_name: 'อนันต์ ใจดี', email: 'anan.jaidee@example.co.th', phone: '053-210-101', branch: 'เชียงใหม่', balance: 42500.5, kyc_date: '2026-09-02' },
+    { customer_id: 'NC-1002', full_name: 'พิมพ์ชนก แสงทอง', email: 'pimchanok.s@example.co.th', phone: '053-210-102', branch: 'เชียงใหม่', balance: 18700, kyc_date: '2026-09-10' },
+    { customer_id: 'NC-1003', full_name: 'ธนกร มั่นคง', email: 'thanakorn.m@example.co.th', phone: '054-330-201', branch: 'ลำพูน', balance: 92150.75, kyc_date: '2026-08-21' },
+    { customer_id: 'NC-1004', full_name: 'สุนิสา บุญมาก', email: 'sunisa.b@example.co.th', phone: '054-330-202', branch: 'ลำปาง', balance: 7300, kyc_date: '2026-09-15' },
+    { customer_id: 'NC-1005', full_name: 'วิชัย เดินทาง', email: 'wichai.d@example.co.th', phone: '055-110-301', branch: 'แพร่', balance: 156800, kyc_date: '2026-07-30' },
+    { customer_id: 'NC-1006', full_name: 'กมลวรรณ อ่อนน้อม', email: 'kamolwan.o@example.co.th', phone: '055-110-302', branch: 'น่าน', balance: 33450, kyc_date: '2026-09-18' },
+    { customer_id: 'NC-1007', full_name: 'ประเสริฐ งามดี', email: 'prasert.n@example.co.th', phone: '042-500-401', branch: 'เชียงราย', balance: 58900.25, kyc_date: '2026-08-05' },
+    { customer_id: 'NC-1008', full_name: 'มานะ ตั้งใจ', email: 'mana.t@example.co.th', phone: '042-500-402', branch: 'พะเยา', balance: 9900, kyc_date: '2026-09-22' },
+  ]
+  const ASSET_EXCHANGE_JSON = 'รายงานอัตราแลกเปลี่ยนรายวัน (JSON)'
+  const fxRows: Row[] = [
+    { date: '2026-10-19', currency: 'USD', buy: 33.12, sell: 33.85, source: 'ตลาดในประเทศ' },
+    { date: '2026-10-19', currency: 'EUR', buy: 36.4, sell: 37.15, source: 'ตลาดในประเทศ' },
+    { date: '2026-10-19', currency: 'JPY', buy: 0.2215, sell: 0.2285, source: 'ตลาดในประเทศ' },
+    { date: '2026-10-19', currency: 'GBP', buy: 42.8, sell: 43.65, source: 'ตลาดในประเทศ' },
+    { date: '2026-10-19', currency: 'SGD', buy: 24.9, sell: 25.42, source: 'ตลาดในประเทศ' },
+    { date: '2026-10-19', currency: 'CNY', buy: 4.63, sell: 4.71, source: 'ตลาดในประเทศ' },
+    { date: '2026-10-19', currency: 'AUD', buy: 21.75, sell: 22.2, source: 'ตลาดในประเทศ' },
+    { date: '2026-10-19', currency: 'HKD', buy: 4.24, sell: 4.33, source: 'ตลาดในประเทศ' },
+  ]
+  const SEED_ASSETS: SeedAsset[] = [
+    {
+      name: ASSET_BRANCH_CSV,
+      description: 'ทะเบียนลูกค้ารายสาขาภาคเหนือ พร้อมยอดคงเหลือและวันที่ KYC — นำเข้าจากไฟล์ CSV รายเดือน',
+      sourceType: 'CSV',
+      sourceInfo: { fileName: 'north-branch-customers.csv', sizeChars: 1024, delimiter: ',', skippedRows: 0 },
+      rows: branchRows,
+      columns: ['customer_id', 'full_name', 'email', 'phone', 'branch', 'balance', 'kyc_date'],
+    },
+    {
+      name: ASSET_EXCHANGE_JSON,
+      description: 'อัตราแลกเปลี่ยนซื้อ-ขายรายวัน 8 สกุล — นำเข้าจาก JSON feed ระบบ Treasury',
+      sourceType: 'JSON',
+      sourceInfo: { fileName: 'fx-daily.json', sizeChars: 768, shape: 'อาร์เรย์ของวัตถุ (array of objects)', skippedRows: 0 },
+      rows: fxRows,
+      columns: ['date', 'currency', 'buy', 'sell', 'source'],
+    },
+  ]
+
+  for (const a of SEED_ASSETS) {
+    await db.$transaction(async (tx) => {
+      const asset = await tx.dataAsset.create({
+        data: {
+          name: a.name,
+          description: a.description,
+          sourceType: a.sourceType,
+          sourceInfo: JSON.stringify(a.sourceInfo),
+          rowCount: a.rows.length,
+          columnCount: a.columns.length,
+          importedBy: 'preecha.engineer@company.co.th',
+        },
+      })
+      await tx.dataAssetColumn.createMany({
+        data: a.columns.map((c, idx) => ({ assetId: asset.id, name: c, dataType: inferColumnType(a.rows, c), position: idx })),
+      })
+      await tx.dataAssetRecord.createMany({
+        data: a.rows.map((r, idx) => ({ assetId: asset.id, rowNo: idx + 1, payload: JSON.stringify(r) })),
+      })
+    })
+    await db.auditLog.create({
+      data: {
+        action: 'IMPORT_DATA_ASSET',
+        actor: 'preecha.engineer@company.co.th',
+        target: a.name,
+        detail: `นำเข้า Data Asset "${a.name}" จากแหล่ง ${a.sourceType} — ${a.rows.length} แถว / ${a.columns.length} คอลัมน์ โดย ปรีชา วิศวกรรม (บทบาท Data Engineer)`,
+      },
+    })
+  }
+
   console.log('Seed complete:', {
     users: await db.user.count(),
     datasets: await db.dataset.count(),
@@ -686,6 +772,8 @@ async function main() {
     runs: await db.dqRun.count(),
     signals: await db.dqSignal.count(),
     exceptions: await db.dqException.count(),
+    dataAssets: await db.dataAsset.count(),
+    dataAssetRecords: await db.dataAssetRecord.count(),
   })
 }
 

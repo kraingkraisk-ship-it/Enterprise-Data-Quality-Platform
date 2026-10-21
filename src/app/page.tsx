@@ -9,6 +9,8 @@ import AppSidebar from '@/components/app-sidebar'
 import CoreFeaturesConsole from '@/components/core-features-console'
 import RbacConsole from '@/components/rbac-console'
 import PlatformOverview from '@/components/platform-overview'
+import AssetImport from '@/components/asset-import'
+import AssetInventory from '@/components/asset-inventory'
 import { APP_VERSION, VIEWS, isCoreView, type ViewKey } from '@/lib/views'
 
 /* ------------------------------------------------------------------ */
@@ -75,6 +77,15 @@ export default function Home() {
         >
           {/* หน้าแนะนำแพลตฟอร์ม (เนื้อหาคงที่ — เรนเดอร์เฉพาะเมื่อเปิด) */}
           {view === 'about' && <PlatformOverview onNavigate={setView} />}
+
+          {/* โมดูล Data Asset — นำเข้าข้อมูล + คลังข้อมูล
+              คง mounted ไว้เสมอ ฟอร์ม/สถานะไม่หายเวลาสลับหน้า */}
+          <div className={view === 'asset-import' ? '' : 'hidden'} aria-hidden={view !== 'asset-import'}>
+            <AssetImport onGoInventory={() => setView('asset-inventory')} />
+          </div>
+          <div className={view === 'asset-inventory' ? '' : 'hidden'} aria-hidden={view !== 'asset-inventory'}>
+            <AssetInventory active={view === 'asset-inventory'} />
+          </div>
 
           {/* RBAC Console — คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
           <div className={view === 'rbac' ? '' : 'hidden'} aria-hidden={view !== 'rbac'}>

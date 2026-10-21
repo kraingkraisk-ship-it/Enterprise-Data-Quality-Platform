@@ -1,8 +1,10 @@
 import {
   ClipboardCheck,
+  FileUp,
   GitBranch,
   LayoutDashboard,
   Library,
+  PackageSearch,
   Play,
   ScrollText,
   ShieldCheck,
@@ -15,13 +17,16 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.10.0'
+export const APP_VERSION = 'v0.11.0'
 
 /** มุมมองที่อยู่ในคอนโซลคุณภาพข้อมูลหลัก (CoreFeaturesConsole) */
 export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'exceptions' | 'dashboard'
 
-/** มุมมองทั้งหมดของแอป (รวม RBAC และหน้าแนะนำแพลตฟอร์ม) */
-export type ViewKey = CoreViewKey | 'rbac' | 'about'
+/** มุมมองของโมดูล Data Asset */
+export type AssetViewKey = 'asset-import' | 'asset-inventory'
+
+/** มุมมองทั้งหมดของแอป (รวม Data Asset, RBAC และหน้าแนะนำแพลตฟอร์ม) */
+export type ViewKey = CoreViewKey | AssetViewKey | 'rbac' | 'about'
 
 export interface ViewMeta {
   key: ViewKey
@@ -67,6 +72,20 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     desc: 'คำขอยกเว้นผลตรวจที่ต้องผ่านการอนุมัติตามบทบาท พร้อมเหตุผลและวันหมดอายุ',
     icon: ClipboardCheck,
   },
+  'asset-import': {
+    key: 'asset-import',
+    th: 'นำเข้าข้อมูล',
+    en: 'Import Data',
+    desc: 'นำเข้าข้อมูลจากไฟล์ CSV, ไฟล์ JSON หรือฐานข้อมูล พร้อมตั้งชื่อ Data Asset ได้เอง',
+    icon: FileUp,
+  },
+  'asset-inventory': {
+    key: 'asset-inventory',
+    th: 'คลังข้อมูล',
+    en: 'Data Inventory',
+    desc: 'รายการข้อมูลที่นำเข้ามาทั้งหมด พร้อมสำรวจคอลัมน์ พรีวิวข้อมูล และค้นหา',
+    icon: PackageSearch,
+  },
   rbac: {
     key: 'rbac',
     th: 'บทบาทและสิทธิ์',
@@ -98,6 +117,11 @@ export interface NavGroup {
 
 export const NAV_GROUPS: NavGroup[] = [
   { labelTh: 'ภาพรวม', labelEn: 'Overview', items: ['dashboard'] },
+  {
+    labelTh: 'Data Asset',
+    labelEn: 'สินทรัพย์ข้อมูล',
+    items: ['asset-import', 'asset-inventory'],
+  },
   {
     labelTh: 'คุณภาพข้อมูล',
     labelEn: 'Data Quality',

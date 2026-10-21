@@ -182,3 +182,56 @@ model DqException {
 
   @@index([status])
 }
+
+// ---------------------------------------------------------------------------
+// Data Asset — สินทรัพย์ข้อมูลที่ผู้ใช้นำเข้าเอง (CSV / JSON / Database)
+// แยกจาก Dataset ของโมดูล DQ — เป็นคลังข้อมูลดิบสำหรับ Data Inventory
+// ---------------------------------------------------------------------------
+
+// สินทรัพย์ข้อมูล 1 รายการ (ผู้ใช้ตั้งชื่อเองได้)
+model DataAsset {
+  id          String   @id @default(cuid())
+  name        String // ชื่อที่ผู้ใช้ตั้ง
+  description String   @default("")
+  sourceType  String // CSV | JSON | DATABASE
+  sourceInfo  String   @default("{}") // JSON — รายละเอียดแหล่งที่มา (ชื่อไฟล์/ขนาด, การเชื่อมต่อแบบไม่มีรหัสผ่าน)
+  piiEnabled  Boolean  @default(true) // ปิดบัง PII ตามบทบาทเมื่อแสดงใน Inventory (PDPA-first)
+  rowCount    Int      @default(0)
+  columnCount Int      @default(0)
+  status      String   @default("ACTIVE") // ACTIVE | ARCHIVED
+  importedBy  String // email ผู้นำเข้า
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  columns DataAssetColumn[]
+  records DataAssetRecord[]
+
+  @@index([status])
+}
+
+// คอลัมน์ของ Data Asset — metadata สำหรับแสดงใน Data Inventory
+model DataAssetColumn {
+  id       String @id @default(cuid())
+  assetId  String
+  name     String
+  dataType String // inferred: TEXT | INTEGER | NUMBER | BOOLEAN | DATE | DATETIME | EMPTY
+  position Int
+
+  asset DataAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, name])
+  @@index([assetId])
+}
+
+// แถวข้อมูลของ Data Asset (เก็บเป็น JSON รายแถว — จำกัดจำนวนแถวต่อการนำเข้า)
+model DataAssetRecord {
+  id      String @id @default(cuid())
+  assetId String
+  rowNo   Int // ลำดับแถวเริ่ม 1
+  payload String // JSON object คอลัมน์ → ค่า
+
+  asset DataAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, rowNo])
+  @@index([assetId])
+}

@@ -561,3 +561,26 @@ Stage Summary:
 - ครบทุก tags บน remote: `v0.10.0` (7d3366f แดชบอร์ด 5 ส่วน) ← rollback ย้อนได้ที่ `v0.9.0` (8663dba มาตรา 9 มาตรา) / `v0.8.0` (bcfd1b2 เอนจิน 9 มิติ) / `v0.7.0` (03801bf มิติ 9 มิติ + Dimension Picker) / `v0.6.0` (65a5ac6) / `v0.5.0` (d0c979e) / `v0.4.0` (567f586)
 - คำสั่ง rollback กลับไป v0.9.0 บนเครื่อง local: `git reset --hard 8663dba && bun run db:push && bun scripts/seed.ts`
 - Token ใช้เฉพาะใน push command (one-time URL) ไม่มีบันทึกลงไฟล์/config ใดๆ — ผู้ใช้ควร revoke/rotate token หลังใช้งาน (GitHub → Settings → Developer settings → Fine-grained personal access tokens)
+
+---
+
+## Task ID: 18
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: v0.11.0 (feat — เมนูใหญ่ Data Asset: นำเข้าข้อมูล CSV/JSON/Database + คลังข้อมูล Data Inventory)
+**Task**: ผู้ใช้ขอเพิ่มเมนูใหญ่ "Data Asset" โดยมีเมนูย่อย (1) import ข้อมูล csv file, json file, database ตั้งชื่อได้ (2) data inventory แสดงข้อมูลที่ import เข้ามา
+
+Work Log:
+- **Prisma schema**: เพิ่ม 3 model — `DataAsset` (ชื่อ/คำอธิบาย/sourceType CSV|JSON|DATABASE/sourceInfo ไม่เก็บรหัสผ่าน/piiEnabled PDPA-first/rowCount/columnCount/importedBy), `DataAssetColumn` (ชื่อ+ชนิดอนุมาน+ลำดับ), `DataAssetRecord` (payload JSON รายแถว + rowNo) — `bun run db:push` สำเร็จ ติดตั้ง driver `mysql2` + `pg` สำหรับนำเข้าจากฐานข้อมูลจริง
+- **src/lib/asset.ts (ไลบรารีใหม่)**: parseCsv (ตรวจตัวคั่นอัตโนมัติ , ; Tab |, เครื่องหมายคำพูด "" escape, LF/CRLF, BOM, กันหัวคอลัมน์ซ้ำ), parseJsonData (รองรับ array/วัตถุเดียว/อาร์เรย์ในคีย์ + flatten วัตถุซ้อน a.b), inferColumnType (INTEGER/NUMBER/BOOLEAN/DATE/DATETIME/TEXT เข้มงวด), checkReadOnlySql + checkIdentifier (deny-by-default — อนุญาตเฉพาะ SELECT/WITH คำสั่งเดียว บล็อก 20+ คีย์เวิร์ดอันตราย), buildDbSourceInfo (ไม่เก็บรหัสผ่าน), ASSET_LIMITS (1,000 แถว / 100 คอลัมน์ / 8MB / timeout 8s)
+- **API ใหม่ 4 เส้น**: `POST /api/assets/import` (3 แหล่ง, ธุรกรรมเดียว asset+columns+records, AuditLog IMPORT_DATA_ASSET, RBAC MANAGE_DATASETS), `POST /api/assets/test-connection` (MySQL/PostgreSQL คืนเวอร์ชันเซิร์ฟเวอร์+รายชื่อตาราง กดเลือกเติมช่องได้), `GET /api/assets` (รายการ+สรุป), `GET|PATCH /api/assets/[id]` (detail แบ่งหน้า 25 แถว/หน้า + ค้นหา + maskRowByRole ตามบทบาท / RENAME+TOGGLE_PII+DELETE พร้อม AuditLog ทุก action)
+- **UI ใหม่ 2 หน้า**: `asset-import.tsx` — การ์ดเลือกแหล่ง 3 ใบ → ตั้งชื่อ+คำอธิบาย+เลือกผู้ดำเนินการ (เฉพาะบทบาทที่มีสิทธิ์) → ฟอร์มรายแหล่ง (CSV/JSON: เลือกไฟล์หรือวางเนื้อหา + พรีวิวฝั่ง client ใช้ parser ตัวเดียวกับ backend; Database: dbType/host/port auto/database/user/password + table หรือ SQL mode + ปุ่มทดสอบการเชื่อมต่อ + คลิกชื่อตารางเติมช่อง) → กดนำเข้า → แถบสำเร็จ + ปุ่มไปคลังข้อมูล / `asset-inventory.tsx` — การ์ดสรุป 5 ใบ + การ์ด asset (badge ชนิด+PII) + Dialog รายละเอียด 3 แท็บ (ข้อมูลแบ่งหน้า+ค้นหา / โครงสร้างคอลัมน์+ชนิดอนุมาน / รายละเอียดแหล่งข้อมูล JSON) + เลือกบทบาทผู้ชมดู PII masking สด + เปลี่ยนชื่อ/สลับ PII/ลบ (ยืนยัน AlertDialog)
+- **views.ts**: กลุ่มเมนูใหม่ "Data Asset" (ภาพรวม → Data Asset → คุณภาพข้อมูล → การกำกับดูแล) + มุมมอง asset-import/asset-inventory + APP_VERSION v0.11.0 — **page.tsx**: คง mounted แบบ hidden เหมือน RBAC (ฟอร์มไม่หาย) + AssetInventory รับ prop `active` รีเฟรชรายการทุกครั้งที่เปิดหน้า (แก้บั๊ก stale list หลัง import)
+- **Seed**: DataAsset ตัวอย่าง 2 รายการ — ทะเบียนลูกค้าสาขาภาคเหนือ (CSV, 8 แถว, มี PII: ชื่อ/email/phone เพื่อสาธิต masking) + รายงานอัตราแลกเปลี่ยนรายวัน (JSON, 8 แถว) + AuditLog IMPORT_DATA_ASSET
+- **ตรวจจริงผ่านหมด (API + agent-browser)**: (1) API import CSV 3 แถว/4 คอลัมน์ ✅ (2) API import JSON วัตถุซ้อน flatten เป็นคอลัมน์ meta.dept ✅ (3) SQL guard ปฏิเสธ DROP TABLE ✅ (4) RBAC ปฏิเสธ BUSINESS_USER ✅ (5) UI import CSV ผ่านพรีวิว→นำเข้า→แถบสำเร็จ→ปุ่มไปคลัง ✅ (6) Inventory แสดง 3 asset + สรุปถูกต้อง ✅ (แก้บั๊ก active-reload ก่อน) (7) Dialog: ตารางข้อมูล+แบ่งหน้า, PII masking ผู้ใช้งานทั่วไป เห็น "อ•••••••••• / a••••••••••@example.co.th / 053-•••-•••" แต่ branch/balance/kyc_date ชัด ✅ (8) โครงสร้างคอลัมน์ อนุมาน balance=ตัวเลข kyc_date=วันที่ ✅ (9) ค้นหา "เชียงใหม่" ได้ 2 แถว ✅ (10) เปลี่ยนชื่อผ่าน UI ✅ (11) ลบผ่าน AlertDialog ✅ คืน 2 asset (12) มือถือ 390px ไม่มี horizontal overflow + drawer เปิดเมนูได้ (13) ฟอร์ม Database ครบทุกช่อง + ทดสอบการเชื่อมต่อ host ไม่ตอบสนอง → error "connect ETIMEDOUT" ชัดเจนไม่ค้าง (14) โหมด SQL แสดงคำเตือน deny-by-default (15) ไม่มี page error / console error, lint สะอาด
+- หมายเหตุเทคนิค: dev server ต้องรีสตาร์ทหลัง db:push (Prisma Client ในหน่วยความจำเก่า → db.dataAsset undefined) — รีสตาร์ทด้วย double-detach ตามปกติ
+
+Stage Summary:
+- **v0.11.0 = เมนูใหญ่ "Data Asset" ครบตามโจทย์** — (1) นำเข้าข้อมูล: CSV / JSON / Database (MySQL/PostgreSQL) ตั้งชื่อได้ + พรีวิวก่อนบันทึก (2) คลังข้อมูล: แสดงข้อมูลที่ import ทั้งหมด สำรวจได้ทุกมิติ (ตาราง+แบ่งหน้า+ค้นหา+โครงสร้าง+ที่มา)
+- ความปลอดภัยตามหลักระบบ: RBAC (เฉพาะ 4 บทบาทจัดการ) + Audit Trail 100% (import/rename/toggle/delete) + PDPA masking ตามบทบาท + deny-by-default SQL (SELECT เท่านั้น) + ไม่เก็บรหัสผ่านการเชื่อมต่อ + จำกัดขนาด
+- Rollback point: ก่อนงานนี้ = `4f3cf86` (v0.10.0 + worklog Task 17-result) — กู้คืน `git reset --hard 4f3cf86 && bun run db:push && bun scripts/seed.ts`
+- **รอ push**: main (4f3cf86 → v0.11.0) + tag v0.11.0 — ต้องขอ token จากผู้ใช้ก่อน push (token เดิมถูก redact ตาม workflow)
