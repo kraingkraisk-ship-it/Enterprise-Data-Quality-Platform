@@ -37,6 +37,7 @@ model Dataset {
   runs       DqRun[]
   signals    DqSignal[]
   exceptions DqException[]
+  batches    DqValidationBatch[]
 
   @@index([status])
 }
@@ -126,11 +127,12 @@ model DqRule {
   exceptions DqException[]
 }
 
-// ผลการรันตรวจสอบรายกฎ (ประวัติย้อนหลัง)
+// ผลการรันตรวจสอบรายกฎ (ประวัติย้อนหลัง) — batchId ว่าง = รอบก่อนระบบ batch (v0.12.0)
 model DqRun {
   id         String   @id @default(cuid())
   ruleId     String
   datasetId  String
+  batchId    String   @default("") // id ของ DqValidationBatch (เก็บเป็น string — แถวเก่าก่อน v0.12.0 = "")
   status     String // PASSED | FAILED
   totalRows  Int
   failedRows Int
@@ -138,10 +140,58 @@ model DqRun {
   dimension  String // มิติคุณภาพข้อมูลที่กฎนี้ตรวจ
   createdAt  DateTime @default(now())
 
-  rule    DqRule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  rule    DqRule             @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  dataset Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  failures DqFailureRecord[]
 
   @@index([datasetId, createdAt])
+  @@index([batchId])
+}
+
+// รอบการตรวจสอบ 1 รอบ (กดรัน 1 ครั้ง = 1 batch ครอบผลทุกกฎ) — ใช้ drill-down ในหน้า Validation Results
+model DqValidationBatch {
+  id           String   @id @default(cuid())
+  datasetId    String
+  triggeredBy  String   @default("MANUAL") // MANUAL | MONITOR
+  createdBy    String // email ผู้รัน
+  totalRules   Int      @default(0)
+  passedRules  Int      @default(0)
+  failedRules  Int      @default(0)
+  skippedRules Int      @default(0)
+  overallScore Float?
+  note         String   @default("")
+  createdAt    DateTime @default(now())
+
+  dataset  Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  failures DqFailureRecord[]
+
+  @@index([datasetId, createdAt])
+}
+
+// แถวข้อมูลที่ล้มเหลวรายแถว (snapshot ตอนรัน — mask ตอนอ่านตามบทบาท ตามหลัก PDPA)
+// จำกัด 200 แถวต่อกฎต่อรอบ เพื่อคุมขนาดฐานข้อมูล
+model DqFailureRecord {
+  id        String    @id @default(cuid())
+  batchId   String
+  runId     String
+  datasetId String
+  ruleId    String
+  dimension String
+  severity  String
+  rowNo     Int // ลำดับแถวเริ่ม 1
+  rowData   String // JSON snapshot ของแถวทั้งแถว (คอลัมน์ → ค่า)
+  reason    String // เหตุผลที่ล้มเหลว (ภาษาคน ตามเอนจิน)
+  status    String    @default("NEW") // NEW | FIXED | IGNORED
+  statusBy  String?
+  statusAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  batch   DqValidationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  run     DqRun             @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, rowNo])
+  @@index([datasetId, status])
+  @@index([batchId])
 }
 
 // สัญญาณที่ต้องมนุษย์ทบทวนเสมอ — ML เป็นเพียง "สัญญาณ" ไม่มีการแก้ข้อมูลอัตโนมัติ

@@ -16,11 +16,15 @@ import {
   buildRuleVerdict,
   buildRunSummary,
   DAMA_STANDARDS,
+  ENGINE_FAILURE_REASONS,
   fixHintFor,
   gradeOf,
   type DimensionResultView,
 } from '@/lib/dama'
 import { resolveOperator } from '@/lib/operator'
+
+/** จำกัดจำนวนแถวล้มเหลวที่เก็บ snapshot ต่อกฎต่อรอบ (คุมขนาดฐานข้อมูล — เกินนี้นับเฉพาะสรุปรวม) */
+const MAX_FAILURE_ROWS_PER_RULE = 200
 
 export async function GET(req: NextRequest) {
   try {
@@ -102,6 +106,11 @@ export async function POST(req: NextRequest) {
       passRate: number
       failedSamples: string[]
     }
+    // ---------- สร้างรอบการตรวจ (batch) — กดรัน 1 ครั้ง = 1 รอบ ครอบผลทุกกฎ ----------
+    const batch = await db.dqValidationBatch.create({
+      data: { datasetId, triggeredBy: 'MANUAL', createdBy: op.ctx.email },
+    })
+
     const results: RunResult[] = []
     // สะสมผลรายมิติ: อัตราผ่านของกฎแต่ละข้อ + จำนวนกฎ + จำนวนกฎที่ล้มเหลว (เพื่อจัดเกรดตามมาตรา)
     const byDimension = new Map<DimensionKey, number[]>()
@@ -182,10 +191,11 @@ export async function POST(req: NextRequest) {
       const verdict = buildRuleVerdict({ status, totalRows: evaluation.totalRows, failedRows: evaluation.failedRows, dimension: dimensionKey, engineType })
       const advice = status === 'FAILED' ? fixHintFor(engineType, dimensionKey) : null
 
-      await db.dqRun.create({
+      const createdRun = await db.dqRun.create({
         data: {
           ruleId: rule.id,
           datasetId,
+          batchId: batch.id,
           status,
           totalRows: evaluation.totalRows,
           failedRows: evaluation.failedRows,
@@ -193,6 +203,25 @@ export async function POST(req: NextRequest) {
           dimension: dimensionKey,
         },
       })
+
+      // ---------- บันทึกแถวที่ล้มเหลวรายแถว (snapshot — mask ตอนอ่านตามบทบาท, cap 200 แถว/กฎ/รอบ) ----------
+      if (evaluation.failedRows > 0) {
+        const reasonBase =
+          ENGINE_FAILURE_REASONS[engineType] ?? `ไม่ผ่านเงื่อนไข ${template?.name ?? rule.condition}`
+        await db.dqFailureRecord.createMany({
+          data: evaluation.failedIndexes.slice(0, MAX_FAILURE_ROWS_PER_RULE).map((idx) => ({
+            batchId: batch.id,
+            runId: createdRun.id,
+            datasetId,
+            ruleId: rule.id,
+            dimension: dimensionKey,
+            severity: rule.severity,
+            rowNo: idx + 1,
+            rowData: JSON.stringify(rows[idx] ?? {}),
+            reason: reasonBase,
+          })),
+        })
+      }
 
       // failed samples — แสดงค่าที่ล้มเหลว (ปิดบัง PII ตามบทบาทผู้รัน)
       const failedSamples = evaluation.failedIndexes.slice(0, 3).map((idx) => {
@@ -328,6 +357,18 @@ export async function POST(req: NextRequest) {
     })
     const overallGrade = gradeOf(overallScore)
 
+    // ---------- สรุปผลรอบการตรวจ (batch) ----------
+    await db.dqValidationBatch.update({
+      where: { id: batch.id },
+      data: {
+        totalRules: results.length,
+        passedRules: passedCount,
+        failedRules: failedCount,
+        skippedRules: skipped,
+        overallScore,
+      },
+    })
+
     await db.auditLog.create({
       data: {
         action: 'RUN_VALIDATION',
@@ -338,6 +379,7 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({
+      batchId: batch.id,
       datasetName: dataset.name,
       rowsCount: rows.length,
       rulesCount: rulesForDataset.length,

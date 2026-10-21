@@ -11,7 +11,9 @@ import RbacConsole from '@/components/rbac-console'
 import PlatformOverview from '@/components/platform-overview'
 import AssetImport from '@/components/asset-import'
 import AssetInventory from '@/components/asset-inventory'
-import { APP_VERSION, VIEWS, isCoreView, type ViewKey } from '@/lib/views'
+import DqScorecard from '@/components/dq/scorecard'
+import DqFailedRecords from '@/components/dq/failed-records'
+import { APP_VERSION, VIEWS, isConsoleView, type ViewKey } from '@/lib/views'
 
 /* ------------------------------------------------------------------ */
 /* Enterprise App Shell                                                */
@@ -87,15 +89,31 @@ export default function Home() {
             <AssetInventory active={view === 'asset-inventory'} />
           </div>
 
+          {/* หน้าใหม่ของโมดูล Data Quality (v0.12.0) — บัตรคะแนน + ข้อมูลที่ไม่ผ่าน */}
+          <div className={view === 'scorecard' ? '' : 'hidden'} aria-hidden={view !== 'scorecard'}>
+            <DqScorecard active={view === 'scorecard'} onGoValidations={() => setView('validation-results')} />
+          </div>
+          <div className={view === 'failed-records' ? '' : 'hidden'} aria-hidden={view !== 'failed-records'}>
+            <DqFailedRecords active={view === 'failed-records'} />
+          </div>
+
           {/* RBAC Console — คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
           <div className={view === 'rbac' ? '' : 'hidden'} aria-hidden={view !== 'rbac'}>
             <RbacConsole />
           </div>
 
-          {/* คอนโซลคุณภาพข้อมูล (Rule Builder / คลังเงื่อนไข / รันตรวจสอบ / ข้อยกเว้น / แดชบอร์ด)
-              — คง mounted ไว้เสมอ ข้อมูลและฟอร์มไม่หายเวลาสลับหน้า */}
-          <div className={isCoreView(view) ? '' : 'hidden'} aria-hidden={!isCoreView(view)}>
-            <CoreFeaturesConsole activeView={isCoreView(view) ? view : 'rules'} onViewChange={setView} />
+          {/* คอนโซลคุณภาพข้อมูล (คลังกฎ / ผลการตรวจ / ข้อยกเว้น / DQ แดชบอร์ด)
+              — คง mounted ไว้เสมอ ข้อมูลและฟอร์มไม่หายเวลาสลับหน้า
+              — 'rule-library' ใช้โหมด library (แท็บกฎ + เงื่อนไขภายในหน้าเดียว) */}
+          <div
+            className={view === 'rule-library' || isConsoleView(view) ? '' : 'hidden'}
+            aria-hidden={!(view === 'rule-library' || isConsoleView(view))}
+          >
+            <CoreFeaturesConsole
+              activeView={isConsoleView(view) ? (view === 'validation-results' ? 'run' : view) : 'rules'}
+              onViewChange={setView}
+              mode={view === 'rule-library' ? 'library' : 'full'}
+            />
           </div>
         </main>
 

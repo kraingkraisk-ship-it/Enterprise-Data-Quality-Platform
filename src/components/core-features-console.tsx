@@ -45,10 +45,11 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { DIMENSION_ICONS, DimensionBadge, DimensionHint, DimensionPicker } from '@/components/dimension-picker'
 import { EngineBadge, EngineHint, EnginePicker } from '@/components/engine-picker'
+import BatchHistory from '@/components/dq/batch-history'
 import {
   buildRuleSentence,
   CONDITIONS,
@@ -281,10 +282,15 @@ interface CoreFeaturesConsoleProps {
   activeView: ViewKey
   /** เรียกเมื่อผู้ใช้เปลี่ยนมุมมองภายในคอนโซล (ถ้ามี) */
   onViewChange: (view: ViewKey) => void
+  /** 'full' = หน้าตรง (ผลการตรวจ/ข้อยกเว้น/แดชบอร์ด) · 'library' = หน้าคลังกฎ (สลับกฎ/เงื่อนไขภายในหน้า) */
+  mode?: 'full' | 'library'
 }
 
-export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFeaturesConsoleProps) {
+export default function CoreFeaturesConsole({ activeView, onViewChange, mode = 'full' }: CoreFeaturesConsoleProps) {
   const { toast } = useToast()
+
+  // โหมด library — สลับแท็บกฎ/เงื่อนไขภายในหน้าเดียว (ไม่เปลี่ยนเมนู)
+  const [libraryTab, setLibraryTab] = useState<'rules' | 'conditions'>('rules')
 
   // shared data
   const [users, setUsers] = useState<ApiUser[]>([])
@@ -880,10 +886,26 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
 
   return (
     <Tabs
-      value={isCoreView(activeView) ? activeView : 'rules'}
-      onValueChange={(v) => onViewChange(v as ViewKey)}
+      value={mode === 'library' ? libraryTab : isCoreView(activeView) ? activeView : 'rules'}
+      onValueChange={(v) => {
+        if (mode === 'library') setLibraryTab(v as 'rules' | 'conditions')
+        else onViewChange(v as ViewKey)
+      }}
       className="w-full"
     >
+      {/* แท็บภายในหน้าคลังกฎ (โหมด library เท่านั้น) */}
+      {mode === 'library' && (
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-slate-100 p-1 sm:w-fit">
+          <TabsTrigger value="rules" className="gap-1.5 data-[state=active]:bg-white">
+            <GitBranch className="size-3.5" aria-hidden="true" />
+            กฎตรวจสอบทั้งหมด
+          </TabsTrigger>
+          <TabsTrigger value="conditions" className="gap-1.5 data-[state=active]:bg-white">
+            <Library className="size-3.5" aria-hidden="true" />
+            คลังเงื่อนไข (must)
+          </TabsTrigger>
+        </TabsList>
+      )}
 
       {/* ============================ TAB 1: RULE BUILDER ============================ */}
       <TabsContent value="rules" className="mt-4">
@@ -1775,6 +1797,9 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
               </CardContent>
             </Card>
           )}
+
+          {/* รอบการตรวจ (batch) — ประวัติย้อนหลัง + drill-down รายรอบ */}
+          <BatchHistory reloadKey={reloadTick} datasets={datasets} onGoFailedRecords={() => onViewChange('failed-records')} />
 
           {/* ML signals */}
           <Card>

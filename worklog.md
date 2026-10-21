@@ -621,3 +621,26 @@ Stage Summary:
 - การตัดสินใจหลัก: (1) persist snapshot แถวที่ล้มเหลว cap 200/กฎ/รอบ + mask ตอนอ่านตามบทบาท (PDPA) (2) แนะนำเมนูแบบ "โตทีละขั้น" — แสดงเฉพาะรายการที่ใช้งานได้จริงทุกเวอร์ชัน (ไม่มีเมนูตาย) (3) DqSignal คงอยู่เป็น raw signal layer, DqIssue เป็น register ที่มี lifecycle, confirm signal → เปิด issue อัตโนมัติ (4) หลักเดิมคงครบ: READ-ONLY, RBAC+Audit ทุก action, ML เป็นสัญญาณ, deny-by-default
 - คำถามรอยืนยันจากผู้ใช้ 4 ข้อ: (1) เมนูโตทีละขั้น vs แสดง 11 แล้วขึ้น "กำลังพัฒนา" (2) ตกลง cap 200 แถว snapshot ไหม (3) รอบ Monitoring ที่ต้องการ (4) Exceptions ย้ายเป็นแท็บใน DQ Issues โดยคง flow อนุมัติ
 - **สถานะ: รอผู้ใช้อนุมัติแผน/ตอบคำถาม → ยังไม่เขียนโค้ด** (commit นี้เป็น docs-only, push พร้อม v0.12.0 หรือเมื่อผู้ใช้ส่ง token)
+
+---
+
+## Task ID: 20
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: v0.12.0 (feat — โครงสร้างเมนู Data Quality แบบ enterprise เฟส 1 + ผลตรวจระดับแถว)
+**Task**: ผู้ใช้อนุมัติแผน Task 19-plan (แก้ 4 ข้อ: เฉพาะเมนูที่ใช้ได้จริง / ตกลง cap 200 แถว / ตัด Monitoring / ตกลง exceptions เป็นแท็บ) → ลงมือเฟส 1 ของ 3: โครงเมนูใหม่ + DQ Scorecard + Validation Results (batch) + Failed Records
+
+Work Log:
+- **Schema**: เพิ่ม `DqValidationBatch` (รอบการตรวจ 1 รอบครอบผลทุกกฎ: triggeredBy/createdBy/ผ่าน-ล้มเหลว-ข้าม/คะแนนรวม) + `DqFailureRecord` (แถวล้มเหลวรายแถว: snapshot rowData JSON + reason + status NEW|FIXED|IGNORED + @@unique([runId,rowNo])) + `DqRun.batchId` (string ธรรมดาไม่ผูก FK เพราะแถวเก่า = "") — db:push สำเร็จ, พบ db ว่างจาก push → seed ใหม่ (users 10, datasets 7, rules 11, runs 36, assets 2)
+- **Run engine อัปเกรด** (`POST /api/dq/run`): สร้าง batch ก่อนรัน → ทุกกฎเก็บ DqRun.batchId + persist แถวล้มเหลว (cap `MAX_FAILURE_ROWS_PER_RULE = 200`, reason จาก ENGINE_FAILURE_REASONS, snapshot ดิบ mask ตอนอ่าน) → อัปเดตสรุป batch + คืน batchId
+- **API ใหม่ 5 เส้น**: `GET /api/dq/scorecard` (เมทริกซ์ ชุดข้อมูล × 9 มิติ + เกรด + KPI + trend รายวัน 30 วัน + มิติอ่อน/แข็งสุด), `GET /api/dq/validations` + `[id]` (รายการรอบ + drill-down สร้าง verdict/sentence ใหม่จากข้อมูลที่เก็บ), `GET /api/dq/failures` (กรอง dataset/status/severity/dimension/search + หน้า 25 + mask ตามบทบาทผู้ชม — ไม่ระบุ = BUSINESS_USER เข้มสุด), `PATCH /api/dq/failures/[id]` (RBAC REVIEW_SIGNALS + AuditLog UPDATE_FAILURE_STATUS)
+- **UI ใหม่**: `dq/scorecard.tsx` (KPI 4 ใบ + เมทริกซ์ตารางสีตามเกรด + expand แถว = การ์ด 9 มิติ + Sparkline SVG แนวโน้ม + ปุ่มไปผลการตรวจ), `dq/failed-records.tsx` (คำเตือนหลักการ + KPI สถานะ + กรอง/ค้นหา/เลือกผู้ชม + ตาราง + Dialog รายละเอียด mask + ปุ่มแก้แล้ว/ยกเว้น/ย้อน), `dq/batch-history.tsx` (ตารางรอบล่าสุด + กรองชุดข้อมูล + Dialog drill-down รายกฎพร้อม verdict + ปุ่มไป Failed Records)
+- **โครงเมนู** (`views.ts` v0.12.0): ViewKey เพิ่ม scorecard/rule-library/validation-results/failed-records; NAV_GROUPS กลุ่มคุณภาพข้อมูล = บัตรคะแนน DQ · คลังกฎตรวจสอบ · ผลการตรวจสอบ · ข้อมูลที่ไม่ผ่าน · ข้อยกเว้น (transitional จน v0.13); dashboard เปลี่ยนชื่อ "DQ แดชบอร์ด"; run เปลี่ยนชื่อ "ผลการตรวจสอบ"; isConsoleView() ช่วย page.tsx
+- **CoreFeaturesConsole**: เพิ่ม prop `mode: 'full'|'library'` — library mode ใช้ local tab state + TabsList แท็บ "กฎตรวจสอบทั้งหมด"/"คลังเงื่อนไข (must)" (รวมเมนูเดิม 2 รายการเป็น "คลังกฎตรวจสอบ" โดยไม่ย้ายโค้ด 2,030 บรรทัด — ลดความเสี่ยง); แท็บ run แทรก BatchHistory; sidebar badge: validation-results=สัญญาณรอ, rule-library=จำนวนเงื่อนไข, failed-records=ยังไม่แก้ (แดง)
+- **ตรวจจริงผ่านหมด**: API (scorecard KPI ถูก/avgScore 91.5, run สร้าง batch cmvimrs1u…, failures 7 แถว mask ธ••••••• ส่วน steward เห็นเต็ม, PATCH steward สำเร็จ + BUSINESS_USER 403 + AuditLog ครบ, drill-down verdict "ไม่ผ่านมาตราที่ 4…") + agent-browser (เมนู 5 รายการ, Scorecard expand การ์ดรายมิติ+trend, library สลับ 2 แท็บ, Validation Results batch table + dialog + ปุ่ม cross-link, Failed Records dialog masking + เปลี่ยนสถานะผ่าน UI สำเร็จ, DQ แดชบอร์ด 5 ส่วนเดิมครบ, ข้อยกเว้นเดิมปกติ, มือถือ 390px ไม่ overflow + drawer เปิดได้) — ไม่มี page/console error, lint สะอาด
+- **การตัดสินใจหลัก**: (1) โครงสร้าง 10 เมนูเป้าหมาย (ตัด Monitoring ตามผู้ใช้ — trend ย้ายไป Scorecard) (2) เมนูโตทีละเวอร์ชัน ไม่มีเมนูตาย (3) DqRun.batchId เป็น string ธรรมดา (กัน FK กับแถวเก่า) (4) snapshot ดิบ + mask ตอนอ่าน (PDPA) (5) exceptions คงเมนูแยกชั่วคราวจน v0.13 รวมเป็นแท็บใน DQ Issues
+
+Stage Summary:
+- **v0.12.0 = เฟส 1/3 ของโครงสร้าง Data Quality enterprise เสร็จสมบูรณ์**: เมนูใหม่ 5 รายการใช้ได้จริง (DQ แดชบอร์ด / บัตรคะแนน / คลังกฎ / ผลการตรวจ / ข้อมูลที่ไม่ผ่าน) + รากฐานผลตรวจระดับแถว (batch + failure snapshot) ที่เฟส 2-3 (Profiling, Issues, RCA, Remediation, Alerts) จะต่อยอด
+- เหลือตามแผน: v0.13.0 = Data Profiling + DQ Issues (exceptions เป็นแท็บ) · v0.14.0 = RCA + Remediation + Alerts (สัญญาณ AI ย้ายไป Alerts)
+- Rollback point: ก่อนงานนี้ = `fda8a98` (v0.11.0 + worklog 17/18-result + 19-plan) — กู้คืน `git reset --hard fda8a98 && bun run db:push && bun scripts/seed.ts`
+- **รอ push**: main + tag v0.12.0 — ต้องขอ token จากผู้ใช้ก่อน push ตาม workflow
