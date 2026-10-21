@@ -59,8 +59,9 @@ import {
   SEVERITY_LABELS,
   type TemplateParamDef,
 } from '@/lib/dq'
-import { ROLE_KEYS, ROLE_LIST, type PermissionKey, type RoleKey } from '@/lib/rbac'
+import { ROLE_LIST, type PermissionKey, type RoleKey } from '@/lib/rbac'
 import { isCoreView, type ViewKey } from '@/lib/views'
+import DqDashboard from '@/components/dq-dashboard'
 
 /* ------------------------------- types ---------------------------------- */
 
@@ -77,6 +78,7 @@ interface ApiDataset {
   name: string
   sourceType: string
   piiEnabled: boolean
+  classification: string
 }
 
 interface ApiCondition {
@@ -333,10 +335,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
   const [exRequester, setExRequester] = useState('malee.steward@company.co.th')
   const [exApprover, setExApprover] = useState('somchai.owner@company.co.th')
 
-  // tab 5 — PII preview
-  const [previewRole, setPreviewRole] = useState<RoleKey>('BUSINESS_USER')
-  const [previewDataset, setPreviewDataset] = useState('')
-  const [preview, setPreview] = useState<PreviewData | null>(null)
 
   const refetch = useCallback(() => setReloadTick((t) => t + 1), [])
 
@@ -430,25 +428,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
       setRbPreviewDataset(rbDatasets[0])
     }
   }, [rbDatasets, rbPreviewDataset])
-
-  // PII preview (แท็บแดชบอร์ด)
-  useEffect(() => {
-    if (!previewDataset) return
-    let alive = true
-    ;(async () => {
-      try {
-        const res = await fetch(`/api/dq/sample-preview?datasetId=${encodeURIComponent(previewDataset)}&role=${previewRole}`)
-        const data = await res.json()
-        if (!alive) return
-        setPreview(data.error ? null : data)
-      } catch {
-        if (alive) setPreview(null)
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [previewDataset, previewRole])
 
   /* ------------------------------ derived -------------------------------- */
 
@@ -2042,188 +2021,9 @@ export default function CoreFeaturesConsole({ activeView, onViewChange }: CoreFe
         </div>
       </TabsContent>
 
-      {/* ===================== TAB 5: DASHBOARD ===================== */}
+      {/* ===================== TAB 5: DASHBOARD — 5 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Regulation / Risk / Data Classification) ===================== */}
       <TabsContent value="dashboard" className="mt-4">
-        <div className="space-y-4">
-          {/* stat cards */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {[
-              { label: 'สัญญาณรอทบทวน', value: dashboard?.totals.pendingSignals, accent: 'text-amber-700' },
-              { label: 'คำขอข้อยกเว้นรออนุมัติ', value: dashboard?.totals.pendingExceptions, accent: 'text-emerald-700' },
-              { label: 'กฎที่เปิดใช้งาน', value: dashboard?.totals.rulesEnabled, accent: 'text-slate-900' },
-              {
-                label: 'ชุดข้อมูลที่รันแล้ว',
-                value: dashboard ? `${dashboard.totals.datasetsWithRun}/${dashboard.totals.datasetsTotal}` : null,
-                accent: 'text-slate-900',
-              },
-            ].map((s) => (
-              <Card key={s.label} className="p-4">
-                <p className="text-xs text-muted-foreground">{s.label}</p>
-                <p className={`mt-1 text-2xl font-bold ${s.accent}`}>{s.value ?? '…'}</p>
-              </Card>
-            ))}
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            {/* per dataset scores */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">คะแนนคุณภาพข้อมูลต่อชุดข้อมูล</CardTitle>
-                <CardDescription>คำนวณจากผลรันล่าสุดของทุกกฎที่เปิดใช้งาน</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="max-h-80 space-y-2.5 overflow-y-auto pr-1">
-                  {dashboard?.perDataset.map((d) => (
-                    <div key={d.id} className="rounded-lg border p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium">{d.name}</p>
-                          <Badge variant="outline" className="text-[10.5px]">
-                            {d.ruleCount} กฎ
-                          </Badge>
-                          {d.pendingSignals > 0 && (
-                            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10.5px] text-amber-900">
-                              {d.pendingSignals} สัญญาณรอทบทวน
-                            </Badge>
-                          )}
-                        </div>
-                        <span className={`font-mono text-lg font-bold ${scoreColor(d.overallScore)}`}>
-                          {d.overallScore !== null ? d.overallScore.toFixed(0) : '—'}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>{d.lastRunAt ? `รันล่าสุด ${fmtTime(d.lastRunAt)}` : 'ยังไม่เคยรันตรวจสอบ'}</span>
-                        {d.weakestDimension && (
-                          <span>
-                            มิติอ่อนสุด: <strong className="text-amber-800">{d.weakestDimension.th}</strong> ({d.weakestDimension.score.toFixed(0)})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {dashboard === null && <p className="py-6 text-center text-sm text-muted-foreground">กำลังโหลด…</p>}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* dimension averages */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">คะแนนเฉลี่ยตามมิติคุณภาพข้อมูล</CardTitle>
-                <CardDescription>เรียงจากอ่อนที่สุด → แข็งแรงที่สุด</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {dashboard?.dimensions.map((d) => (
-                    <div key={d.dimension} className="flex items-center gap-2 text-xs">
-                      <span className="w-36 shrink-0 truncate" title={d.en}>
-                        {d.th}
-                      </span>
-                      <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-200">
-                        <div
-                          className={`h-full rounded-full ${d.score >= 90 ? 'bg-emerald-500' : d.score >= 75 ? 'bg-amber-500' : 'bg-rose-500'}`}
-                          style={{ width: `${d.score}%` }}
-                        />
-                      </div>
-                      <span className={`w-12 text-right font-mono font-semibold ${scoreColor(d.score)}`}>{d.score.toFixed(0)}</span>
-                    </div>
-                  ))}
-                  {(!dashboard || dashboard.dimensions.length === 0) && (
-                    <p className="py-6 text-center text-sm text-muted-foreground">ยังไม่มีผลรัน — รันการตรวจสอบก่อน</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* PII masking demo */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <EyeOff className="size-4 text-emerald-700" aria-hidden="true" />
-                ตัวอย่างการปิดบัง PII ตามบทบาท (Live — ฝั่งเซิร์ฟเวอร์)
-              </CardTitle>
-              <CardDescription>
-                ข้อมูลส่วนบุคคลถูกปิดบังเป็นค่าเริ่มต้น — ประเมินฝั่ง backend ตามบทบาท สอดคล้อง PDPA
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="pv-dataset">ชุดข้อมูล</Label>
-                  <Select value={previewDataset} onValueChange={setPreviewDataset}>
-                    <SelectTrigger id="pv-dataset">
-                      <SelectValue placeholder="เลือกชุดข้อมูล" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasets.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
-                          {d.piiEnabled ? ' (มี PII)' : ' (ไม่มี PII)'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="pv-role">สวมบทบาท</Label>
-                  <Select value={previewRole} onValueChange={(v) => setPreviewRole(v as RoleKey)}>
-                    <SelectTrigger id="pv-role">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ROLE_KEYS.map((k) => (
-                        <SelectItem key={k} value={k}>
-                          {ROLE_LIST.find((r) => r.key === k)?.th}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {preview && (
-                <div className="relative overflow-x-auto rounded-lg border">
-                  <table className="w-full min-w-[640px] text-left text-xs">
-                    <thead className="bg-emerald-50/70 text-emerald-900">
-                      <tr>
-                        {preview.columns.map((c) => (
-                          <th key={c} scope="col" className="px-3 py-2 font-medium">
-                            {c}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.rows.map((row, i) => (
-                        <tr key={i} className="border-t">
-                          {preview.columns.map((c) => (
-                            <td key={c} className="whitespace-nowrap px-3 py-1.5 font-mono">
-                              {String(row[c] ?? '')}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {preview && (
-                <p className="text-xs" role="status">
-                  {preview.piiMasked ? (
-                    <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">
-                      ปิดบัง PII อยู่ — บทบาทนี้ไม่มีสิทธิ์เห็นข้อมูลส่วนบุคคล
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">
-                      แสดงข้อมูลจริง — บทบาทนี้มีสิทธิ์เห็น PII (ตามนโยบาย least privilege)
-                    </Badge>
-                  )}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <DqDashboard datasets={datasets} users={users} reloadTick={reloadTick} onRefetch={refetch} />
       </TabsContent>
     </Tabs>
   )

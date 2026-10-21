@@ -15,7 +15,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.9.0'
+export const APP_VERSION = 'v0.10.0'
 
 /** มุมมองที่อยู่ในคอนโซลคุณภาพข้อมูลหลัก (CoreFeaturesConsole) */
 export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'exceptions' | 'dashboard'
@@ -36,7 +36,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'dashboard',
     th: 'แดชบอร์ด',
     en: 'Dashboard',
-    desc: 'ภาพรวมคะแนนคุณภาพข้อมูล สัญญาณ AI และสิ่งที่ต้องดำเนินการ',
+    desc: '5 ส่วน: ภาพรวมคุณภาพข้อมูล · รายละเอียดการตรวจ · Regulation · Risk · Data Classification',
     icon: LayoutDashboard,
   },
   rules: {

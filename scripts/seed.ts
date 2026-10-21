@@ -4,6 +4,7 @@
  * (ข้อมูลทั้งหมดเป็น sandbox — การรันจะรีเซ็ตกลับค่าเริ่มต้น)
  */
 import { PrismaClient } from '@prisma/client'
+import { evaluateRule, DIMENSION_LABELS, type DimensionKey, type Row } from '../src/lib/dq'
 
 const db = new PrismaClient()
 
@@ -21,13 +22,13 @@ const USERS = [
 ]
 
 const DATASETS = [
-  { name: 'ลูกค้าองค์กร — Master', sourceType: 'POSTGRESQL', piiEnabled: true },
-  { name: 'รายการธุรกรรมรายวัน', sourceType: 'MSSQL', piiEnabled: true },
-  { name: 'แคตตาล็อกสินค้า', sourceType: 'CSV', piiEnabled: false },
-  { name: 'คำร้องเรียนลูกค้า', sourceType: 'EXCEL', piiEnabled: true },
-  { name: 'อัตราแลกเปลี่ยน (API)', sourceType: 'REST_API', piiEnabled: false },
-  { name: 'ข้อมูลพนักงาน HR', sourceType: 'CSV', piiEnabled: true },
-  { name: 'ทะเบียนบัญชีธนาคาร', sourceType: 'POSTGRESQL', piiEnabled: false },
+  { name: 'ลูกค้าองค์กร — Master', sourceType: 'POSTGRESQL', piiEnabled: true, classification: 'CUSTOMER_PERSONAL' },
+  { name: 'รายการธุรกรรมรายวัน', sourceType: 'MSSQL', piiEnabled: true, classification: 'AML_KYC' },
+  { name: 'แคตตาล็อกสินค้า', sourceType: 'CSV', piiEnabled: false, classification: 'DATA_GOVERNANCE' },
+  { name: 'คำร้องเรียนลูกค้า', sourceType: 'EXCEL', piiEnabled: true, classification: 'CUSTOMER_PERSONAL' },
+  { name: 'อัตราแลกเปลี่ยน (API)', sourceType: 'REST_API', piiEnabled: false, classification: 'FINANCIAL_REPORTING' },
+  { name: 'ข้อมูลพนักงาน HR', sourceType: 'CSV', piiEnabled: true, classification: 'UNCLASSIFIED' },
+  { name: 'ทะเบียนบัญชีธนาคาร', sourceType: 'POSTGRESQL', piiEnabled: false, classification: 'CARD_PAYMENT' },
 ]
 
 const GRANTS: Array<{ dataset: string; roles: Array<[string, string]> }> = [
@@ -380,6 +381,14 @@ const RULES: Array<{
   },
 ]
 
+/* ------------------- ประวัติผลการรันตรวจ (แดชบอร์ดใช้แสดงผลจริง) ------------------- */
+
+const RUN_BATCHES: Array<{ daysAgo: number; label: string }> = [
+  { daysAgo: 6, label: 'รอบตรวจย้อนหลัง 6 วัน' },
+  { daysAgo: 2, label: 'รอบตรวจย้อนหลัง 2 วัน' },
+  { daysAgo: 0, label: 'รอบตรวจล่าสุด' },
+]
+
 async function main() {
   await db.dqRun.deleteMany()
   await db.ruleDataset.deleteMany()
@@ -490,6 +499,127 @@ async function main() {
     },
   })
 
+  // ---------- ประวัติผลการรันตรวจ 3 รอบ (6 วันก่อน / 2 วันก่อน / ล่าสุด) ----------
+  // ใช้เอนจินประเมินผลจริงของระบบ (lib/dq.ts) — แดชบอร์ดจึงมีข้อมูลสถิติและความเสี่ยงตั้งแต่เปิดหน้าแรก
+  const seededRules = await db.dqRule.findMany({ include: { datasets: true } })
+  const seededTemplates = await db.conditionTemplate.findMany()
+  const tplMap = new Map(seededTemplates.map((t) => [t.key, t]))
+
+  const sampleByDataset = new Map<string, Row[]>()
+  for (const sr of await db.sampleRow.findMany({ orderBy: { createdAt: 'asc' } })) {
+    try {
+      const arr = sampleByDataset.get(sr.datasetId) ?? []
+      arr.push(JSON.parse(sr.payload) as Row)
+      sampleByDataset.set(sr.datasetId, arr)
+    } catch {
+      /* แถวเสีย — ข้าม */
+    }
+  }
+
+  // cache ค่าอ้างอิงของเอนจิน EXISTS_IN_DATASET (INTEGRITY)
+  const refValuesCache = new Map<string, Set<string>>()
+  async function refValuesFor(refDatasetId: string, refColumn: string): Promise<Set<string>> {
+    const cacheKey = `${refDatasetId}|${refColumn}`
+    const cached = refValuesCache.get(cacheKey)
+    if (cached) return cached
+    const refRows = sampleByDataset.get(refDatasetId) ?? []
+    const refValues = new Set(
+      refRows
+        .map((r) => (r[refColumn] === null || r[refColumn] === undefined ? '' : String(r[refColumn]).trim()))
+        .filter((v) => v !== ''),
+    )
+    refValuesCache.set(cacheKey, refValues)
+    return refValues
+  }
+
+  const datasetNameById2 = new Map([...datasetMap.entries()])
+  let latestRunSignals = 0
+
+  for (const batch of RUN_BATCHES) {
+    const batchAt = new Date(Date.now() - batch.daysAgo * 86_400_000)
+    const isLatest = batch.daysAgo === 0
+
+    for (const rule of seededRules) {
+      const tpl = tplMap.get(rule.condition)
+      const engineType = tpl?.engineType
+      if (!engineType) continue
+      const dimension = (tpl?.dimension ?? 'VALIDITY') as DimensionKey
+
+      let evalContext: { refValues?: Set<string> } | undefined
+      if (engineType === 'EXISTS_IN_DATASET') {
+        try {
+          const p = JSON.parse(rule.parameters || '{}') as { refDatasetId?: string; refColumn?: string }
+          const refDatasetId = String(p.refDatasetId ?? '')
+          const refColumn = String(p.refColumn ?? '')
+          if (refDatasetId && refColumn) {
+            evalContext = { refValues: await refValuesFor(refDatasetId, refColumn) }
+          }
+        } catch {
+          /* พารามิเตอร์เสีย — ประเมินแบบไม่มีบริบท */
+        }
+      }
+
+      for (const link of rule.datasets) {
+        const rows = sampleByDataset.get(link.datasetId) ?? []
+        const evaluation = evaluateRule(
+          { column: rule.column, engineType, parameters: rule.parameters },
+          rows,
+          evalContext,
+        )
+        const status = evaluation.failedRows === 0 ? 'PASSED' : 'FAILED'
+        const passRate = evaluation.totalRows > 0 ? (evaluation.totalRows - evaluation.failedRows) / evaluation.totalRows : 1
+
+        await db.dqRun.create({
+          data: {
+            ruleId: rule.id,
+            datasetId: link.datasetId,
+            status,
+            totalRows: evaluation.totalRows,
+            failedRows: evaluation.failedRows,
+            passRate,
+            dimension,
+            createdAt: batchAt,
+          },
+        })
+
+        // สัญญาณกฎล้มเหลวของรอบล่าสุด — ต้องมีมนุษย์ทบทวนเสมอ (เหมือน logic ของ /api/dq/run)
+        if (isLatest && status === 'FAILED') {
+          const dsName = datasetNameById2.get(link.datasetId) ?? 'ชุดข้อมูล'
+          await db.dqSignal.create({
+            data: {
+              datasetId: link.datasetId,
+              kind: 'RULE_VIOLATION',
+              dimension,
+              title: `กฎล้มเหลว: ${rule.column} — ${tpl?.name ?? rule.condition}`,
+              detail: `รอบตรวจล่าสุด (${batchAt.toLocaleDateString('th-TH')}) ล้มเหลว ${evaluation.failedRows} จาก ${evaluation.totalRows} แถว ตามมาตราที่ ${Object.keys(DIMENSION_LABELS).indexOf(dimension) + 1} ${DIMENSION_LABELS[dimension].th} — โปรดทบทวนและดำเนินการโดยมนุษย์ (ระบบไม่แก้ไขข้อมูลต้นทาง)`,
+              severity: rule.severity,
+              status: 'PENDING_REVIEW',
+            },
+          })
+          latestRunSignals++
+        }
+      }
+    }
+  }
+
+  await db.auditLog.create({
+    data: {
+      action: 'RUN_VALIDATION',
+      actor: 'system@seed',
+      target: `${RUN_BATCHES.length} batches`,
+      detail: `Seed เริ่มต้นระบบ: บันทึกประวัติผลการตรวจ ${RUN_BATCHES.length} รอบ (6 วันก่อน / 2 วันก่อน / ล่าสุด) ด้วยเอนจินประเมินผลจริง ตามมาตรา DAMA-DMBOK 9 มิติ + สัญญาณกฎล้มเหลวรอบล่าสุด ${latestRunSignals} รายการ`,
+    },
+  })
+
+  await db.auditLog.create({
+    data: {
+      action: 'SET_CLASSIFICATION',
+      actor: 'system@seed',
+      target: `${DATASETS.length} datasets`,
+      detail: 'Seed เริ่มต้นระบบ: จำแนกประเภทข้อมูลตามกรอบมาตรฐาน (ข้อมูลส่วนบุคคล/AML-KYC/การกำกับดูแล/บัตร/การเงิน) — เหลือ 1 ชุดข้อมูลรอจำแนก (ข้อมูลพนักงาน HR)',
+    },
+  })
+
   // คำขอข้อยกเว้น: 1 รออนุมัติ + 1 อนุมัติแล้ว (พร้อมวันหมดอายุ)
   await db.dqException.create({
     data: {
@@ -553,6 +683,7 @@ async function main() {
     conditionTemplates: await db.conditionTemplate.count(),
     rules: await db.dqRule.count(),
     ruleDatasetLinks: await db.ruleDataset.count(),
+    runs: await db.dqRun.count(),
     signals: await db.dqSignal.count(),
     exceptions: await db.dqException.count(),
   })

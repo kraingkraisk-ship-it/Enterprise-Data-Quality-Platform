@@ -22,13 +22,14 @@ model User {
 
 // ชุดข้อมูลในระบบ (ระดับ Dataset ใช้สำหรับการแยกการเข้าถึง)
 model Dataset {
-  id         String   @id @default(cuid())
-  name       String
-  sourceType String // CSV | EXCEL | POSTGRESQL | MSSQL | REST_API
-  piiEnabled Boolean  @default(true) // PII masking by default
-  status     String   @default("ACTIVE") // ACTIVE | ARCHIVED
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id            String  @id @default(cuid())
+  name          String
+  sourceType    String // CSV | EXCEL | POSTGRESQL | MSSQL | REST_API
+  piiEnabled    Boolean @default(true) // PII masking by default
+  classification String @default("UNCLASSIFIED") // การจำแนกประเภทข้อมูล (DataClassificationDef.id หรือ UNCLASSIFIED) — ใช้แมปกับมาตรฐานในแดชบอร์ด
+  status        String  @default("ACTIVE") // ACTIVE | ARCHIVED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   grants     DatasetAccess[]
   sampleRows SampleRow[]
