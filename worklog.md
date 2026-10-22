@@ -737,3 +737,26 @@ Stage Summary:
 - **v0.14.0 อยู่บน remote ครบถ้วน**: main = 9c0ff65 (รวม worklog Task 22) + tag v0.14.0 (annotated, ชี้ 98f9ef8) — sync 100%
 - แนะนำ revoke token นี้หลังเซสชัน (แนวทางเดิมทุกครั้ง)
 - สถานะถัดไป: **v0.15.0 = RCA (5-Why) + Remediation Plan/Task (ในหน้า DQ Issues) + Alerts (สัญญาณ AI ย้ายไป Alerts) — เฟสสุดท้าย ครบ 8 เมนู**
+
+---
+
+## Task ID: 23
+**Agent**: Z.ai Code (main orchestrator)
+**Version**: v0.15.0 (feat — เมนู Data Domain แยกอิสระจากคลังข้อมูล + จัดหมวดรายคอลัมน์)
+**Task**: ผู้ใช้ขอ (ข้อความเดิม) "ฉันต้องการแยก menu Data Domain แยกออกจากคลังข้อมูล โดยให้อยู่ภายใต้ data asset ซึ่งการทำ Data Domain / Sub Data Domain สามารถตั้งค่าได้ โดยการเลือกข้อมูลจากคลังข้อมูล และเลือกข้อมูลแต่ละ column ระบุ sub data domain" — 3 ข้อ: (1) เมนู Data Domain แยกเป็นเมนูอิสระ ไม่ฝังในคลังข้อมูล (2) อยู่ภายใต้กลุ่ม Data Asset ใน sidebar (3) ตั้งค่าได้โดยเลือกข้อมูลจากคลังแล้วระบุ sub data domain ให้แต่ละ column
+
+Work Log:
+- **เริ่มเซสชันใหม่**: พบ local ค้างที่ v0.11.0 (sandbox ถูก rollback) ขณะ remote มี v0.12.0–v0.14.0 แล้ว → fetch + reset --hard origin/main (2e73dad) ก่อนพัฒนา กัน regression · แก้ filemode พลิกซ้ำด้วย `git config core.filemode false` (จบปัญหา 114 ไฟล์ mode-flip ถาวร)
+- **Prisma schema**: เพิ่ม `DataDomainColumnAssignment` (assetId + columnName → domainId, @@unique([assetId, columnName]) กันซ้ำ, assignedBy, FK Cascade ทั้ง asset/domain, ตรวจใน API ว่าคอลัมน์ต้องมีจริงใน DataAssetColumn — deny-by-default) + relation บน DataDomain/DataAsset — db:push สำเร็จ
+- **API ใหม่ 1 เส้น**: `GET /api/domains/assignments?assetId=` (คืน columnName→domainId + domainPath "หลัก / ย่อย") และ `PUT` (บันทึกทั้งชุด: ตรวจสิทธิ์ MANAGE_DATASETS + ตรวจคอลัมน์/โดเมนมีจริงทุกรายการ + จำกัด 200 items + transaction upsert/delete + Audit Trail `ASSIGN_DOMAIN_COLUMNS` สรุป assigned/changed/cleared) · `GET /api/domains` เพิ่ม columnCount รายโดเมน (groupBy) · `PATCH /api/domains/[id]` DELETE guard ขยาย: ลบไม่ได้ถ้ามี columnAssignments ผูกอยู่
+- **UI ใหม่ `data-domain-console.tsx`**: (แผงซ้าย) โครงสร้างโดเมน — สร้างโดเมนหลัก/เพิ่มโดเมนย่อย/แก้ไข/ลบ (ฟอร์มชื่อไทย+อังกฤษ+คำอธิบาย+9 สี, ลบได้เฉพาะว่าง พร้อมเหตุผลเมื่อกดลบไม่ได้, badge "n ข้อมูล · n คอลัมน์") · (แผงขวา) จัดหมวดรายคอลัมน์ — Data Asset picker จากคลังข้อมูล → โหลดคอลัมน์ + ค่าจัดหมวดเดิม → ตารางรายคอลัมน์ dropdown เลือกโดเมน/โดเมนย่อยแบบย่อหน้า (└) → dirty indicator "มี n รายการรอบันทึก" → บันทึกรอบเดียวทั้งชุด · มี Select โดเมนระดับชุดข้อมูล (SET_DOMAIN เดิม) · สถิติ 4 ใบ + เลือกผู้ดำเนินการ (4 บทบาท MANAGE_DATASETS)
+- **views.ts**: AssetViewKey + view key `asset-domain` (icon FolderTree, th "Data Domain") + NAV_GROUPS กลุ่ม Data Asset = นำเข้าข้อมูล · คลังข้อมูล · **Data Domain** + APP_VERSION v0.15.0 · **page.tsx**: mount แบบ keep-mounted + ส่ง `onGoDomains` ให้ AssetInventory · **asset-inventory.tsx** (1,193→807 บรรทัด): ย้าย UI จัดการโดเมนออกทั้งหมด (Dialog จัดการ/ฟอร์ม/ลบ/จัดโดเมนราย asset) — คง domain filter chips + badge บนการ์ด + โดเมนในแท็บข้อมูล + ปุ่ม "จัดการ Data Domain" ไปหน้าใหม่
+- **Seed**: จัดหมวดตัวอย่าง 12 คอลัมน์ (ทะเบียนลูกค้า 7 คอลัมน์ → ลูกค้าบุคคลธรรมดา/บัญชีและเงินฝาก/KYC-AML · อัตราแลกเปลี่ยน 5 คอลัมน์ → อัตราแลกเปลี่ยน) + AuditLog ASSIGN_DOMAIN_COLUMNS ราย asset
+- **ตรวจจริงผ่านหมด (API + agent-browser)**: (1) GET domains มี columnCount ✅ (2) GET assignments คืน 7 รายการพร้อม path ✅ (3) PUT สำเร็จ assigned=1 cleared=1 + Audit ✅ (4) deny คอลัมน์แปลกปลอม "hack_col" → 400 ✅ (5) RBAC BUSINESS_USER → 403 ✅ (6) UI: เมนู Data Domain ในกลุ่ม Data Asset, สถิติ 3/5/2-of-2/12, ต้นไม้ + ปุ่มลบ disabled ถูกต้องตามเงื่อนไข ✅ (7) เลือก asset CSV → ตาราง 7 คอลัมน์ + ค่าเดิมครบ ✅ (8) เปลี่ยน branch→KYC/AML + บันทึก → toast + reload แสดงค่าใหม่ + API ยืนยัน ✅ (9) สร้างโดเมน "พนักงาน/Employees" ผ่านฟอร์ม → ปรากฏในต้นไม้ + ลบผ่าน AlertDialog ได้ ✅ (10) inventory: ปุ่ม "จัดการ Data Domain" ไปหน้าใหม่ + chips กรองตามโดเมนยังทำงาน ✅ (11) แก้บั๊ก Select uncontrolled→controlled (asset picker value={assetId}) console สะอาด ✅ (12) แก้บั๊ก mobile 390px overflow (601px → truncate ใน min-content + min-w-0 + overflow-x-hidden) → NO-OVERFLOW ทั้งหน้า Data Domain และคลังข้อมูล ✅ (13) lint สะอาด, dev.log ไม่มี error
+- หมายเหตุ: reset --hard ก่อนงาน = sandbox คืน state เก่าเอง — ตั้ง core.filemode=false แล้ว ครั้งหน้าจะไม่เจอปัญหา mode ซ้ำ
+
+Stage Summary:
+- **v0.15.0 = Data Domain เป็นเมนูอิสระภายใต้กลุ่ม Data Asset ครบตามโจทย์ 3 ข้อ** — (1) แยกออกจากคลังข้อมูลสมบูรณ์ (inventory เหลือแค่กรอง/แสดงผล) (2) อยู่ลำดับที่ 3 ของกลุ่ม Data Asset (3) ตั้งค่าแบบรายคอลัมน์: เลือกข้อมูลจากคลัง → ระบุ sub data domain ทีละคอลัมน์ → บันทึกรอบเดียว
+- ความปลอดภัยตามหลักระบบ: RBAC MANAGE_DATASETS + Audit Trail 100% (CREATE/UPDATE/DELETE_DATA_DOMAIN, SET_DATA_ASSET_DOMAIN, ASSIGN_DOMAIN_COLUMNS) + deny-by-default (คอลัมน์/โดเมนต้องมีจริง, ลบได้เฉพาะโดเมนว่าง, 2 ระดับเท่านั้น) + ไม่แตะข้อมูลต้นทาง (จัดหมวดเป็น metadata ล้วน)
+- Rollback point: ก่อนงานนี้ = `2e73dad` (v0.14.0 + worklog Task 22-result) — กู้คืน `git reset --hard 2e73dad && bun run db:push && bun scripts/seed.ts`
+- **Push แล้ว**: main (2e73dad → 85c430f) + annotated tag v0.15.0 — push ด้วย token ผู้ใช้ (one-time URL, redact ทุก output, ไม่เข้า git config), ตรวจ ls-remote ตรงเป๊ะ, config CLEAN — ผู้ใช้ควร revoke/rotate token หลังใช้งาน
