@@ -11,6 +11,7 @@ import RbacConsole from '@/components/rbac-console'
 import PlatformOverview from '@/components/platform-overview'
 import AssetImport from '@/components/asset-import'
 import AssetInventory from '@/components/asset-inventory'
+import DataDomainConsole from '@/components/data-domain-console'
 import DqScorecard from '@/components/dq/scorecard'
 import DqFailedRecords from '@/components/dq/failed-records'
 import DqProfiling from '@/components/dq/profiling'
@@ -88,7 +89,13 @@ export default function Home() {
             <AssetImport onGoInventory={() => setView('asset-inventory')} />
           </div>
           <div className={view === 'asset-inventory' ? '' : 'hidden'} aria-hidden={view !== 'asset-inventory'}>
-            <AssetInventory active={view === 'asset-inventory'} />
+            <AssetInventory active={view === 'asset-inventory'} onGoDomains={() => setView('asset-domain')} />
+          </div>
+
+          {/* Data Domain Console — เมนูอิสระภายใต้กลุ่ม Data Asset (v0.15.0)
+              คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
+          <div className={view === 'asset-domain' ? '' : 'hidden'} aria-hidden={view !== 'asset-domain'}>
+            <DataDomainConsole active={view === 'asset-domain'} />
           </div>
 
           {/* หน้าใหม่ของโมดูล Data Quality — บัตรคะแนน + ข้อมูลที่ไม่ผ่าน + โปรไฟล์ + ปัญหา */}

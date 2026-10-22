@@ -2,6 +2,7 @@ import {
   ClipboardList,
   FileUp,
   FileWarning,
+  FolderTree,
   Gauge,
   GitBranch,
   LayoutDashboard,
@@ -21,7 +22,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.14.0'
+export const APP_VERSION = 'v0.15.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -33,7 +34,7 @@ export const APP_VERSION = 'v0.14.0'
 export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'dashboard'
 
 /** มุมมองของโมดูล Data Asset */
-export type AssetViewKey = 'asset-import' | 'asset-inventory'
+export type AssetViewKey = 'asset-import' | 'asset-inventory' | 'asset-domain'
 
 /** มุมมองหน้าใหม่ของโมดูล Data Quality */
 export type DqViewKey = 'scorecard' | 'rule-library' | 'profiling' | 'validation-results' | 'failed-records' | 'issues'
@@ -131,8 +132,15 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'asset-inventory',
     th: 'คลังข้อมูล',
     en: 'Data Inventory',
-    desc: 'รายการข้อมูลที่นำเข้ามาทั้งหมด จัดหมวดหมู่เป็นโดเมนข้อมูลและโดเมนย่อย พร้อมสำรวจคอลัมน์ พรีวิวข้อมูล และค้นหา',
+    desc: 'รายการข้อมูลที่นำเข้ามาทั้งหมด กรองตามโดเมนข้อมูล พร้อมสำรวจคอลัมน์ พรีวิวข้อมูล และค้นหา',
     icon: PackageSearch,
+  },
+  'asset-domain': {
+    key: 'asset-domain',
+    th: 'Data Domain',
+    en: 'Data Domain & Sub Domain',
+    desc: 'จัดการโดเมนข้อมูลและโดเมนย่อย (2 ระดับ) — เลือกข้อมูลจากคลังข้อมูลแล้วระบุโดเมนย่อยให้แต่ละคอลัมน์',
+    icon: FolderTree,
   },
   rbac: {
     key: 'rbac',
@@ -175,7 +183,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     labelTh: 'Data Asset',
     labelEn: 'สินทรัพย์ข้อมูล',
-    items: ['asset-import', 'asset-inventory'],
+    items: ['asset-import', 'asset-inventory', 'asset-domain'],
   },
   {
     labelTh: 'คุณภาพข้อมูล',

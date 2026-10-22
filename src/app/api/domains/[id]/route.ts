@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     const domain = await db.dataDomain.findUnique({
       where: { id },
-      include: { _count: { select: { children: true, assets: true } } },
+      include: { _count: { select: { children: true, assets: true, columnAssignments: true } } },
     })
     if (!domain) return NextResponse.json({ error: 'ไม่พบโดเมนข้อมูลนี้ในระบบ' }, { status: 404 })
 
@@ -38,9 +38,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           { status: 409 },
         )
       }
-      if (domain._count.assets > 0) {
+      if (domain._count.assets > 0 || domain._count.columnAssignments > 0) {
+        const parts: string[] = []
+        if (domain._count.assets > 0) parts.push(`ข้อมูลผูกอยู่ ${domain._count.assets} รายการ`)
+        if (domain._count.columnAssignments > 0) parts.push(`คอลัมน์ที่ถูกจัดหมวดอยู่ ${domain._count.columnAssignments} คอลัมน์`)
         return NextResponse.json(
-          { error: `ลบไม่ได้ — "${domain.name}" ยังมีข้อมูลผูกอยู่ ${domain._count.assets} รายการ (ย้ายหรือนำออกจากโดเมนก่อน)` },
+          { error: `ลบไม่ได้ — "${domain.name}" ยังมี${parts.join(' และ ')} (ย้ายหรือนำออกจากโดเมนก่อน)` },
           { status: 409 },
         )
       }

@@ -66,12 +66,22 @@ export interface DomainItem {
   position: number
   /** จำนวน Data Asset ที่ผูกกับโดเมนนี้โดยตรง */
   assetCount: number
+  /** จำนวนคอลัมน์ที่ถูกจัดหมวดเข้าโดเมนนี้ (v0.15.0) */
+  columnCount: number
   createdAt: string
 }
 
 /** โดเมนแบบต้นไม้ (โดเมนหลัก + โดเมนย่อยของมัน) */
 export interface DomainNode extends DomainItem {
   children: DomainItem[]
+}
+
+/** การจัดหมวดรายคอลัมน์ 1 รายการ (คอลัมน์ของ Data Asset → โดเมน/โดเมนย่อย) — v0.15.0 */
+export interface ColumnAssignmentItem {
+  columnName: string
+  domainId: string
+  /** ชื่อโดเมนแบบ path "หลัก / ย่อย" — ไว้แสดงผล */
+  domainPath: string
 }
 
 /** ประกอบ flat list → ต้นไม้ (โดเมนย่อยที่พ่อหายไปจะถูกข้าม — deny-by-default) */

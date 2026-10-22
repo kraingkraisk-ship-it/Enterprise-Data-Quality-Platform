@@ -12,7 +12,7 @@ import { DOMAIN_DESC_MAX, DOMAIN_NAME_MAX, isValidDomainColor } from '@/lib/doma
  */
 export async function GET() {
   try {
-    const [domains, groups] = await Promise.all([
+    const [domains, groups, columnGroups] = await Promise.all([
       db.dataDomain.findMany({
         orderBy: [{ position: 'asc' }, { name: 'asc' }],
         select: {
@@ -27,15 +27,24 @@ export async function GET() {
         },
       }),
       db.dataAsset.groupBy({ by: ['domainId'], _count: { _all: true } }),
+      db.dataDomainColumnAssignment.groupBy({ by: ['domainId'], _count: { _all: true } }),
     ])
 
     const countByDomain = new Map<string, number>()
     for (const g of groups) {
       if (g.domainId) countByDomain.set(g.domainId, g._count._all)
     }
+    const columnsByDomain = new Map<string, number>()
+    for (const g of columnGroups) {
+      columnsByDomain.set(g.domainId, g._count._all)
+    }
 
     return NextResponse.json({
-      domains: domains.map((d) => ({ ...d, assetCount: countByDomain.get(d.id) ?? 0 })),
+      domains: domains.map((d) => ({
+        ...d,
+        assetCount: countByDomain.get(d.id) ?? 0,
+        columnCount: columnsByDomain.get(d.id) ?? 0,
+      })),
       count: domains.length,
     })
   } catch (e) {

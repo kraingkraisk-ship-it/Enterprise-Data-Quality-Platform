@@ -6,13 +6,11 @@ import {
   Database,
   Eye,
   FileSpreadsheet,
-  FolderPlus,
   FolderTree,
   Loader2,
   Lock,
   PackageSearch,
   Pencil,
-  Plus,
   RefreshCw,
   Search,
   ShieldOff,
@@ -46,17 +44,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { ROLES } from '@/lib/rbac'
-import {
-  buildDomainTree,
-  domainColor,
-  DOMAIN_COLORS,
-  DOMAIN_DESC_MAX,
-  DOMAIN_NAME_MAX,
-  NO_DOMAIN,
-  rollupAssetCount,
-  type DomainItem,
-  type DomainNode,
-} from '@/lib/domains'
+import { buildDomainTree, domainColor, rollupAssetCount, type DomainItem } from '@/lib/domains'
 
 /* ------------------------------------------------------------------ */
 /* Data Inventory — คลังข้อมูล: แสดงข้อมูลที่ import เข้ามาทั้งหมด        */
@@ -119,67 +107,11 @@ const DATA_TYPE_LABELS: Record<string, string> = {
   EMPTY: 'ว่าง',
 }
 
-/** ค่า sentinel ของ Select เมื่อ "ไม่ระบุโดเมน" (Radix Select ห้าม value ว่าง) — ดู NO_DOMAIN จาก lib/domains */
-
 function domainChipCls(active: boolean, sub = false): string {
   if (active) return 'rounded-full border border-emerald-500 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800'
   return sub
     ? 'rounded-full border border-transparent bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted'
     : 'rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted/60'
-}
-
-function DomainRow({
-  item,
-  sub,
-  childCount,
-  onEdit,
-  onAddSub,
-  onDelete,
-}: {
-  item: DomainItem
-  sub?: boolean
-  childCount: number
-  onEdit: () => void
-  onAddSub?: () => void
-  onDelete: () => void
-}) {
-  const col = domainColor(item.color)
-  const deletable = childCount === 0 && item.assetCount === 0
-  const blockedReason = childCount > 0 ? 'ลบโดเมนย่อยทั้งหมดก่อนจึงจะลบโดเมนนี้ได้' : 'ย้ายข้อมูลออกจากโดเมนก่อนจึงจะลบได้'
-  return (
-    <div className={`flex items-center gap-2 rounded-lg border bg-card px-3 py-2 ${sub ? 'ml-6 border-dashed' : ''}`}>
-      <span className={`size-2.5 shrink-0 rounded-full ${col.dot}`} aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">
-          {item.name}
-          {item.nameEn && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{item.nameEn}</span>}
-        </p>
-        {item.description && <p className="truncate text-xs text-muted-foreground">{item.description}</p>}
-      </div>
-      <Badge variant="outline" className="shrink-0 text-[10px] tabular-nums">
-        {item.assetCount} ข้อมูล
-      </Badge>
-      {!sub && (
-        <Button size="icon" variant="ghost" className="size-7" onClick={onAddSub} title="เพิ่มโดเมนย่อย" aria-label={`เพิ่มโดเมนย่อยใน ${item.name}`}>
-          <FolderPlus className="size-3.5" aria-hidden="true" />
-        </Button>
-      )}
-      <Button size="icon" variant="ghost" className="size-7" onClick={onEdit} aria-label={`แก้ไขโดเมน ${item.name}`}>
-        <Pencil className="size-3.5" aria-hidden="true" />
-      </Button>
-      <Button
-        size="icon"
-        variant="ghost"
-        className="size-7 text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-35"
-        disabled={!deletable}
-        onClick={onDelete}
-        title={deletable ? 'ลบโดเมน' : blockedReason}
-        aria-label={`ลบโดเมน ${item.name}`}
-      >
-        <Trash2 className="size-3.5" aria-hidden="true" />
-      </Button>
-    </div>
-  )
 }
 
 function fmtDate(s: string): string {
@@ -190,7 +122,16 @@ function fmtDate(s: string): string {
   }
 }
 
-export function AssetInventory({ active, reloadTick }: { active?: boolean; reloadTick?: number }) {
+export function AssetInventory({
+  active,
+  reloadTick,
+  onGoDomains,
+}: {
+  active?: boolean
+  reloadTick?: number
+  /** ปุ่มไปหน้าจัดการ Data Domain (เมนูอิสระ v0.15.0) */
+  onGoDomains?: () => void
+}) {
   const { toast } = useToast()
   const [assets, setAssets] = useState<AssetItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -211,25 +152,9 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
   const [busy, setBusy] = useState(false)
   const [operatorEmail, setOperatorEmail] = useState('preecha.engineer@company.co.th')
 
-  // ---------- โดเมนข้อมูล (v0.14.0) ----------
+  // ---------- โดเมนข้อมูล (v0.15.0 — คงไว้เพื่อกรอง/แสดงป้าย การจัดการย้ายไปเมนู Data Domain) ----------
   const [domains, setDomains] = useState<DomainItem[]>([])
   const [domainFilter, setDomainFilter] = useState<string>('ALL') // ALL | NONE | domainId
-  const [manageOpen, setManageOpen] = useState(false)
-  const [assignOpen, setAssignOpen] = useState(false)
-  const [assignRoot, setAssignRoot] = useState<string>('')
-  const [assignSub, setAssignSub] = useState<string>('')
-  const [formOpen, setFormOpen] = useState(false)
-  const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
-  const [formEditId, setFormEditId] = useState<string | null>(null)
-  const [formParentId, setFormParentId] = useState<string>('') // '' = โดเมนหลัก
-  const [formParentName, setFormParentName] = useState('')
-  const [formName, setFormName] = useState('')
-  const [formNameEn, setFormNameEn] = useState('')
-  const [formDesc, setFormDesc] = useState('')
-  const [formColor, setFormColor] = useState('emerald')
-  const [formBusy, setFormBusy] = useState(false)
-  const [deleteDomainId, setDeleteDomainId] = useState<string | null>(null)
-  const [domainBusy, setDomainBusy] = useState(false)
 
   /* ------------------------- load ------------------------- */
   const loadAssets = useCallback(async () => {
@@ -388,113 +313,6 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
 
   const selectedAsset = assets.find((a) => a.id === selectedId) ?? null
 
-  /* ------------------------- domain actions ------------------------- */
-  function openCreateDomain(parentId = '', parentName = '') {
-    setFormMode('create')
-    setFormEditId(null)
-    setFormParentId(parentId)
-    setFormParentName(parentName)
-    setFormName('')
-    setFormNameEn('')
-    setFormDesc('')
-    setFormColor('emerald')
-    setFormOpen(true)
-  }
-
-  function openEditDomain(d: DomainItem) {
-    setFormMode('edit')
-    setFormEditId(d.id)
-    setFormParentId(d.parentId ?? '')
-    setFormParentName(d.parentId ? (domains.find((p) => p.id === d.parentId)?.name ?? '') : '')
-    setFormName(d.name)
-    setFormNameEn(d.nameEn)
-    setFormDesc(d.description)
-    setFormColor(d.color)
-    setFormOpen(true)
-  }
-
-  async function submitDomainForm() {
-    if (!formName.trim()) return
-    setFormBusy(true)
-    try {
-      const isEdit = formMode === 'edit' && formEditId
-      const res = await fetch(isEdit ? `/api/domains/${formEditId}` : '/api/domains', {
-        method: isEdit ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          operatorEmail,
-          ...(isEdit ? { action: 'UPDATE' } : {}),
-          name: formName.trim(),
-          nameEn: formNameEn.trim(),
-          description: formDesc.trim(),
-          color: formColor,
-          ...(isEdit ? {} : { parentId: formParentId || undefined }),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast({ title: 'บันทึกไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
-        return
-      }
-      toast({ title: data.message ?? 'บันทึกแล้ว' })
-      setFormOpen(false)
-      await loadDomains()
-    } catch {
-      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
-    } finally {
-      setFormBusy(false)
-    }
-  }
-
-  async function doDeleteDomain() {
-    if (!deleteDomainId) return
-    setDomainBusy(true)
-    try {
-      const res = await fetch(`/api/domains/${deleteDomainId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operatorEmail, action: 'DELETE' }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast({ title: 'ลบไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
-        return
-      }
-      toast({ title: data.message ?? 'ลบแล้ว' })
-      if (domainFilter === deleteDomainId) setDomainFilter('ALL')
-      setDeleteDomainId(null)
-      await Promise.all([loadDomains(), loadAssets()])
-    } catch {
-      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
-    } finally {
-      setDomainBusy(false)
-    }
-  }
-
-  function openAssign() {
-    const d = selectedAsset?.domain ?? null
-    if (d?.parentId) {
-      setAssignRoot(d.parentId)
-      setAssignSub(d.id)
-    } else if (d) {
-      setAssignRoot(d.id)
-      setAssignSub(NO_DOMAIN)
-    } else {
-      setAssignRoot(NO_DOMAIN)
-      setAssignSub(NO_DOMAIN)
-    }
-    setAssignOpen(true)
-  }
-
-  async function saveAssign() {
-    const domainId = assignSub !== NO_DOMAIN ? assignSub : assignRoot !== NO_DOMAIN ? assignRoot : ''
-    const ok = await patchAsset('SET_DOMAIN', { domainId }, 'บันทึกแล้ว')
-    if (ok) {
-      setAssignOpen(false)
-      await loadDomains()
-    }
-  }
-
   return (
     <div className="space-y-5">
       {/* หัวหน้า */}
@@ -504,9 +322,11 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
           <p className="text-sm text-muted-foreground">ข้อมูลที่นำเข้ามาทั้งหมดในระบบ — กดที่รายการเพื่อสำรวจคอลัมน์และพรีวิวข้อมูล</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => setManageOpen(true)}>
-            <FolderTree className="size-4" aria-hidden="true" /> จัดการโดเมน
-          </Button>
+          {onGoDomains && (
+            <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={onGoDomains}>
+              <FolderTree className="size-4" aria-hidden="true" /> จัดการ Data Domain
+            </Button>
+          )}
           <Select value={viewerRole} onValueChange={setViewerRole}>
             <SelectTrigger className="h-9 w-full sm:w-64" aria-label="ดูข้อมูลในมุมมองบทบาท">
               <SelectValue />
@@ -746,9 +566,6 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
             }}>
               <Pencil className="size-3.5" aria-hidden="true" /> เปลี่ยนชื่อ
             </Button>
-            <Button size="sm" variant="outline" onClick={() => openAssign()}>
-              <FolderTree className="size-3.5" aria-hidden="true" /> จัดโดเมน
-            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -980,211 +797,6 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {/* ------------------------- Dialog จัดการโดเมนข้อมูล ------------------------- */}
-      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>จัดการโดเมนข้อมูล</DialogTitle>
-            <DialogDescription>
-              แบ่งหมวดหมู่ข้อมูลในคลังเป็นโดเมนหลักและโดเมนย่อย (รองรับ 2 ระดับ) — ทุกการเปลี่ยนแปลงต้องมีสิทธิ์จัดการข้อมูลและถูกบันทึก Audit Trail
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">
-              ลบได้เฉพาะโดเมนที่ว่าง (ไม่มีโดเมนย่อยและไม่มีข้อมูลผูกอยู่)
-            </p>
-            <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => openCreateDomain('', '')}>
-              <Plus className="size-3.5" aria-hidden="true" /> เพิ่มโดเมนหลัก
-            </Button>
-          </div>
-
-          {domainTree.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center">
-              <FolderTree className="mx-auto size-8 text-muted-foreground/40" aria-hidden="true" />
-              <p className="mt-2 text-sm font-medium">ยังไม่มีโดเมนข้อมูล</p>
-              <p className="mt-1 text-xs text-muted-foreground">สร้างโดเมนหลักเพื่อเริ่มจัดหมวดหมู่ข้อมูลในคลัง เช่น ลูกค้า การเงิน การปฏิบัติตามกฎเกณฑ์</p>
-            </div>
-          ) : (
-            <div className="max-h-96 space-y-1.5 overflow-y-auto rounded-lg border p-2" role="list" aria-label="ต้นไม้โดเมนข้อมูล">
-              {domainTree.map((n) => (
-                <div key={n.id} className="space-y-1.5" role="listitem">
-                  <DomainRow
-                    item={n}
-                    childCount={n.children.length}
-                    onEdit={() => openEditDomain(n)}
-                    onAddSub={() => openCreateDomain(n.id, n.name)}
-                    onDelete={() => setDeleteDomainId(n.id)}
-                  />
-                  {n.children.map((c) => (
-                    <DomainRow
-                      key={c.id}
-                      item={c}
-                      sub
-                      childCount={0}
-                      onEdit={() => openEditDomain(c)}
-                      onDelete={() => setDeleteDomainId(c.id)}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ------------------------- Dialog ฟอร์มโดเมน (สร้าง/แก้ไข) ------------------------- */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {formMode === 'create' ? (formParentId ? 'เพิ่มโดเมนย่อย' : 'เพิ่มโดเมนหลัก') : 'แก้ไขโดเมน'}
-            </DialogTitle>
-            <DialogDescription>
-              {formMode === 'create' && formParentId
-                ? `สร้างโดเมนย่อยภายใต้ "${formParentName}" — ระบบรองรับโดเมนลึกสุด 2 ระดับ`
-                : 'ตั้งชื่อให้สื่อหมวดหมู่ข้อมูล เช่น ลูกค้า การเงิน การปฏิบัติตามกฎเกณฑ์'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="domain-name">
-                ชื่อโดเมน <span className="text-rose-600">*</span>
-              </Label>
-              <Input
-                id="domain-name"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                maxLength={DOMAIN_NAME_MAX}
-                placeholder="เช่น ลูกค้า"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="domain-name-en">ชื่อภาษาอังกฤษ (ไม่บังคับ)</Label>
-              <Input
-                id="domain-name-en"
-                value={formNameEn}
-                onChange={(e) => setFormNameEn(e.target.value)}
-                maxLength={DOMAIN_NAME_MAX}
-                placeholder="เช่น Customer"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="domain-desc">คำอธิบาย (ไม่บังคับ)</Label>
-              <Input
-                id="domain-desc"
-                value={formDesc}
-                onChange={(e) => setFormDesc(e.target.value)}
-                maxLength={DOMAIN_DESC_MAX}
-                placeholder="อธิบายขอบเขตของโดเมนสั้น ๆ"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>สีป้ายกำกับ</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {DOMAIN_COLORS.map((c) => (
-                  <button
-                    key={c.key}
-                    type="button"
-                    onClick={() => setFormColor(c.key)}
-                    aria-pressed={formColor === c.key}
-                    aria-label={c.th}
-                    title={c.th}
-                    className={`size-7 rounded-full transition ${c.swatch} ${
-                      formColor === c.key ? 'ring-2 ring-foreground ring-offset-2' : 'opacity-70 hover:opacity-100'
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFormOpen(false)}>
-              ยกเลิก
-            </Button>
-            <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={formBusy || !formName.trim()} onClick={() => void submitDomainForm()}>
-              {formBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} บันทึก
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ------------------------- ยืนยันลบโดเมน ------------------------- */}
-      <AlertDialog open={deleteDomainId !== null} onOpenChange={(o) => { if (!o) setDeleteDomainId(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการลบโดเมน</AlertDialogTitle>
-            <AlertDialogDescription>
-              ต้องการลบโดเมน &quot;{domains.find((d) => d.id === deleteDomainId)?.name ?? ''}&quot; หรือไม่? (ลบได้เฉพาะโดเมนที่ว่าง — การลบถูกบันทึกใน Audit Trail)
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-            <AlertDialogAction className="bg-rose-600 text-white hover:bg-rose-700" onClick={(e) => { e.preventDefault(); void doDeleteDomain() }}>
-              {domainBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} ลบ
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* ------------------------- Dialog จัดโดเมนราย Data Asset ------------------------- */}
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>จัดโดเมนข้อมูล</DialogTitle>
-            <DialogDescription>เลือกโดเมนหลักและโดเมนย่อย (ถ้ามี) สำหรับ &quot;{selectedAsset?.name ?? ''}&quot;</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="assign-root">โดเมนหลัก</Label>
-              <Select
-                value={assignRoot}
-                onValueChange={(v) => {
-                  setAssignRoot(v)
-                  setAssignSub(NO_DOMAIN)
-                }}
-              >
-                <SelectTrigger id="assign-root" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_DOMAIN}>— ไม่ระบุโดเมน —</SelectItem>
-                  {domainTree.map((n) => (
-                    <SelectItem key={n.id} value={n.id}>
-                      {n.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="assign-sub">โดเมนย่อย (ไม่บังคับ)</Label>
-              <Select value={assignSub} onValueChange={setAssignSub} disabled={assignRoot === NO_DOMAIN}>
-                <SelectTrigger id="assign-sub" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_DOMAIN}>— ไม่มี —</SelectItem>
-                  {(domainTree.find((n) => n.id === assignRoot)?.children ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">เลือกโดเมนหลักก่อนจึงจะเลือกโดเมนย่อยได้ — บันทึกใน Audit Trail ทุกครั้ง</p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignOpen(false)}>
-              ยกเลิก
-            </Button>
-            <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={busy} onClick={() => void saveAssign()}>
-              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} บันทึก
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

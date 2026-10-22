@@ -832,6 +832,59 @@ async function main() {
     })
   }
 
+  // ---------- จัดหมวดรายคอลัมน์ตัวอย่าง (v0.15.0 — เลือกข้อมูลจากคลัง แล้วระบุโดเมน/โดเมนย่อยรายคอลัมน์) ----------
+  const COLUMN_DOMAIN_SEED: Array<{ assetName: string; map: Record<string, string> }> = [
+    {
+      assetName: ASSET_BRANCH_CSV,
+      map: {
+        customer_id: 'ลูกค้าบุคคลธรรมดา',
+        full_name: 'ลูกค้าบุคคลธรรมดา',
+        email: 'ลูกค้าบุคคลธรรมดา',
+        phone: 'ลูกค้าบุคคลธรรมดา',
+        branch: 'ลูกค้าบุคคลธรรมดา',
+        balance: 'บัญชีและเงินฝาก',
+        kyc_date: 'KYC / AML',
+      },
+    },
+    {
+      assetName: ASSET_EXCHANGE_JSON,
+      map: {
+        date: 'อัตราแลกเปลี่ยน',
+        currency: 'อัตราแลกเปลี่ยน',
+        buy: 'อัตราแลกเปลี่ยน',
+        sell: 'อัตราแลกเปลี่ยน',
+        source: 'อัตราแลกเปลี่ยน',
+      },
+    },
+  ]
+  for (const cs of COLUMN_DOMAIN_SEED) {
+    const asset = await db.dataAsset.findFirst({
+      where: { name: cs.assetName },
+      select: { id: true, name: true, columns: { select: { name: true } } },
+    })
+    if (!asset) continue
+    const validCols = new Set(asset.columns.map((c) => c.name))
+    let assigned = 0
+    for (const [col, subName] of Object.entries(cs.map)) {
+      const domainId = subDomainId.get(subName)
+      if (!domainId || !validCols.has(col)) continue
+      await db.dataDomainColumnAssignment.upsert({
+        where: { assetId_columnName: { assetId: asset.id, columnName: col } },
+        create: { assetId: asset.id, columnName: col, domainId, assignedBy: 'preecha.engineer@company.co.th' },
+        update: { domainId },
+      })
+      assigned += 1
+    }
+    await db.auditLog.create({
+      data: {
+        action: 'ASSIGN_DOMAIN_COLUMNS',
+        actor: 'preecha.engineer@company.co.th',
+        target: asset.name,
+        detail: `Seed เริ่มต้นระบบ: จัดหมวดรายคอลัมน์ของ "${asset.name}" — ระบุโดเมน/โดเมนย่อยให้ ${assigned} คอลัมน์`,
+      },
+    })
+  }
+
   // ---------- Data Profiling + DQ Issues ตัวอย่าง (v0.13.0) ----------
   // โปรไฟล์ตัวอย่าง 2 ชุดข้อมูล (ทำงานเฉพาะเมื่อยังไม่มีข้อมูล — กันซ้ำเมื่อรัน seed ซ้ำ)
   if ((await db.dqProfileRun.count()) === 0) {
@@ -989,6 +1042,7 @@ async function main() {
     issues: await db.dqIssue.count(),
     dataAssets: await db.dataAsset.count(),
     dataDomains: await db.dataDomain.count(),
+    domainColumnAssignments: await db.dataDomainColumnAssignment.count(),
     dataAssetRecords: await db.dataAssetRecord.count(),
   })
 }

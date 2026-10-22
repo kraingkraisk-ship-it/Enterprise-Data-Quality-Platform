@@ -339,6 +339,7 @@ model DataAsset {
   domain DataDomain?       @relation(fields: [domainId], references: [id], onDelete: SetNull)
   columns DataAssetColumn[]
   records DataAssetRecord[]
+  columnDomainAssignments DataDomainColumnAssignment[]
 
   @@index([status])
   @@index([domainId])
@@ -366,9 +367,31 @@ model DataDomain {
   parent   DataDomain?  @relation("DomainTree", fields: [parentId], references: [id], onDelete: Cascade)
   children DataDomain[] @relation("DomainTree")
   assets   DataAsset[]
+  columnAssignments DataDomainColumnAssignment[]
 
   @@index([parentId])
   @@index([position])
+}
+
+// ---------------------------------------------------------------------------
+// การจัดหมวดรายคอลัมน์ (v0.15.0) — เลือกข้อมูลจากคลังข้อมูล แล้วระบุโดเมน/โดเมนย่อย
+// ให้แต่ละคอลัมน์ (คอลัมน์ 1 ของ Data Asset → DataDomain 1 รายการ)
+// ---------------------------------------------------------------------------
+
+model DataDomainColumnAssignment {
+  id         String   @id @default(cuid())
+  assetId    String
+  columnName String // ต้องเป็นคอลัมน์ที่มีจริงใน DataAssetColumn (ตรวจใน API — deny-by-default)
+  domainId   String // โดเมนหลักหรือโดเมนย่อยก็ได้ (DataDomain.id)
+  assignedBy String // email ผู้จัดหมวด
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  asset  DataAsset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  domain DataDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, columnName])
+  @@index([domainId])
 }
 
 // คอลัมน์ของ Data Asset — metadata สำหรับแสดงใน Data Inventory
