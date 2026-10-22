@@ -27,7 +27,8 @@ model Dataset {
   sourceType    String // CSV | EXCEL | POSTGRESQL | MSSQL | REST_API
   piiEnabled    Boolean @default(true) // PII masking by default
   classification String @default("UNCLASSIFIED") // การจำแนกประเภทข้อมูล (DataClassificationDef.id หรือ UNCLASSIFIED) — ใช้แมปกับมาตรฐานในแดชบอร์ด
-  status        String  @default("ACTIVE") // ACTIVE | ARCHIVED
+  status        String @default("ACTIVE") // ACTIVE | ARCHIVED
+  domainId      String? // โดเมนข้อมูลที่สังกัด (DataDomain.id) — ใช้รวมคะแนนรายโดเมนใน Executive Dashboard (v0.16.0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -40,8 +41,10 @@ model Dataset {
   batches    DqValidationBatch[]
   profileRuns DqProfileRun[]
   issues     DqIssue[]
+  domain     DataDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
   @@index([status])
+  @@index([domainId])
 }
 
 // สิทธิ์การเข้าถึงชุดข้อมูลรายบทบาท (dataset-level isolation)
@@ -367,6 +370,7 @@ model DataDomain {
   parent   DataDomain?  @relation("DomainTree", fields: [parentId], references: [id], onDelete: Cascade)
   children DataDomain[] @relation("DomainTree")
   assets   DataAsset[]
+  datasets Dataset[] // ชุดข้อมูลในโมดูล DQ ที่สังกัดโดเมนนี้ (v0.16.0)
   columnAssignments DataDomainColumnAssignment[]
 
   @@index([parentId])

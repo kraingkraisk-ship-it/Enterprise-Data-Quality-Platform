@@ -68,6 +68,8 @@ export interface DomainItem {
   assetCount: number
   /** จำนวนคอลัมน์ที่ถูกจัดหมวดเข้าโดเมนนี้ (v0.15.0) */
   columnCount: number
+  /** จำนวนชุดข้อมูล DQ (Dataset) ที่สังกัดโดเมนนี้โดยตรง (v0.16.0) */
+  datasetCount: number
   createdAt: string
 }
 

@@ -9,7 +9,7 @@ import { DOMAIN_DESC_MAX, DOMAIN_NAME_MAX, isValidDomainColor } from '@/lib/doma
  * สิทธิ์: MANAGE_DATASETS — ทุกการเปลี่ยนแปลงบันทึก Audit Trail
  * กติกา (deny-by-default):
  * - แก้ชื่อซ้ำในระดับเดียวกันไม่ได้ · ห้ามย้ายระดับ (กัน depth เกิน 2 — ย้าย = ลบแล้วสร้างใหม่)
- * - ลบได้เฉพาะโดเมนที่ว่าง (ไม่มีโดเมนย่อยและไม่มี Data Asset ผูกอยู่) — กันข้อมูลหลุดโดเมนโดยไม่ตั้งใจ
+ * - ลบได้เฉพาะโดเมนที่ว่าง (ไม่มีโดเมนย่อย · ไม่มี Data Asset · ไม่มีชุดข้อมูล DQ · ไม่มีคอลัมน์จัดหมวด) — กันข้อมูลหลุดโดเมนโดยไม่ตั้งใจ
  */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     const domain = await db.dataDomain.findUnique({
       where: { id },
-      include: { _count: { select: { children: true, assets: true, columnAssignments: true } } },
+      include: { _count: { select: { children: true, assets: true, columnAssignments: true, datasets: true } } },
     })
     if (!domain) return NextResponse.json({ error: 'ไม่พบโดเมนข้อมูลนี้ในระบบ' }, { status: 404 })
 
@@ -38,9 +38,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           { status: 409 },
         )
       }
-      if (domain._count.assets > 0 || domain._count.columnAssignments > 0) {
+      if (domain._count.assets > 0 || domain._count.columnAssignments > 0 || domain._count.datasets > 0) {
         const parts: string[] = []
         if (domain._count.assets > 0) parts.push(`ข้อมูลผูกอยู่ ${domain._count.assets} รายการ`)
+        if (domain._count.datasets > 0) parts.push(`ชุดข้อมูล DQ สังกัดอยู่ ${domain._count.datasets} ชุด`)
         if (domain._count.columnAssignments > 0) parts.push(`คอลัมน์ที่ถูกจัดหมวดอยู่ ${domain._count.columnAssignments} คอลัมน์`)
         return NextResponse.json(
           { error: `ลบไม่ได้ — "${domain.name}" ยังมี${parts.join(' และ ')} (ย้ายหรือนำออกจากโดเมนก่อน)` },

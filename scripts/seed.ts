@@ -746,6 +746,31 @@ async function main() {
     },
   })
 
+  // ---------- จัดชุดข้อมูล DQ (Dataset) เข้าโดเมน (v0.16.0) ----------
+  // ใช้สำหรับรวมคะแนนรายโดเมนใน Executive Dashboard — ชุดที่ไม่อยู่ในลิสต์ = ไม่ระบุโดเมน
+  const DATASET_DOMAIN_SEED: Array<{ dataset: string; subDomain: string }> = [
+    { dataset: 'ลูกค้าองค์กร — Master', subDomain: 'ลูกค้าบุคคลธรรมดา' },
+    { dataset: 'คำร้องเรียนลูกค้า', subDomain: 'ลูกค้าบุคคลธรรมดา' },
+    { dataset: 'รายการธุรกรรมรายวัน', subDomain: 'บัญชีและเงินฝาก' },
+    { dataset: 'ทะเบียนบัญชีธนาคาร', subDomain: 'บัญชีและเงินฝาก' },
+    { dataset: 'อัตราแลกเปลี่ยน (API)', subDomain: 'อัตราแลกเปลี่ยน' },
+  ]
+  for (const sd of DATASET_DOMAIN_SEED) {
+    const datasetId = datasetMap.get(sd.dataset)
+    const domainId = subDomainId.get(sd.subDomain)
+    if (!datasetId || !domainId) continue
+    await db.dataset.update({ where: { id: datasetId }, data: { domainId } })
+    await db.auditLog.create({
+      data: {
+        action: 'SET_DATASET_DOMAIN',
+        actor: 'preecha.engineer@company.co.th',
+        target: sd.dataset,
+        detail: `Seed เริ่มต้นระบบ: จัดชุดข้อมูล "${sd.dataset}" เข้าโดเมน "${sd.subDomain}" สำหรับรวมคะแนนรายโดเมน`,
+      },
+    })
+  }
+
+
   // ---------- Data Asset ตัวอย่าง (โมดูล Data Asset — CSV / JSON) ----------
   // ทำข้อมูลตัวอย่างให้คลังข้อมูล (Data Inventory) มีข้อมูลตั้งแต่เปิดหน้าแรก
   interface SeedAsset {

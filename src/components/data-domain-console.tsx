@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  Database,
   FolderPlus,
   FolderTree,
   Info,
@@ -40,6 +41,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { ROLES } from '@/lib/rbac'
 import {
@@ -55,9 +57,10 @@ import {
 } from '@/lib/domains'
 
 /* ------------------------------------------------------------------ */
-/* Data Domain Console (v0.15.0) — เมนูอิสระภายใต้กลุ่ม Data Asset      */
+/* Data Domain Console (v0.16.0) — เมนูอิสระภายใต้กลุ่ม Data Asset      */
 /* (1) จัดการโครงสร้าง Data Domain / Sub Data Domain (2 ระดับ)          */
 /* (2) เลือกข้อมูลจากคลังข้อมูล แล้วระบุโดเมน/โดเมนย่อยให้แต่ละคอลัมน์   */
+/* (3) สร้างชุดข้อมูล DQ (Dataset) ในโดเมน + จัดโดเมนรายชุดข้อมูล      */
 /* ------------------------------------------------------------------ */
 
 interface AssetItem {
@@ -89,6 +92,27 @@ const SOURCE_LABELS: Record<string, string> = {
   CSV: 'ไฟล์ CSV',
   JSON: 'ไฟล์ JSON',
   DATABASE: 'ฐานข้อมูล',
+}
+
+/** ชุดข้อมูล DQ (Dataset) — แหล่งข้อมูล */
+const DQ_SOURCE_LABELS: Record<string, string> = {
+  CSV: 'ไฟล์ CSV',
+  EXCEL: 'ไฟล์ Excel',
+  POSTGRESQL: 'PostgreSQL',
+  MSSQL: 'MS SQL Server',
+  REST_API: 'REST API',
+}
+
+interface DqDatasetItem {
+  id: string
+  name: string
+  sourceType: string
+  piiEnabled: boolean
+  status: string
+  domain: { id: string; name: string; color: string; parentId: string | null; parentName: string | null } | null
+  ruleCount: number
+  sampleCount: number
+  lastBatch: { at: string; overallScore: number | null } | null
 }
 
 const DATA_TYPE_LABELS: Record<string, string> = {
@@ -126,13 +150,15 @@ function DomainTreeRow({
   onDelete: () => void
 }) {
   const col = domainColor(item.color)
-  const deletable = childCount === 0 && item.assetCount === 0 && item.columnCount === 0
+  const deletable = childCount === 0 && item.assetCount === 0 && (item.datasetCount ?? 0) === 0 && item.columnCount === 0
   const blockedReason =
     childCount > 0
       ? 'ลบโดเมนย่อยทั้งหมดก่อนจึงจะลบโดเมนนี้ได้'
       : item.assetCount > 0
         ? 'ย้ายข้อมูลออกจากโดเมนก่อนจึงจะลบได้'
-        : 'นำการจัดหมวดคอลัมน์ออกจากโดเมนนี้ก่อนจึงจะลบได้'
+        : (item.datasetCount ?? 0) > 0
+          ? 'ย้ายชุดข้อมูล DQ ออกจากโดเมนก่อนจึงจะลบได้'
+          : 'นำการจัดหมวดคอลัมน์ออกจากโดเมนนี้ก่อนจึงจะลบได้'
   return (
     <div className={`flex items-center gap-2 rounded-lg border bg-card px-3 py-2 ${sub ? 'ml-6 border-dashed' : ''}`}>
       <span className={`size-2.5 shrink-0 rounded-full ${col.dot}`} aria-hidden="true" />
@@ -144,7 +170,8 @@ function DomainTreeRow({
         {item.description && <p className="truncate text-xs text-muted-foreground">{item.description}</p>}
       </div>
       <Badge variant="outline" className="shrink-0 text-[10px] tabular-nums">
-        {item.assetCount} ข้อมูล · {item.columnCount} คอลัมน์
+        {item.assetCount} ข้อมูล · {item.datasetCount ?? 0} ชุดข้อมูล
+        <span className="hidden sm:inline"> · {item.columnCount} คอลัมน์</span>
       </Badge>
       {!sub && (
         <Button size="icon" variant="ghost" className="size-7" onClick={onAddSub} title="เพิ่มโดเมนย่อย" aria-label={`เพิ่มโดเมนย่อยใน ${item.name}`}>
@@ -205,6 +232,17 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [assetDomainId, setAssetDomainId] = useState<string>('')
   const [settingAssetDomain, setSettingAssetDomain] = useState(false)
 
+  /* ---------- ชุดข้อมูล DQ (Dataset) ในโดเมน — v0.16.0 ---------- */
+  const [dqDatasets, setDqDatasets] = useState<DqDatasetItem[]>([])
+  const [dqLoading, setDqLoading] = useState(true)
+  const [settingDsId, setSettingDsId] = useState<string | null>(null)
+  const [createDsOpen, setCreateDsOpen] = useState(false)
+  const [dsName, setDsName] = useState('')
+  const [dsSourceType, setDsSourceType] = useState('CSV')
+  const [dsDomainId, setDsDomainId] = useState('')
+  const [dsCsv, setDsCsv] = useState('')
+  const [dsBusy, setDsBusy] = useState(false)
+
   /* ------------------------- load ------------------------- */
   const loadDomains = useCallback(async () => {
     try {
@@ -228,18 +266,32 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     }
   }, [])
 
+  const loadDqDatasets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/dq/datasets')
+      const data = await res.json()
+      setDqDatasets(data?.datasets ?? [])
+    } catch {
+      /* คงรายการเดิมไว้ */
+    } finally {
+      setDqLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     void loadDomains()
     void loadAssets()
-  }, [loadDomains, loadAssets])
+    void loadDqDatasets()
+  }, [loadDomains, loadAssets, loadDqDatasets])
 
   // เปิดหน้าครั้งใดก็รีเฟรช — ให้ข้อมูลที่เพิ่งนำเข้า/แก้ไขแสดงทันที
   useEffect(() => {
     if (active) {
       void loadDomains()
       void loadAssets()
+      void loadDqDatasets()
     }
-  }, [active, loadDomains, loadAssets])
+  }, [active, loadDomains, loadAssets, loadDqDatasets])
 
   useEffect(() => {
     let alive = true
@@ -304,6 +356,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   )
   const totalColumnsAssigned = useMemo(() => domains.reduce((s, d) => s + (d.columnCount ?? 0), 0), [domains])
   const assetsWithDomain = useMemo(() => assets.filter((a) => a.domain).length, [assets])
+  const dqWithDomain = useMemo(() => dqDatasets.filter((d) => d.domain).length, [dqDatasets])
 
   /* ------------------------- domain CRUD ------------------------- */
   function openCreateDomain(parentId = '', parentName = '') {
@@ -441,6 +494,68 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     }
   }
 
+  /* ------------------------- ชุดข้อมูล DQ (Dataset) — v0.16.0 ------------------------- */
+  function openCreateDataset() {
+    setDsName('')
+    setDsSourceType('CSV')
+    setDsDomainId('')
+    setDsCsv('')
+    setCreateDsOpen(true)
+  }
+
+  async function createDataset() {
+    if (!dsName.trim() || !operatorEmail) return
+    setDsBusy(true)
+    try {
+      const res = await fetch('/api/dq/datasets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operatorEmail,
+          name: dsName.trim(),
+          sourceType: dsSourceType,
+          ...(dsDomainId ? { domainId: dsDomainId } : {}),
+          ...(dsCsv.trim() ? { csv: dsCsv } : {}),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: 'สร้างไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      toast({ title: data.message ?? 'สร้างแล้ว' })
+      setCreateDsOpen(false)
+      await Promise.all([loadDqDatasets(), loadDomains()])
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setDsBusy(false)
+    }
+  }
+
+  async function setDatasetDomain(ds: DqDatasetItem, domainId: string) {
+    if (!operatorEmail) return
+    setSettingDsId(ds.id)
+    try {
+      const res = await fetch(`/api/dq/datasets/${ds.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorEmail, action: 'SET_DOMAIN', domainId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: 'บันทึกไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      toast({ title: data.message ?? 'บันทึกแล้ว' })
+      await Promise.all([loadDqDatasets(), loadDomains()])
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setSettingDsId(null)
+    }
+  }
+
   /* ------------------------- ตัวเลือกโดเมนใน Select (หลัก + ย่อยแบบย่อหน้า) ------------------------- */
   function renderDomainOptions() {
     return (
@@ -476,7 +591,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
         <div>
           <h2 className="text-base font-semibold tracking-tight sm:text-lg">Data Domain &amp; Sub Data Domain</h2>
           <p className="text-sm text-muted-foreground">
-            จัดโครงสร้างหมวดหมู่ข้อมูล 2 ระดับ (โดเมนหลัก → โดเมนย่อย) — เลือกข้อมูลจากคลังข้อมูลแล้วระบุโดเมนให้แต่ละคอลัมน์ ทุกการเปลี่ยนแปลงบันทึก Audit Trail
+            จัดโครงสร้างหมวดหมู่ข้อมูล 2 ระดับ (โดเมนหลัก → โดเมนย่อย) — จัดหมวดคอลัมน์จากคลังข้อมูล และสร้าง/จัดชุดข้อมูล DQ เข้าโดเมน ทุกการเปลี่ยนแปลงบันทึก Audit Trail
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -508,7 +623,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       </div>
 
       {/* สรุปรวม */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <Card>
           <CardContent className="p-4">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -542,6 +657,17 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
               <Table2 className="size-3.5" aria-hidden="true" /> คอลัมน์ถูกจัดหมวดแล้ว
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums">{totalColumnsAssigned.toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Database className="size-3.5" aria-hidden="true" /> ชุดข้อมูล DQ จัดโดเมนแล้ว
+            </p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {dqWithDomain}
+              <span className="ml-1 text-sm font-medium text-muted-foreground">/ {dqDatasets.length} ชุด</span>
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -747,6 +873,96 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
         </Card>
       </div>
 
+      {/* ------------------------- ชุดข้อมูล DQ ในโดเมน (v0.16.0) ------------------------- */}
+      <Card className="min-w-0">
+        <CardContent className="flex h-full flex-col gap-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-sm font-semibold">
+                <Database className="size-4 shrink-0 text-emerald-700" aria-hidden="true" /> ชุดข้อมูล DQ ในโดเมน — สร้างชุดข้อมูลและจัดโดเมนรายชุด
+              </p>
+              <p className="text-xs text-muted-foreground">
+                ชุดข้อมูล (Dataset) ของโมดูลคุณภาพข้อมูลที่ใช้รันกฎตรวจ — ผูกเข้าโดเมนเพื่อให้แดชบอร์ดผู้บริหารรวมคะแนนรายโดเมนได้ (แยกจากคลังข้อมูลดิบในแผงด้านบน)
+              </p>
+            </div>
+            <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={openCreateDataset}>
+              <Plus className="size-3.5" aria-hidden="true" /> สร้างชุดข้อมูล
+            </Button>
+          </div>
+
+          {dqLoading ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+              <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลดชุดข้อมูล…
+            </div>
+          ) : dqDatasets.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center">
+              <Database className="mx-auto size-8 text-muted-foreground/40" aria-hidden="true" />
+              <p className="mt-2 text-sm font-medium">ยังไม่มีชุดข้อมูล DQ</p>
+              <p className="mt-1 text-xs text-muted-foreground">กด "สร้างชุดข้อมูล" เพื่อเพิ่มชุดข้อมูลแรก แล้วผูกเข้าโดเมนเพื่อเริ่มตรวจคุณภาพ</p>
+            </div>
+          ) : (
+            <>
+              <div className="max-h-[24rem] overflow-x-hidden overflow-y-auto rounded-lg border">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-white">
+                    <TableRow>
+                      <TableHead className="text-xs">ชื่อชุดข้อมูล</TableHead>
+                      <TableHead className="hidden w-32 text-xs sm:table-cell">แหล่งข้อมูล</TableHead>
+                      <TableHead className="hidden w-24 text-right text-xs sm:table-cell">ตัวอย่าง</TableHead>
+                      <TableHead className="hidden w-20 text-right text-xs md:table-cell">กฎตรวจ</TableHead>
+                      <TableHead className="w-[15rem] text-xs sm:w-[17rem]">โดเมน / โดเมนย่อย</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dqDatasets.map((d) => (
+                      <TableRow key={d.id}>
+                        <TableCell className="max-w-[12rem]">
+                          <p className="truncate text-xs font-medium" title={d.name}>
+                            {d.name}
+                          </p>
+                          {d.piiEnabled && (
+                            <Badge variant="outline" className="mt-0.5 text-[9px] text-muted-foreground">
+                              PII ปิดบังตามบทบาท
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <Badge variant="outline" className="text-[10px]">
+                            {DQ_SOURCE_LABELS[d.sourceType] ?? d.sourceType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="hidden text-right text-xs tabular-nums sm:table-cell">
+                          {d.sampleCount > 0 ? `${d.sampleCount} แถว` : '—'}
+                        </TableCell>
+                        <TableCell className="hidden text-right text-xs tabular-nums md:table-cell">
+                          {d.ruleCount > 0 ? d.ruleCount : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={d.domain?.id || NO_DOMAIN}
+                            onValueChange={(v) => void setDatasetDomain(d, v === NO_DOMAIN ? '' : v)}
+                            disabled={settingDsId === d.id || !operatorEmail}
+                          >
+                            <SelectTrigger className="h-8 w-full text-xs" aria-label={`จัดโดเมนให้ชุดข้อมูล ${d.name}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>{renderDomainOptions()}</SelectContent>
+                          </Select>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <p className="flex items-start gap-1.5 rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
+                <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                จัดโดเมนได้ {dqWithDomain} / {dqDatasets.length} ชุด — เลือกโดเมนในตารางเพื่อบันทึกทันที (บันทึก Audit Trail ทุกครั้ง) · ชุดข้อมูลที่ยังไม่ระบุโดเมนจะรวมในกลุ่ม "ไม่ระบุโดเมน" ของแดชบอร์ดผู้บริหาร
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* ------------------------- Dialog ฟอร์มโดเมน (สร้าง/แก้ไข) ------------------------- */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="sm:max-w-md">
@@ -816,6 +1032,80 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
             </Button>
             <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={formBusy || !formName.trim()} onClick={() => void submitDomainForm()}>
               {formBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} บันทึก
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ------------------------- Dialog สร้างชุดข้อมูล DQ (v0.16.0) ------------------------- */}
+      <Dialog open={createDsOpen} onOpenChange={setCreateDsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>สร้างชุดข้อมูลใหม่</DialogTitle>
+            <DialogDescription>
+              สร้าง Dataset ของโมดูลคุณภาพข้อมูล และผูกเข้า Data Domain ได้ทันที — วางข้อมูล CSV/TSV เพื่อใช้เป็นข้อมูลตัวอย่างสำหรับรันกฎตรวจ (READ-ONLY ไม่แตะข้อมูลต้นทางจริง)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ds-name">
+                ชื่อชุดข้อมูล <span className="text-rose-600">*</span>
+              </Label>
+              <Input
+                id="ds-name"
+                value={dsName}
+                onChange={(e) => setDsName(e.target.value)}
+                maxLength={120}
+                placeholder="เช่น ทะเบียนลูกค้าสาขาภาคเหนือ"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="ds-source">แหล่งข้อมูล</Label>
+                <Select value={dsSourceType} onValueChange={setDsSourceType}>
+                  <SelectTrigger id="ds-source" aria-label="แหล่งข้อมูล">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(DQ_SOURCE_LABELS).map(([k, label]) => (
+                      <SelectItem key={k} value={k}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="ds-domain">โดเมนข้อมูล (ไม่บังคับ)</Label>
+                <Select value={dsDomainId || NO_DOMAIN} onValueChange={(v) => setDsDomainId(v === NO_DOMAIN ? '' : v)}>
+                  <SelectTrigger id="ds-domain" aria-label="โดเมนข้อมูลของชุดข้อมูลใหม่">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>{renderDomainOptions()}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ds-csv">ข้อมูลตัวอย่าง CSV / TSV (ไม่บังคับ)</Label>
+              <Textarea
+                id="ds-csv"
+                value={dsCsv}
+                onChange={(e) => setDsCsv(e.target.value)}
+                rows={6}
+                className="font-mono text-xs"
+                placeholder={'บรรทัดแรกเป็นหัวคอลัมน์ เช่น\naccount_no,customer_name,balance,open_date\n100001,บริษัท ตัวอย่าง จำกัด,250000,2024-01-15\n100002,นายสมชาย ใจดี,0,'}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                รองรับ CSV (คั่นด้วย ,) หรือ TSV (คั่นด้วย tab จาก Excel) · สูงสุด 60 คอลัมน์ / 200 แถว · ข้อมูล PII จะถูกปิดบังตามบทบาทเมื่อแสดงผล (PDPA)
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDsOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={dsBusy || !dsName.trim() || !operatorEmail} onClick={() => void createDataset()}>
+              {dsBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} สร้างชุดข้อมูล
             </Button>
           </DialogFooter>
         </DialogContent>

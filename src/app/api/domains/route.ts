@@ -4,7 +4,7 @@ import { resolveOperator } from '@/lib/operator'
 import { DOMAIN_DESC_MAX, DOMAIN_NAME_MAX, isValidDomainColor } from '@/lib/domains'
 
 /**
- * GET  /api/domains — รายการโดเมนข้อมูลทั้งหมด (flat + assetCount รายโดเมน — client ประกอบต้นไม้เอง)
+ * GET  /api/domains — รายการโดเมนข้อมูลทั้งหมด (flat + assetCount + datasetCount รายโดเมน — client ประกอบต้นไม้เอง)
  * POST /api/domains — สร้างโดเมนหลักหรือโดเมนย่อย
  *   body: { operatorEmail, name, nameEn?, description?, parentId?, color? }
  * สิทธิ์ (เฉพาะ POST): MANAGE_DATASETS — ทุกการสร้างบันทึก Audit Trail
@@ -12,7 +12,7 @@ import { DOMAIN_DESC_MAX, DOMAIN_NAME_MAX, isValidDomainColor } from '@/lib/doma
  */
 export async function GET() {
   try {
-    const [domains, groups, columnGroups] = await Promise.all([
+    const [domains, groups, columnGroups, datasetGroups] = await Promise.all([
       db.dataDomain.findMany({
         orderBy: [{ position: 'asc' }, { name: 'asc' }],
         select: {
@@ -28,6 +28,7 @@ export async function GET() {
       }),
       db.dataAsset.groupBy({ by: ['domainId'], _count: { _all: true } }),
       db.dataDomainColumnAssignment.groupBy({ by: ['domainId'], _count: { _all: true } }),
+      db.dataset.groupBy({ by: ['domainId'], _count: { _all: true } }),
     ])
 
     const countByDomain = new Map<string, number>()
@@ -38,12 +39,17 @@ export async function GET() {
     for (const g of columnGroups) {
       columnsByDomain.set(g.domainId, g._count._all)
     }
+    const datasetsByDomain = new Map<string, number>()
+    for (const g of datasetGroups) {
+      if (g.domainId) datasetsByDomain.set(g.domainId, g._count._all)
+    }
 
     return NextResponse.json({
       domains: domains.map((d) => ({
         ...d,
         assetCount: countByDomain.get(d.id) ?? 0,
         columnCount: columnsByDomain.get(d.id) ?? 0,
+        datasetCount: datasetsByDomain.get(d.id) ?? 0,
       })),
       count: domains.length,
     })
