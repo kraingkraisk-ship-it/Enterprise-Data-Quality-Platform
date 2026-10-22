@@ -194,6 +194,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ไม่พบข้อมูลที่นำเข้าได้' }, { status: 422 })
     }
 
+    // โดเมนข้อมูล (ไม่บังคับ) — ถ้าระบุต้องมีอยู่จริง (deny-by-default)
+    const rawDomainId = String(body.domainId ?? '').trim()
+    let domainId: string | null = null
+    let domainLabel = ''
+    if (rawDomainId) {
+      const domain = await db.dataDomain.findUnique({
+        where: { id: rawDomainId },
+        include: { parent: { select: { name: true } } },
+      })
+      if (!domain) return NextResponse.json({ error: 'ไม่พบโดเมนข้อมูลที่ระบุ' }, { status: 404 })
+      domainId = domain.id
+      domainLabel = domain.parent ? `${domain.parent.name} / ${domain.name}` : domain.name
+    }
+
     // บันทึกลงฐานข้อมูล (asset + columns + records) เป็นธุรกรรมเดียว
     const created = await db.$transaction(async (tx) => {
       const asset = await tx.dataAsset.create({
@@ -202,6 +216,7 @@ export async function POST(req: NextRequest) {
           description,
           sourceType,
           sourceInfo: JSON.stringify(sourceInfo),
+          domainId,
           rowCount: rows.length,
           columnCount: columns.length,
           importedBy: op.ctx.email,
@@ -230,7 +245,7 @@ export async function POST(req: NextRequest) {
         action: 'IMPORT_DATA_ASSET',
         actor: op.ctx.email,
         target: name,
-        detail: `นำเข้า Data Asset "${name}" จากแหล่ง ${sourceType} — ${rows.length} แถว / ${columns.length} คอลัมน์ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `นำเข้า Data Asset "${name}" จากแหล่ง ${sourceType} — ${rows.length} แถว / ${columns.length} คอลัมน์${domainLabel ? ` (โดเมน: ${domainLabel})` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 

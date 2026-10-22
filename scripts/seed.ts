@@ -396,6 +396,7 @@ async function main() {
   await db.dataAssetRecord.deleteMany()
   await db.dataAssetColumn.deleteMany()
   await db.dataAsset.deleteMany()
+  await db.dataDomain.deleteMany()
   await db.ruleDataset.deleteMany()
   await db.dqRule.deleteMany()
   await db.conditionTemplate.deleteMany()
@@ -680,6 +681,71 @@ async function main() {
     },
   })
 
+  // ---------- Data Domain ตัวอย่าง (v0.14.0 — โดเมนหลัก + โดเมนย่อย สำหรับคลังข้อมูล) ----------
+  interface SeedDomain {
+    name: string
+    nameEn: string
+    description: string
+    color: string
+    children?: Array<{ name: string; nameEn: string; description: string; color: string }>
+  }
+
+  const SEED_DOMAINS: SeedDomain[] = [
+    {
+      name: 'ลูกค้า',
+      nameEn: 'Customer',
+      description: 'ข้อมูลลูกค้าทั้งบุคคลธรรมดาและนิติบุคคล',
+      color: 'emerald',
+      children: [
+        { name: 'ลูกค้าบุคคลธรรมดา', nameEn: 'Retail Customer', description: 'ทะเบียนลูกค้ารายบุคคล ข้อมูลติดต่อ และ KYC', color: 'teal' },
+        { name: 'ลูกค้านิติบุคคล', nameEn: 'Corporate Customer', description: 'ข้อมูลนิติบุคคล ผู้มีอำนาจลงนาม และโครงสร้างผู้ถือหุ้น', color: 'lime' },
+      ],
+    },
+    {
+      name: 'การเงิน',
+      nameEn: 'Finance',
+      description: 'ข้อมูลการเงิน บัญชี และอัตราตลาด',
+      color: 'amber',
+      children: [
+        { name: 'อัตราแลกเปลี่ยน', nameEn: 'FX Rates', description: 'อัตราซื้อ-ขายรายวันจากระบบ Treasury', color: 'orange' },
+        { name: 'บัญชีและเงินฝาก', nameEn: 'Accounts & Deposits', description: 'ทะเบียนบัญชี ยอดคงเหลือ และประเภทเงินฝาก', color: 'rose' },
+      ],
+    },
+    {
+      name: 'การปฏิบัติตามกฎเกณฑ์',
+      nameEn: 'Compliance',
+      description: 'ข้อมูลเพื่อการกำกับดูแลและรายงานหน่วยงานกำกับ',
+      color: 'violet',
+      children: [
+        { name: 'KYC / AML', nameEn: 'KYC & AML', description: 'การรู้จักลูกค้าและการต่อต้านการฟอกเงิน', color: 'slate' },
+      ],
+    },
+  ]
+
+  const subDomainId = new Map<string, string>()
+  let rootPos = 0
+  for (const d of SEED_DOMAINS) {
+    const root = await db.dataDomain.create({
+      data: { name: d.name, nameEn: d.nameEn, description: d.description, color: d.color, position: rootPos++, createdBy: 'preecha.engineer@company.co.th' },
+    })
+    let subPos = 0
+    for (const c of d.children ?? []) {
+      const sub = await db.dataDomain.create({
+        data: { name: c.name, nameEn: c.nameEn, description: c.description, color: c.color, position: subPos++, parentId: root.id, createdBy: 'preecha.engineer@company.co.th' },
+      })
+      subDomainId.set(c.name, sub.id)
+    }
+  }
+  const totalSubDomains = SEED_DOMAINS.reduce((s, d) => s + (d.children?.length ?? 0), 0)
+  await db.auditLog.create({
+    data: {
+      action: 'CREATE_DATA_DOMAIN',
+      actor: 'system@seed',
+      target: `${SEED_DOMAINS.length} domains`,
+      detail: `Seed เริ่มต้นระบบ: สร้างโดเมนข้อมูลตัวอย่าง ${SEED_DOMAINS.length} โดเมนหลัก + ${totalSubDomains} โดเมนย่อย สำหรับจัดหมวดหมู่คลังข้อมูล`,
+    },
+  })
+
   // ---------- Data Asset ตัวอย่าง (โมดูล Data Asset — CSV / JSON) ----------
   // ทำข้อมูลตัวอย่างให้คลังข้อมูล (Data Inventory) มีข้อมูลตั้งแต่เปิดหน้าแรก
   interface SeedAsset {
@@ -689,6 +755,7 @@ async function main() {
     sourceInfo: Record<string, unknown>
     rows: Row[]
     columns: string[]
+    subDomain?: string // ชื่อโดเมนย่อยที่ต้องการผูก (ต้องตรงกับ SEED_DOMAINS ข้างบน)
   }
 
   const ASSET_BRANCH_CSV = 'ทะเบียนลูกค้าสาขาภาคเหนือ (CSV)'
@@ -721,6 +788,7 @@ async function main() {
       sourceInfo: { fileName: 'north-branch-customers.csv', sizeChars: 1024, delimiter: ',', skippedRows: 0 },
       rows: branchRows,
       columns: ['customer_id', 'full_name', 'email', 'phone', 'branch', 'balance', 'kyc_date'],
+      subDomain: 'ลูกค้าบุคคลธรรมดา',
     },
     {
       name: ASSET_EXCHANGE_JSON,
@@ -729,6 +797,7 @@ async function main() {
       sourceInfo: { fileName: 'fx-daily.json', sizeChars: 768, shape: 'อาร์เรย์ของวัตถุ (array of objects)', skippedRows: 0 },
       rows: fxRows,
       columns: ['date', 'currency', 'buy', 'sell', 'source'],
+      subDomain: 'อัตราแลกเปลี่ยน',
     },
   ]
 
@@ -740,6 +809,7 @@ async function main() {
           description: a.description,
           sourceType: a.sourceType,
           sourceInfo: JSON.stringify(a.sourceInfo),
+          domainId: a.subDomain ? (subDomainId.get(a.subDomain) ?? null) : null,
           rowCount: a.rows.length,
           columnCount: a.columns.length,
           importedBy: 'preecha.engineer@company.co.th',
@@ -757,7 +827,7 @@ async function main() {
         action: 'IMPORT_DATA_ASSET',
         actor: 'preecha.engineer@company.co.th',
         target: a.name,
-        detail: `นำเข้า Data Asset "${a.name}" จากแหล่ง ${a.sourceType} — ${a.rows.length} แถว / ${a.columns.length} คอลัมน์ โดย ปรีชา วิศวกรรม (บทบาท Data Engineer)`,
+        detail: `นำเข้า Data Asset "${a.name}" จากแหล่ง ${a.sourceType} — ${a.rows.length} แถว / ${a.columns.length} คอลัมน์${a.subDomain ? ` (โดเมนย่อย: ${a.subDomain})` : ''} โดย ปรีชา วิศวกรรม (บทบาท Data Engineer)`,
       },
     })
   }
@@ -918,6 +988,7 @@ async function main() {
     profileRuns: await db.dqProfileRun.count(),
     issues: await db.dqIssue.count(),
     dataAssets: await db.dataAsset.count(),
+    dataDomains: await db.dataDomain.count(),
     dataAssetRecords: await db.dataAssetRecord.count(),
   })
 }

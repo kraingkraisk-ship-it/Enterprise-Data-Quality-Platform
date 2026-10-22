@@ -1,15 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Braces,
   Database,
   Eye,
   FileSpreadsheet,
+  FolderPlus,
+  FolderTree,
   Loader2,
   Lock,
   PackageSearch,
   Pencil,
+  Plus,
   RefreshCw,
   Search,
   ShieldOff,
@@ -43,6 +46,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { ROLES } from '@/lib/rbac'
+import {
+  buildDomainTree,
+  domainColor,
+  DOMAIN_COLORS,
+  DOMAIN_DESC_MAX,
+  DOMAIN_NAME_MAX,
+  NO_DOMAIN,
+  rollupAssetCount,
+  type DomainItem,
+  type DomainNode,
+} from '@/lib/domains'
 
 /* ------------------------------------------------------------------ */
 /* Data Inventory — คลังข้อมูล: แสดงข้อมูลที่ import เข้ามาทั้งหมด        */
@@ -55,6 +69,7 @@ interface AssetItem {
   sourceType: string
   sourceInfo: string
   piiEnabled: boolean
+  domain: { id: string; name: string; color: string; parentId: string | null; parentName: string | null } | null
   rowCount: number
   columnCount: number
   status: string
@@ -104,6 +119,69 @@ const DATA_TYPE_LABELS: Record<string, string> = {
   EMPTY: 'ว่าง',
 }
 
+/** ค่า sentinel ของ Select เมื่อ "ไม่ระบุโดเมน" (Radix Select ห้าม value ว่าง) — ดู NO_DOMAIN จาก lib/domains */
+
+function domainChipCls(active: boolean, sub = false): string {
+  if (active) return 'rounded-full border border-emerald-500 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800'
+  return sub
+    ? 'rounded-full border border-transparent bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted'
+    : 'rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted/60'
+}
+
+function DomainRow({
+  item,
+  sub,
+  childCount,
+  onEdit,
+  onAddSub,
+  onDelete,
+}: {
+  item: DomainItem
+  sub?: boolean
+  childCount: number
+  onEdit: () => void
+  onAddSub?: () => void
+  onDelete: () => void
+}) {
+  const col = domainColor(item.color)
+  const deletable = childCount === 0 && item.assetCount === 0
+  const blockedReason = childCount > 0 ? 'ลบโดเมนย่อยทั้งหมดก่อนจึงจะลบโดเมนนี้ได้' : 'ย้ายข้อมูลออกจากโดเมนก่อนจึงจะลบได้'
+  return (
+    <div className={`flex items-center gap-2 rounded-lg border bg-card px-3 py-2 ${sub ? 'ml-6 border-dashed' : ''}`}>
+      <span className={`size-2.5 shrink-0 rounded-full ${col.dot}`} aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">
+          {item.name}
+          {item.nameEn && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{item.nameEn}</span>}
+        </p>
+        {item.description && <p className="truncate text-xs text-muted-foreground">{item.description}</p>}
+      </div>
+      <Badge variant="outline" className="shrink-0 text-[10px] tabular-nums">
+        {item.assetCount} ข้อมูล
+      </Badge>
+      {!sub && (
+        <Button size="icon" variant="ghost" className="size-7" onClick={onAddSub} title="เพิ่มโดเมนย่อย" aria-label={`เพิ่มโดเมนย่อยใน ${item.name}`}>
+          <FolderPlus className="size-3.5" aria-hidden="true" />
+        </Button>
+      )}
+      <Button size="icon" variant="ghost" className="size-7" onClick={onEdit} aria-label={`แก้ไขโดเมน ${item.name}`}>
+        <Pencil className="size-3.5" aria-hidden="true" />
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="size-7 text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-35"
+        disabled={!deletable}
+        onClick={onDelete}
+        title={deletable ? 'ลบโดเมน' : blockedReason}
+        aria-label={`ลบโดเมน ${item.name}`}
+      >
+        <Trash2 className="size-3.5" aria-hidden="true" />
+      </Button>
+    </div>
+  )
+}
+
 function fmtDate(s: string): string {
   try {
     return new Date(s).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
@@ -133,6 +211,26 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
   const [busy, setBusy] = useState(false)
   const [operatorEmail, setOperatorEmail] = useState('preecha.engineer@company.co.th')
 
+  // ---------- โดเมนข้อมูล (v0.14.0) ----------
+  const [domains, setDomains] = useState<DomainItem[]>([])
+  const [domainFilter, setDomainFilter] = useState<string>('ALL') // ALL | NONE | domainId
+  const [manageOpen, setManageOpen] = useState(false)
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [assignRoot, setAssignRoot] = useState<string>('')
+  const [assignSub, setAssignSub] = useState<string>('')
+  const [formOpen, setFormOpen] = useState(false)
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
+  const [formEditId, setFormEditId] = useState<string | null>(null)
+  const [formParentId, setFormParentId] = useState<string>('') // '' = โดเมนหลัก
+  const [formParentName, setFormParentName] = useState('')
+  const [formName, setFormName] = useState('')
+  const [formNameEn, setFormNameEn] = useState('')
+  const [formDesc, setFormDesc] = useState('')
+  const [formColor, setFormColor] = useState('emerald')
+  const [formBusy, setFormBusy] = useState(false)
+  const [deleteDomainId, setDeleteDomainId] = useState<string | null>(null)
+  const [domainBusy, setDomainBusy] = useState(false)
+
   /* ------------------------- load ------------------------- */
   const loadAssets = useCallback(async () => {
     setLoading(true)
@@ -155,6 +253,25 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
   useEffect(() => {
     if (active) void loadAssets()
   }, [active, loadAssets])
+
+  /* ------------------------- domains ------------------------- */
+  const loadDomains = useCallback(async () => {
+    try {
+      const res = await fetch('/api/domains')
+      const data = await res.json()
+      setDomains(data?.domains ?? [])
+    } catch {
+      // โหลดโดเมนไม่ได้ไม่บล็อกการใช้งานคลัง — แสดงเป็น "ทั้งหมด" เฉย ๆ
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadDomains()
+  }, [loadDomains, reloadTick])
+
+  useEffect(() => {
+    if (active) void loadDomains()
+  }, [active, loadDomains])
 
   useEffect(() => {
     let alive = true
@@ -253,7 +370,130 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
     [assets],
   )
 
+  const domainTree = useMemo(() => buildDomainTree(domains), [domains])
+  const unassignedCount = useMemo(() => assets.filter((a) => !a.domain).length, [assets])
+
+  const filteredAssets = useMemo(() => {
+    if (domainFilter === 'ALL') return assets
+    if (domainFilter === 'NONE') return assets.filter((a) => !a.domain)
+    const chosen = domains.find((d) => d.id === domainFilter)
+    if (!chosen) return assets
+    if (!chosen.parentId) {
+      const root = domainTree.find((n) => n.id === chosen.id)
+      const subIds = new Set((root?.children ?? []).map((c) => c.id))
+      return assets.filter((a) => a.domain && (a.domain.id === chosen.id || subIds.has(a.domain.id)))
+    }
+    return assets.filter((a) => a.domain?.id === chosen.id)
+  }, [assets, domains, domainTree, domainFilter])
+
   const selectedAsset = assets.find((a) => a.id === selectedId) ?? null
+
+  /* ------------------------- domain actions ------------------------- */
+  function openCreateDomain(parentId = '', parentName = '') {
+    setFormMode('create')
+    setFormEditId(null)
+    setFormParentId(parentId)
+    setFormParentName(parentName)
+    setFormName('')
+    setFormNameEn('')
+    setFormDesc('')
+    setFormColor('emerald')
+    setFormOpen(true)
+  }
+
+  function openEditDomain(d: DomainItem) {
+    setFormMode('edit')
+    setFormEditId(d.id)
+    setFormParentId(d.parentId ?? '')
+    setFormParentName(d.parentId ? (domains.find((p) => p.id === d.parentId)?.name ?? '') : '')
+    setFormName(d.name)
+    setFormNameEn(d.nameEn)
+    setFormDesc(d.description)
+    setFormColor(d.color)
+    setFormOpen(true)
+  }
+
+  async function submitDomainForm() {
+    if (!formName.trim()) return
+    setFormBusy(true)
+    try {
+      const isEdit = formMode === 'edit' && formEditId
+      const res = await fetch(isEdit ? `/api/domains/${formEditId}` : '/api/domains', {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operatorEmail,
+          ...(isEdit ? { action: 'UPDATE' } : {}),
+          name: formName.trim(),
+          nameEn: formNameEn.trim(),
+          description: formDesc.trim(),
+          color: formColor,
+          ...(isEdit ? {} : { parentId: formParentId || undefined }),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: 'บันทึกไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      toast({ title: data.message ?? 'บันทึกแล้ว' })
+      setFormOpen(false)
+      await loadDomains()
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setFormBusy(false)
+    }
+  }
+
+  async function doDeleteDomain() {
+    if (!deleteDomainId) return
+    setDomainBusy(true)
+    try {
+      const res = await fetch(`/api/domains/${deleteDomainId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorEmail, action: 'DELETE' }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: 'ลบไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      toast({ title: data.message ?? 'ลบแล้ว' })
+      if (domainFilter === deleteDomainId) setDomainFilter('ALL')
+      setDeleteDomainId(null)
+      await Promise.all([loadDomains(), loadAssets()])
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setDomainBusy(false)
+    }
+  }
+
+  function openAssign() {
+    const d = selectedAsset?.domain ?? null
+    if (d?.parentId) {
+      setAssignRoot(d.parentId)
+      setAssignSub(d.id)
+    } else if (d) {
+      setAssignRoot(d.id)
+      setAssignSub(NO_DOMAIN)
+    } else {
+      setAssignRoot(NO_DOMAIN)
+      setAssignSub(NO_DOMAIN)
+    }
+    setAssignOpen(true)
+  }
+
+  async function saveAssign() {
+    const domainId = assignSub !== NO_DOMAIN ? assignSub : assignRoot !== NO_DOMAIN ? assignRoot : ''
+    const ok = await patchAsset('SET_DOMAIN', { domainId }, 'บันทึกแล้ว')
+    if (ok) {
+      setAssignOpen(false)
+      await loadDomains()
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -264,6 +504,9 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
           <p className="text-sm text-muted-foreground">ข้อมูลที่นำเข้ามาทั้งหมดในระบบ — กดที่รายการเพื่อสำรวจคอลัมน์และพรีวิวข้อมูล</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => setManageOpen(true)}>
+            <FolderTree className="size-4" aria-hidden="true" /> จัดการโดเมน
+          </Button>
           <Select value={viewerRole} onValueChange={setViewerRole}>
             <SelectTrigger className="h-9 w-full sm:w-64" aria-label="ดูข้อมูลในมุมมองบทบาท">
               <SelectValue />
@@ -283,11 +526,25 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
       </div>
 
       {/* สรุปรวม */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Data Asset ทั้งหมด</p>
             <p className="mt-1 text-2xl font-bold tabular-nums">{assets.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <FolderTree className="size-3.5" aria-hidden="true" /> โดเมนข้อมูล
+            </p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {domainTree.length}
+              <span className="ml-1 text-sm font-medium text-muted-foreground">หลัก</span>
+              {domains.length > domainTree.length && (
+                <span className="ml-1.5 text-sm font-medium text-muted-foreground">+ {domains.length - domainTree.length} ย่อย</span>
+              )}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -311,22 +568,77 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
         })}
       </div>
 
+      {/* แถวกรองตามโดเมนข้อมูล */}
+      {domainTree.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="กรองรายการตามโดเมนข้อมูล">
+          <span className="mr-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+            <FolderTree className="size-3.5" aria-hidden="true" /> โดเมน:
+          </span>
+          <button type="button" onClick={() => setDomainFilter('ALL')} className={domainChipCls(domainFilter === 'ALL')} aria-pressed={domainFilter === 'ALL'}>
+            ทั้งหมด
+          </button>
+          {domainTree.map((n) => (
+            <Fragment key={n.id}>
+              <button
+                type="button"
+                onClick={() => setDomainFilter(n.id)}
+                className={domainChipCls(domainFilter === n.id)}
+                aria-pressed={domainFilter === n.id}
+              >
+                <span className={`mr-1 inline-block size-1.5 rounded-full ${domainColor(n.color).dot}`} aria-hidden="true" />
+                {n.name}
+                <span className="ml-1 tabular-nums opacity-60">{rollupAssetCount(n)}</span>
+              </button>
+              {n.children.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setDomainFilter(c.id)}
+                  className={`${domainChipCls(domainFilter === c.id, true)} pl-1.5`}
+                  aria-pressed={domainFilter === c.id}
+                >
+                  <span aria-hidden="true" className="mr-0.5 opacity-50">└</span>
+                  {c.name}
+                  <span className="ml-1 tabular-nums opacity-60">{c.assetCount}</span>
+                </button>
+              ))}
+            </Fragment>
+          ))}
+          {unassignedCount > 0 && (
+            <button type="button" onClick={() => setDomainFilter('NONE')} className={domainChipCls(domainFilter === 'NONE')} aria-pressed={domainFilter === 'NONE'}>
+              ไม่ระบุ ({unassignedCount})
+            </button>
+          )}
+        </div>
+      )}
+
       {/* รายการ asset */}
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
           <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลด…
         </div>
-      ) : assets.length === 0 ? (
+      ) : filteredAssets.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
             <PackageSearch className="size-10 text-muted-foreground/40" aria-hidden="true" />
-            <p className="font-medium">ยังไม่มีข้อมูลในคลัง</p>
-            <p className="text-sm text-muted-foreground">เริ่มต้นด้วยการนำเข้าข้อมูลจากเมนู &quot;นำเข้าข้อมูล&quot;</p>
+            {assets.length === 0 ? (
+              <>
+                <p className="font-medium">ยังไม่มีข้อมูลในคลัง</p>
+                <p className="text-sm text-muted-foreground">เริ่มต้นด้วยการนำเข้าข้อมูลจากเมนู &quot;นำเข้าข้อมูล&quot;</p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">ไม่พบข้อมูลในโดเมนที่เลือก</p>
+                <Button variant="outline" size="sm" onClick={() => setDomainFilter('ALL')}>
+                  แสดงทั้งหมด
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {assets.map((a) => {
+          {filteredAssets.map((a) => {
             const meta = SOURCE_META[a.sourceType] ?? SOURCE_META.CSV
             return (
               <button
@@ -349,6 +661,14 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
                   )}
                 </div>
                 <p className="mt-2 line-clamp-1 text-sm font-semibold">{a.name}</p>
+                {a.domain && (
+                  <span
+                    className={`mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${domainColor(a.domain.color).chip}`}
+                  >
+                    <span className={`size-1.5 shrink-0 rounded-full ${domainColor(a.domain.color).dot}`} aria-hidden="true" />
+                    <span className="truncate">{a.domain.parentName ? `${a.domain.parentName} / ${a.domain.name}` : a.domain.name}</span>
+                  </span>
+                )}
                 {a.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{a.description}</p>}
                 <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="font-medium tabular-nums text-foreground">{a.rowCount.toLocaleString()} แถว</span>
@@ -425,6 +745,9 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
               setRenameOpen(true)
             }}>
               <Pencil className="size-3.5" aria-hidden="true" /> เปลี่ยนชื่อ
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => openAssign()}>
+              <FolderTree className="size-3.5" aria-hidden="true" /> จัดโดเมน
             </Button>
             <Button
               size="sm"
@@ -571,6 +894,17 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
                     <span className="font-medium break-words">{detail.asset.name}</span>
                     <span className="text-muted-foreground">คำอธิบาย</span>
                     <span className="break-words">{detail.asset.description || '—'}</span>
+                    <span className="text-muted-foreground">โดเมนข้อมูล</span>
+                    <span>
+                      {detail.asset.domain ? (
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${domainColor(detail.asset.domain.color).chip}`}>
+                          <span className={`size-1.5 rounded-full ${domainColor(detail.asset.domain.color).dot}`} aria-hidden="true" />
+                          {detail.asset.domain.parentName ? `${detail.asset.domain.parentName} / ${detail.asset.domain.name}` : detail.asset.domain.name}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">ไม่ระบุ</span>
+                      )}
+                    </span>
                     <span className="text-muted-foreground">แหล่งข้อมูล</span>
                     <span>{SOURCE_META[detail.asset.sourceType]?.th ?? detail.asset.sourceType}</span>
                     <span className="text-muted-foreground">สถานะ PII</span>
@@ -646,6 +980,211 @@ export function AssetInventory({ active, reloadTick }: { active?: boolean; reloa
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* ------------------------- Dialog จัดการโดเมนข้อมูล ------------------------- */}
+      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>จัดการโดเมนข้อมูล</DialogTitle>
+            <DialogDescription>
+              แบ่งหมวดหมู่ข้อมูลในคลังเป็นโดเมนหลักและโดเมนย่อย (รองรับ 2 ระดับ) — ทุกการเปลี่ยนแปลงต้องมีสิทธิ์จัดการข้อมูลและถูกบันทึก Audit Trail
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              ลบได้เฉพาะโดเมนที่ว่าง (ไม่มีโดเมนย่อยและไม่มีข้อมูลผูกอยู่)
+            </p>
+            <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => openCreateDomain('', '')}>
+              <Plus className="size-3.5" aria-hidden="true" /> เพิ่มโดเมนหลัก
+            </Button>
+          </div>
+
+          {domainTree.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center">
+              <FolderTree className="mx-auto size-8 text-muted-foreground/40" aria-hidden="true" />
+              <p className="mt-2 text-sm font-medium">ยังไม่มีโดเมนข้อมูล</p>
+              <p className="mt-1 text-xs text-muted-foreground">สร้างโดเมนหลักเพื่อเริ่มจัดหมวดหมู่ข้อมูลในคลัง เช่น ลูกค้า การเงิน การปฏิบัติตามกฎเกณฑ์</p>
+            </div>
+          ) : (
+            <div className="max-h-96 space-y-1.5 overflow-y-auto rounded-lg border p-2" role="list" aria-label="ต้นไม้โดเมนข้อมูล">
+              {domainTree.map((n) => (
+                <div key={n.id} className="space-y-1.5" role="listitem">
+                  <DomainRow
+                    item={n}
+                    childCount={n.children.length}
+                    onEdit={() => openEditDomain(n)}
+                    onAddSub={() => openCreateDomain(n.id, n.name)}
+                    onDelete={() => setDeleteDomainId(n.id)}
+                  />
+                  {n.children.map((c) => (
+                    <DomainRow
+                      key={c.id}
+                      item={c}
+                      sub
+                      childCount={0}
+                      onEdit={() => openEditDomain(c)}
+                      onDelete={() => setDeleteDomainId(c.id)}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ------------------------- Dialog ฟอร์มโดเมน (สร้าง/แก้ไข) ------------------------- */}
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {formMode === 'create' ? (formParentId ? 'เพิ่มโดเมนย่อย' : 'เพิ่มโดเมนหลัก') : 'แก้ไขโดเมน'}
+            </DialogTitle>
+            <DialogDescription>
+              {formMode === 'create' && formParentId
+                ? `สร้างโดเมนย่อยภายใต้ "${formParentName}" — ระบบรองรับโดเมนลึกสุด 2 ระดับ`
+                : 'ตั้งชื่อให้สื่อหมวดหมู่ข้อมูล เช่น ลูกค้า การเงิน การปฏิบัติตามกฎเกณฑ์'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="domain-name">
+                ชื่อโดเมน <span className="text-rose-600">*</span>
+              </Label>
+              <Input
+                id="domain-name"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                maxLength={DOMAIN_NAME_MAX}
+                placeholder="เช่น ลูกค้า"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="domain-name-en">ชื่อภาษาอังกฤษ (ไม่บังคับ)</Label>
+              <Input
+                id="domain-name-en"
+                value={formNameEn}
+                onChange={(e) => setFormNameEn(e.target.value)}
+                maxLength={DOMAIN_NAME_MAX}
+                placeholder="เช่น Customer"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="domain-desc">คำอธิบาย (ไม่บังคับ)</Label>
+              <Input
+                id="domain-desc"
+                value={formDesc}
+                onChange={(e) => setFormDesc(e.target.value)}
+                maxLength={DOMAIN_DESC_MAX}
+                placeholder="อธิบายขอบเขตของโดเมนสั้น ๆ"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>สีป้ายกำกับ</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {DOMAIN_COLORS.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => setFormColor(c.key)}
+                    aria-pressed={formColor === c.key}
+                    aria-label={c.th}
+                    title={c.th}
+                    className={`size-7 rounded-full transition ${c.swatch} ${
+                      formColor === c.key ? 'ring-2 ring-foreground ring-offset-2' : 'opacity-70 hover:opacity-100'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFormOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={formBusy || !formName.trim()} onClick={() => void submitDomainForm()}>
+              {formBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} บันทึก
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ------------------------- ยืนยันลบโดเมน ------------------------- */}
+      <AlertDialog open={deleteDomainId !== null} onOpenChange={(o) => { if (!o) setDeleteDomainId(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบโดเมน</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบโดเมน &quot;{domains.find((d) => d.id === deleteDomainId)?.name ?? ''}&quot; หรือไม่? (ลบได้เฉพาะโดเมนที่ว่าง — การลบถูกบันทึกใน Audit Trail)
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction className="bg-rose-600 text-white hover:bg-rose-700" onClick={(e) => { e.preventDefault(); void doDeleteDomain() }}>
+              {domainBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} ลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ------------------------- Dialog จัดโดเมนราย Data Asset ------------------------- */}
+      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>จัดโดเมนข้อมูล</DialogTitle>
+            <DialogDescription>เลือกโดเมนหลักและโดเมนย่อย (ถ้ามี) สำหรับ &quot;{selectedAsset?.name ?? ''}&quot;</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="assign-root">โดเมนหลัก</Label>
+              <Select
+                value={assignRoot}
+                onValueChange={(v) => {
+                  setAssignRoot(v)
+                  setAssignSub(NO_DOMAIN)
+                }}
+              >
+                <SelectTrigger id="assign-root" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DOMAIN}>— ไม่ระบุโดเมน —</SelectItem>
+                  {domainTree.map((n) => (
+                    <SelectItem key={n.id} value={n.id}>
+                      {n.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="assign-sub">โดเมนย่อย (ไม่บังคับ)</Label>
+              <Select value={assignSub} onValueChange={setAssignSub} disabled={assignRoot === NO_DOMAIN}>
+                <SelectTrigger id="assign-sub" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DOMAIN}>— ไม่มี —</SelectItem>
+                  {(domainTree.find((n) => n.id === assignRoot)?.children ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">เลือกโดเมนหลักก่อนจึงจะเลือกโดเมนย่อยได้ — บันทึกใน Audit Trail ทุกครั้ง</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={busy} onClick={() => void saveAssign()}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} บันทึก
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

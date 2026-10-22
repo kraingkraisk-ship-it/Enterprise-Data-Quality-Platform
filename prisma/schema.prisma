@@ -328,6 +328,7 @@ model DataAsset {
   sourceType  String // CSV | JSON | DATABASE
   sourceInfo  String   @default("{}") // JSON — รายละเอียดแหล่งที่มา (ชื่อไฟล์/ขนาด, การเชื่อมต่อแบบไม่มีรหัสผ่าน)
   piiEnabled  Boolean  @default(true) // ปิดบัง PII ตามบทบาทเมื่อแสดงใน Inventory (PDPA-first)
+  domainId    String? // โดเมนข้อมูลที่สังกัด (DataDomain.id) — รองรับโดเมนย่อยได้เพราะโดเมนย่อยเองก็คือ DataDomain 1 แถว
   rowCount    Int      @default(0)
   columnCount Int      @default(0)
   status      String   @default("ACTIVE") // ACTIVE | ARCHIVED
@@ -335,10 +336,39 @@ model DataAsset {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  domain DataDomain?       @relation(fields: [domainId], references: [id], onDelete: SetNull)
   columns DataAssetColumn[]
   records DataAssetRecord[]
 
   @@index([status])
+  @@index([domainId])
+}
+
+// ---------------------------------------------------------------------------
+// Data Domain (v0.14.0) — โดเมนข้อมูลสำหรับจัดหมวดหมู่คลังข้อมูล (Data Inventory)
+// โครงสร้าง 2 ระดับ: โดเมนหลัก (parentId = null) → โดเมนย่อย (parentId = id ของโดเมนหลัก)
+// ห้ามลึกกว่า 2 ระดับ — บังคับใน API (deny-by-default)
+// ---------------------------------------------------------------------------
+
+// โดเมนข้อมูล 1 รายการ (ทั้ง "โดเมนหลัก" และ "โดเมนย่อย" ใช้ตารางนี้ร่วมกัน)
+model DataDomain {
+  id          String   @id @default(cuid())
+  name        String // ชื่อโดเมน เช่น "ลูกค้า" (ไม่ซ้ำกันในระดับเดียวกัน — ตรวจใน API)
+  nameEn      String   @default("") // ชื่อภาษาอังกฤษ (ไม่บังคับ)
+  description String   @default("")
+  parentId    String? // โดเมนแม่ — null = โดเมนหลัก
+  color       String   @default("emerald") // คีย์สี badge (ดู DOMAIN_COLORS ใน lib/domains.ts)
+  position    Int      @default(0) // ลำดับการแสดงผล
+  createdBy   String // email ผู้สร้าง
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   DataDomain?  @relation("DomainTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children DataDomain[] @relation("DomainTree")
+  assets   DataAsset[]
+
+  @@index([parentId])
+  @@index([position])
 }
 
 // คอลัมน์ของ Data Asset — metadata สำหรับแสดงใน Data Inventory

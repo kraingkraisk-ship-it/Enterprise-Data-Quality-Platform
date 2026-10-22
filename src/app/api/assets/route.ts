@@ -9,22 +9,26 @@ export async function GET() {
   try {
     const assets = await db.dataAsset.findMany({
       orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        sourceType: true,
-        sourceInfo: true,
-        piiEnabled: true,
-        rowCount: true,
-        columnCount: true,
-        status: true,
-        importedBy: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      include: { domain: { include: { parent: { select: { name: true } } } } },
     })
-    return NextResponse.json({ assets, count: assets.length })
+    return NextResponse.json({
+      assets: assets.map((a) => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        sourceType: a.sourceType,
+        sourceInfo: a.sourceInfo,
+        piiEnabled: a.piiEnabled,
+        domain: a.domain ? { id: a.domain.id, name: a.domain.name, color: a.domain.color, parentId: a.domain.parentId, parentName: a.domain.parent?.name ?? null } : null,
+        rowCount: a.rowCount,
+        columnCount: a.columnCount,
+        status: a.status,
+        importedBy: a.importedBy,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+      })),
+      count: assets.length,
+    })
   } catch (e) {
     console.error('GET /api/assets', e)
     return NextResponse.json({ error: 'ไม่สามารถโหลดรายการ Data Asset ได้' }, { status: 500 })

@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { parseCsv, parseJsonData } from '@/lib/asset'
+import { buildDomainTree, NO_DOMAIN, type DomainItem } from '@/lib/domains'
 import { ROLES } from '@/lib/rbac'
 
 /* ------------------------------------------------------------------ */
@@ -64,6 +65,11 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
   const [description, setDescription] = useState('')
   const [operatorEmail, setOperatorEmail] = useState('preecha.engineer@company.co.th')
   const [users, setUsers] = useState<AssetUser[]>([])
+
+  // โดเมนข้อมูล (ไม่บังคับ) — จัดหมวดหมู่ตั้งแต่ตอนนำเข้า
+  const [domains, setDomains] = useState<DomainItem[]>([])
+  const [domainRoot, setDomainRoot] = useState<string>(NO_DOMAIN)
+  const [domainSub, setDomainSub] = useState<string>(NO_DOMAIN)
 
   // CSV / JSON — เนื้อหาไฟล์ (อ่านเป็นข้อความ) + ชื่อไฟล์
   const [csvText, setCsvText] = useState('')
@@ -107,6 +113,22 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
     () => users.filter((u) => IMPORTABLE_ROLES.includes(u.role)),
     [users],
   )
+
+  const domainTree = useMemo(() => buildDomainTree(domains), [domains])
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/domains')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return
+        setDomains(d?.domains ?? [])
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
 
   /* ------------------------- client-side preview ------------------------- */
   const csvPreview = useMemo(() => {
@@ -199,6 +221,7 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
       name: name.trim(),
       description: description.trim(),
       sourceType,
+      domainId: domainSub !== NO_DOMAIN ? domainSub : domainRoot !== NO_DOMAIN ? domainRoot : '',
     }
     if (sourceType === 'CSV') {
       body.csvText = csvText
@@ -357,6 +380,48 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
                   maxLength={500}
                 />
               </div>
+              {domainTree.length > 0 && (
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="asset-domain">โดเมนข้อมูล (ไม่บังคับ)</Label>
+                    <Select
+                      value={domainRoot}
+                      onValueChange={(v) => {
+                        setDomainRoot(v)
+                        setDomainSub(NO_DOMAIN)
+                      }}
+                    >
+                      <SelectTrigger id="asset-domain" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
+                        {domainTree.map((n) => (
+                          <SelectItem key={n.id} value={n.id}>
+                            {n.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="asset-domain-sub">โดเมนย่อย (ไม่บังคับ)</Label>
+                    <Select value={domainSub} onValueChange={setDomainSub} disabled={domainRoot === NO_DOMAIN}>
+                      <SelectTrigger id="asset-domain-sub" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_DOMAIN}>— ไม่มี —</SelectItem>
+                        {(domainTree.find((n) => n.id === domainRoot)?.children ?? []).map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
               <div className="grid gap-1.5">
                 <Label htmlFor="asset-operator">
                   ผู้ดำเนินการนำเข้า <span className="text-rose-600">*</span>

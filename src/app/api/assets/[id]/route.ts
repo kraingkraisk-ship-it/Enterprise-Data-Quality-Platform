@@ -14,7 +14,10 @@ const PAGE_SIZE_MAX = 100
 async function getAsset(id: string) {
   return db.dataAsset.findUnique({
     where: { id },
-    include: { columns: { orderBy: { position: 'asc' } } },
+    include: {
+      columns: { orderBy: { position: 'asc' } },
+      domain: { include: { parent: { select: { name: true } } } },
+    },
   })
 }
 
@@ -66,6 +69,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         sourceType: asset.sourceType,
         sourceInfo,
         piiEnabled: asset.piiEnabled,
+        domain: asset.domain
+          ? { id: asset.domain.id, name: asset.domain.name, color: asset.domain.color, parentId: asset.domain.parentId, parentName: asset.domain.parent?.name ?? null }
+          : null,
         rowCount: asset.rowCount,
         columnCount: asset.columnCount,
         status: asset.status,
@@ -96,8 +102,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!op.ok) return NextResponse.json({ error: op.message }, { status: op.status })
 
     const action = String(body.action ?? 'RENAME').trim().toUpperCase()
-    if (!['RENAME', 'TOGGLE_PII', 'DELETE'].includes(action)) {
-      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (RENAME | TOGGLE_PII | DELETE)' }, { status: 400 })
+    if (!['RENAME', 'TOGGLE_PII', 'DELETE', 'SET_DOMAIN'].includes(action)) {
+      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (RENAME | TOGGLE_PII | DELETE | SET_DOMAIN)' }, { status: 400 })
     }
 
     const asset = await getAsset(id)
@@ -129,6 +135,28 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({
         asset: { id: updated.id, piiEnabled: updated.piiEnabled },
         message: `${updated.piiEnabled ? 'เปิด' : 'ปิด'}การปิดบัง PII ของ "${asset.name}" เรียบร้อย`,
+      })
+    }
+
+    if (action === 'SET_DOMAIN') {
+      const rawDomainId = String(body.domainId ?? '').trim()
+      if (rawDomainId) {
+        const domain = await db.dataDomain.findUnique({ where: { id: rawDomainId }, select: { id: true } })
+        if (!domain) return NextResponse.json({ error: 'ไม่พบโดเมนข้อมูลที่ระบุ' }, { status: 404 })
+      }
+      await db.dataAsset.update({ where: { id }, data: { domainId: rawDomainId || null } })
+      await db.auditLog.create({
+        data: {
+          action: 'SET_DATA_ASSET_DOMAIN',
+          actor: op.ctx.email,
+          target: asset.name,
+          detail: rawDomainId
+            ? `กำหนดโดเมนข้อมูลให้ Data Asset "${asset.name}" โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`
+            : `นำ Data Asset "${asset.name}" ออกจากโดเมนข้อมูล โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        },
+      })
+      return NextResponse.json({
+        message: rawDomainId ? `จัด "${asset.name}" เข้าโดเมนข้อมูลเรียบร้อย` : `นำ "${asset.name}" ออกจากโดเมนข้อมูลเรียบร้อย`,
       })
     }
 

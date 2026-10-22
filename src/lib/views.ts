@@ -21,7 +21,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.13.0'
+export const APP_VERSION = 'v0.14.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -131,7 +131,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'asset-inventory',
     th: 'คลังข้อมูล',
     en: 'Data Inventory',
-    desc: 'รายการข้อมูลที่นำเข้ามาทั้งหมด พร้อมสำรวจคอลัมน์ พรีวิวข้อมูล และค้นหา',
+    desc: 'รายการข้อมูลที่นำเข้ามาทั้งหมด จัดหมวดหมู่เป็นโดเมนข้อมูลและโดเมนย่อย พร้อมสำรวจคอลัมน์ พรีวิวข้อมูล และค้นหา',
     icon: PackageSearch,
   },
   rbac: {
