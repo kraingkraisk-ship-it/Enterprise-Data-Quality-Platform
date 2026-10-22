@@ -722,3 +722,18 @@ Stage Summary:
 - สถานะข้อมูลหลังทดสอบ: โดเมนคงเหลือ 8 = seed, asset ผูกถูกต้อง (FX → การเงิน/อัตราแลกเปลี่ยน, ลูกค้า CSV → ลูกค้า/ลูกค้าบุคคลธรรมดา)
 - แผนเดิมเลื่อนเบอร์: RCA + Remediation + Alerts = **v0.15.0** (เฟสสุดท้ายครบ 8 เมนู)
 - Push pending: รอผู้ใช้ส่ง token (one-time URL + redact ตามกติกา)
+
+---
+## Task ID: 22-result
+Agent: Z.ai Code (main session)
+Task: Push v0.14.0 (main + annotated tag) ด้วย token ที่ผู้ใช้ส่ง (one-time URL, redact ทุก output)
+
+Work Log:
+- Push `git push <one-time URL ฝัง token> main v0.14.0` → สำเร็จ `63ecdeb..9c0ff65 main` + new tag (output ผ่าน sed redact ทุกบรรทัด, ไม่บันทึก token ลง git config)
+- Verify ls-remote: refs/heads/main = 9c0ff65 ตรง local · refs/tags/v0.14.0 = 7301a14 (annotated object) → ^{} = 98f9ef8 ตรงเป๊ะ (commit ฟีเจอร์)
+- fetch + status in-sync (ไม่มี ahead/behind) · git config --list | rg -i "github_pat|token" = CONFIG CLEAN
+
+Stage Summary:
+- **v0.14.0 อยู่บน remote ครบถ้วน**: main = 9c0ff65 (รวม worklog Task 22) + tag v0.14.0 (annotated, ชี้ 98f9ef8) — sync 100%
+- แนะนำ revoke token นี้หลังเซสชัน (แนวทางเดิมทุกครั้ง)
+- สถานะถัดไป: **v0.15.0 = RCA (5-Why) + Remediation Plan/Task (ในหน้า DQ Issues) + Alerts (สัญญาณ AI ย้ายไป Alerts) — เฟสสุดท้าย ครบ 8 เมนู**
