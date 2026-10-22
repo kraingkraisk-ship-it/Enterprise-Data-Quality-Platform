@@ -760,3 +760,51 @@ Stage Summary:
 - ความปลอดภัยตามหลักระบบ: RBAC MANAGE_DATASETS + Audit Trail 100% (CREATE/UPDATE/DELETE_DATA_DOMAIN, SET_DATA_ASSET_DOMAIN, ASSIGN_DOMAIN_COLUMNS) + deny-by-default (คอลัมน์/โดเมนต้องมีจริง, ลบได้เฉพาะโดเมนว่าง, 2 ระดับเท่านั้น) + ไม่แตะข้อมูลต้นทาง (จัดหมวดเป็น metadata ล้วน)
 - Rollback point: ก่อนงานนี้ = `2e73dad` (v0.14.0 + worklog Task 22-result) — กู้คืน `git reset --hard 2e73dad && bun run db:push && bun scripts/seed.ts`
 - **Push แล้ว**: main (2e73dad → 85c430f) + annotated tag v0.15.0 — push ด้วย token ผู้ใช้ (one-time URL, redact ทุก output, ไม่เข้า git config), ตรวจ ls-remote ตรงเป๊ะ, config CLEAN — ผู้ใช้ควร revoke/rotate token หลังใช้งาน
+
+---
+Task ID: 24
+Agent: Z.ai Code (main session)
+Task: v0.16.0 — ชุดข้อมูล DQ ในโดเมน (ผู้ใช้เลือกแนวทาง C ของข้อ 2: "ทำการสร้าง Dataset เพิ่มใน Data Domain ก่อน และค่อยทำ Dashboard ทีหลัง")
+
+Work Log:
+- ตอบคำถามกลับก่อนเขียนโค้ด (ผู้ใช้สั่ง "อย่าเพิ่งทำ ถามข้อมูลได้") — เสนอตัวเลือก A/B/C ของข้อ 2/6/7 + คำถามเพิ่ม 6 ข้อ ผู้ใช้ตอบครบ
+- Schema: Dataset.domainId (FK DataDomain, onDelete SetNull) + @@index([domainId]) + relation DataDomain.datasets — db:push สำเร็จ
+- API ใหม่: GET /api/dq/datasets (รายการ dataset + domain path + ruleCount/sampleCount/lastBatch) · POST (สร้าง dataset + parser CSV/TSV รองรับ quote/tab จาก Excel, จำกัด 60 คอลัมน์/200 แถว, sanitize header, $transaction สร้าง SampleRow) · PATCH /api/dq/datasets/[id] SET_DOMAIN (409 เมื่อค่าเดิม) — RBAC MANAGE_DATASETS + AuditLog CREATE_DATASET/SET_DATASET_DOMAIN
+- GET /api/domains เพิ่ม datasetCount (groupBy) · PATCH /api/domains/[id] DELETE guard ขยายตรวจ datasets ด้วย (409 ระบุ "ชุดข้อมูล DQ สังกัดอยู่ n ชุด")
+- lib/domains.ts: DomainItem เพิ่ม datasetCount
+- UI data-domain-console.tsx: แผงใหม่ "ชุดข้อมูล DQ ในโดเมน" (ตาราง + เลือกโดเมนรายแถวบันทึกทันที + PII badge) + Dialog สร้างชุดข้อมูล (ชื่อ/แหล่งข้อมูล/โดเมน/CSV paste) + การ์ดสรุปเพิ่มเป็น 5 ใบ + badge ต้นไม้ "n ข้อมูล · n ชุดข้อมูล · n คอลัมน์" (ซ่อนคอลัมน์บนมือถือ) + blockedReason เพิ่มกรณีมี dataset
+- Seed: จัดโดเมน 5 dataset (ลูกค้าบุคคลธรรมดา ×2, บัญชีและเงินฝาก ×2, อัตราแลกเปลี่ยน ×1; แคตตาล็อกสินค้า/พนักงาน HR ไม่ระบุ) + AuditLog
+- ตรวจผ่าน: lint สะอาด · API lifecycle (สร้าง CSV 3 แถว ✅, dup 409, RBAC 403, SET_DOMAIN ✅, same-domain 409, delete guard 409, audit ครบ) · agent-browser: สร้าง dataset ผ่าน dialog + จัดโดเมนผ่าน dropdown + persistence ยืนยันทาง API · mobile 390px NO-OVERFLOW · ZERO page errors
+- Commit 62ebb2b + annotated tag v0.16.0
+
+Stage Summary:
+- รากฐาน "คะแนนรายโดเมน" พร้อม: Dataset (โมดูล DQ) ผูกเข้า DataDomain ได้ทั้งตอนสร้างและหลังนำเข้า — เป็นครั้งแรกที่ระบบมี flow สร้าง Dataset จริง (ก่อนหน้ามีแต่ seed)
+- กติกาความปลอดภัยคงเดิม: deny-by-default (โดเมนต้องมีจริง/ชื่อซ้ำ/CSV รูปแบบผิด/ลบโดเมนที่มี dataset ไม่ได้) + RBAC + Audit Trail 100%
+- Push pending: รอ token จากผู้ใช้ (one-time URL + sed redact ตามกติกา)
+
+---
+Task ID: 25
+Agent: Z.ai Code (main session)
+Task: v0.17.0 — Executive Dashboard (7 ส่วนตามโจทย์) + Executive Reports (เมนูพิมพ์/PDF แยก) + Rule Threshold + Issue SLA — ตามคำตอบผู้ใช้ (ข้อ 6=A, ข้อ 7=B, เมนูใหม่, จำกัดสิทธิ์, แนวโน้ม 30/90/180/365, Critical เลือกได้, ไม่เคยรัน=0, export แยกเมนู)
+
+Work Log:
+- Schema: DqRule.threshold Float default 95 · DqIssue.dueAt DateTime? · db:push
+- RBAC: เพิ่มสิทธิ์ VIEW_EXEC_DASHBOARD ("ดูแดชบอร์ดผู้บริหาร") ให้ DATA_OWNER / DATA_STEWARD / DQ_ANALYST / COMPLIANCE_OFFICER / EXECUTIVE / SYS_ADMIN — ปิด BUSINESS_USER + DATA_ENGINEER
+- API ใหม่ GET /api/executive/summary (viewer + days + issuesMode): คะแนนรวม (batch/run ล่าสุด · ไม่เคยรัน=0) · byDomain จาก Dataset.domainId + bucket ไม่ระบุ · rules passed/failed จาก latest run · Critical Issues (open|all) · trend 30/90/180/365 (เกิน 90 วัน = weekly bucket วันจันทร์) · belowThreshold (gap เรียงมากสุดก่อน) · slaOverdue (dueAt ที่ผู้ใช้ตั้ง, OPEN/IN_PROGRESS) — 403 ถ้า viewer ไม่มีสิทธิ์ (deny-by-default)
+- ปรับจาก batch → DqRun: seed ไม่สร้าง DqValidationBatch จึงคำนวณจาก DqRun วิธีเดียวกับ Scorecard (latest run รายกฎ×ชุดข้อมูล)
+- API เดิมขยาย: rules POST รับ threshold + GET คืน threshold · rules/[id] PATCH เพิ่ม SET_THRESHOLD (0–100, audit SET_RULE_THRESHOLD) · issues GET คืน dueAt · issues/[id] PATCH เพิ่ม SET_DUE (ตั้ง/ล้าง, ห้ามบน RESOLVED/CLOSED 409, audit SET_ISSUE_DUE)
+- UI ใหม่ dq/executive-dashboard.tsx: KPI 4 ใบ (Overall พร้อมเกรด+never-run, กฎผ่าน/ไม่ผ่านแบบแท่ง, Critical + toggle ยังไม่ปิด/ประวัติ, SLA) + recharts AreaChart แนวโน้ม + ปุ่ม 30/90/180/365 + แท่งคะแนนรายโดเมน (สีตามโดเมน, เรียงแย่สุดก่อน, bucket ไม่ระบุ) + ตารางกฎต่ำกว่าเกณฑ์ + ตารางเกิน SLA + รายการ Critical — RBAC gate card เมื่อ 403
+- UI ใหม่ dq/executive-reports.tsx (เมนูแยกตามที่ผู้ใช้ขอ): เลย์เอาต์รายงานพิมพ์ 5 ส่วน (สรุปผู้บริหาร/แนวโน้ม/รายโดเมน/ต่ำกว่าเกณฑ์/เกิน SLA) + ปุ่ม window.print() + print:hidden ซ่อน sidebar/header/footer/ปุ่มทั้งหมด
+- views.ts: ExecViewKey 'exec-dashboard' (Crown) + 'exec-reports' (Printer) ในกลุ่ม ภาพรวม · APP_VERSION v0.17.0 · page.tsx wiring keep-mounted + print:hidden บน header/footer · app-sidebar print:hidden
+- Rule Builder (core-features-console): ช่อง "ค่าผ่านขั้นต่ำ (%)" (number 0–100 step .5, default 95) + POST threshold + badge "ผลรันล่าสุด n% · ต่ำกว่าเกณฑ์ x%" (แดง) / "เกณฑ์ผ่าน n%" (ยังไม่รัน)
+- Issues page: แสดง "วันครบกำหนด (SLA)" ใน dl + badge "เกินกำหนด n วัน" ในตารางและ dialog + กล่องตั้งวันครบกำหนด (date input + saveDue → SET_DUE)
+- Seed: threshold รายกฎ (customer_id/segment=100, phone=90, ที่เหลือ 95) · ISS-0001 → CRITICAL + dueAt เกินกำหนด 10 วัน · ISS-0002 dueAt อีก 5 วัน · RUN_BATCHES ขยาย 14 รอบ (210→0 วัน) ให้แนวโน้ม 365 วันมี 12 จุดรายสัปดาห์
+- บั๊กที่จับได้: JSX ขาดวงเล็บปิด ("ผ่าน {passRate ?? '—}%") ทำ parsing error — แก้แล้ว · issues GET คอมมาซ้ำ (, ,) — แก้แล้ว
+- ตรวจผ่าน: lint สะอาด · RBAC 403 BUSINESS_USER (ข้อความไทยระบุบทบาทที่อนุญาต) + DATA_ENGINEER 403 · SET_DUE ตั้ง/ล้าง/403 · SET_THRESHOLD ตั้ง/150→400 · agent-browser: แดชบอร์ดครบ 7 วิดเจ็ต (39.0 วิกฤต, 3/9 กฎ, Critical 1, SLA 1, โดเมน 4 กลุ่ม, กฎต่ำกว่าเกณฑ์ 6 รายการ) + สลับ 365 วัน → weekly 12 จุด + โหมดประวัติ · Reports ครบ 5 ส่วน + ปุ่มพิมพ์ · คลังกฎ badge ต่ำกว่าเกณฑ์ · Issues ตั้ง due date ผ่าน UI สำเร็จ (toast + ค่าใหม่ + badge หาย) · mobile 390px NO-OVERFLOW ทั้ง 2 หน้า · ZERO console/page errors
+- Commit eef2099 + annotated tag v0.17.0
+
+Stage Summary:
+- **ครบโจทย์ผู้บริหาร 7 ข้อ + เมนู Export/Print แยก**: Overall DQ Score (ไม่เคยรัน=0 ตามที่ผู้ใช้กำหนด) · คะแนนราย Data Domain (จากการผูก Dataset→Domain ของ v0.16.0) · กฎผ่าน/ไม่ผ่าน · Critical Issues (สลับยังไม่ปิด/ประวัติ) · แนวโน้มเลือก 30/90/180/365 (รายวัน→รายสัปดาห์อัตโนมัติ) · กฎต่ำกว่า threshold (ตั้งรายกฎได้) · ปัญหาเกิน SLA (dueAt ตั้งรายปัญหาได้)
+- สิทธิ์: เมนูแสดงทุกคนแต่ API บังคับ VIEW_EXEC_DASHBOARD (6 บทบาท) — BUSINESS_USER/ENGINEER เจอ gate 403 พร้อมคำอธิบาย
+- คำนวณจาก DqRun (วิธีเดียวกับ Scorecard) — แนวโน้มเป็นค่าจริงจากเอนจินประเมินผล ไม่ใช่ข้อมูลจำลอง
+- Push pending ทั้ง v0.16.0 + v0.17.0: รอ token จากผู้ใช้ (push main + 2 tags ครั้งเดียวได้)
