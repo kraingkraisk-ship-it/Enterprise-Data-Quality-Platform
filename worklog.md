@@ -699,3 +699,26 @@ Stage Summary:
 - **v0.13.0 อยู่บน remote ครบถ้วน** (main + annotated tag) · sync 100% · config CLEAN
 - แนะนำ revoke token นี้หลังเซสชัน (แนวทางเดิมทุกครั้ง)
 - เหลือตามแผน: **v0.14.0 = RCA (5-Why) + Remediation Plan/Task (ในหน้า DQ Issues) + Alerts (สัญญาณ AI ย้ายไป Alerts) — เฟสสุดท้าย ครบ 8 เมนู**
+
+---
+## Task ID: 22
+Agent: Z.ai Code (main session)
+Task: v0.14.0 — Data Domain & Sub Data Domain ในคลังข้อมูล (ผู้ใช้ขอให้แบ่ง data domain / sub data domain ได้)
+
+Work Log:
+- **Schema**: เพิ่ม DataDomain (self-referencing "DomainTree": parentId null = โดเมนหลัก, มี parentId = โดเมนย่อย — ห้ามลึกกว่า 2 ระดับ) + DataAsset.domainId (onDelete: SetNull) + index → db:push สำเร็จ
+- **Lib ใหม่**: `lib/domains.ts` — DOMAIN_COLORS 9 สี (dot/chip/swatch literal classes), DOMAIN_MAX_DEPTH=2, buildDomainTree/rollupAssetCount/domainPath, NO_DOMAIN sentinel สำหรับ Radix Select
+- **API ใหม่ 2 เส้น**: GET /api/domains (flat + assetCount จาก groupBy) · POST /api/domains (ตรวจ RBAC MANAGE_DATASETS, พ่อต้องเป็นโดเมนหลัก, กันชื่อซ้ำในระดับเดียว 409) · PATCH /api/domains/[id] (UPDATE/DELETE — ลบได้เฉพาะว่าง ไม่มีลูกและไม่มี asset มิฉะนั้น 409) + AuditLog ทุก action
+- **Assets API**: GET /api/assets + GET /api/assets/[id] คืน domain {id,name,color,parentId,parentName} · PATCH เพิ่ม action SET_DOMAIN (domainId ว่าง = นำออกจากโดเมน) · POST /api/assets/import รับ domainId (ตรวจมีอยู่จริง, audit ระบุโดเมน)
+- **UI คลังข้อมูล**: การ์ดสรุปเพิ่ม "โดเมนข้อมูล N หลัก + M ย่อย" (grid 6 การ์ด) · แถวชิปกรองโดเมน (ทั้งหมด/โดเมนหลัก[rollup]/โดเมนย่อย└/ไม่ระบุ — aria-pressed) · badge โดเมนบนการ์ด asset (path แม่/ลูก) · dialog "จัดการโดเมน" (ต้นไม้ + เพิ่มหลัก/เพิ่มย่อย/แก้ไข/ลบเงื่อนไข + เลือกสี 9 แบบ) · dialog "จัดโดเมน" ราย asset (เลือกหลัก → ย่อย cascade, prefill ค่าปัจจุบัน) · แท็บรายละเอียดเพิ่มแถวโดเมน · empty state แยกกรณี "กรองแล้วว่าง"
+- **UI นำเข้า**: ขั้นที่ 2 เพิ่มเลือกโดเมนหลัก/โดเมนย่อย (ไม่บังคับ — แสดงเมื่อมีโดเมนในระบบ)
+- **Seed**: โดเมนตัวอย่าง 3 หลัก (ลูกค้า/การเงิน/การปฏิบัติตามกฎเกณฑ์) + 5 ย่อย · asset ตัวอย่างผูก "ลูกค้าบุคคลธรรมดา" และ "อัตราแลกเปลี่ยน" · audit seed บันทึก CREATE_DATA_DOMAIN
+- **บั๊กที่จับได้**: ไฟล์ `api/domains/route.ts` หาย (Write แรกโฟลเดอร์ยังไม่มี) ทำ GET คืน 404 — พบจาก dev.log แล้วเขียนใหม่ ผ่านทันที
+- **Pre-flight**: lint สะอาด · API lifecycle ครบ (สร้างหลัก/ย่อย, ซ้ำ 409, sub-of-sub 400, RBAC DQ_ANALYST 403, ลบมีลูก/มี asset 409, SET_DOMAIN + audit) · agent-browser ครบ: ชิปกรอง rollup ถูกต้อง, เปิด dialog จัดการโดเมนสร้าง "การขาย"+"ยอดขายรายวัน" ผ่าน UI แล้วลบครบ flow (ปุ่มลบ disable เมื่อมีลูก), จัดโดเมน asset ลูกค้า → การเงิน/บัญชีและเงินฝาก → คืน ลูกค้า/ลูกค้าบุคคลธรรมดา (prefill ถูกต้องทั้ง 2 ครั้ง), แท็บรายละเอียดแสดง path, มือถือ 390px ไม่ overflow, ZERO page errors
+- Commit `98f9ef8` + annotated tag v0.14.0 (deref ตรง 98f9ef8) — **ยังไม่ push (รอ token one-time จากผู้ใช้ตาม workflow)**
+
+Stage Summary:
+- คลังข้อมูลจัดหมวดหมู่เป็น Data Domain → Sub Data Domain ได้ครบวงจร: สร้าง/แก้/ลบ (เงื่อนไขเข้ม) / กรอง / ผูก asset ทั้งตอน import และหลังนำเข้า — ทุก action ผ่าน RBAC + Audit Trail
+- สถานะข้อมูลหลังทดสอบ: โดเมนคงเหลือ 8 = seed, asset ผูกถูกต้อง (FX → การเงิน/อัตราแลกเปลี่ยน, ลูกค้า CSV → ลูกค้า/ลูกค้าบุคคลธรรมดา)
+- แผนเดิมเลื่อนเบอร์: RCA + Remediation + Alerts = **v0.15.0** (เฟสสุดท้ายครบ 8 เมนู)
+- Push pending: รอผู้ใช้ส่ง token (one-time URL + redact ตามกติกา)
