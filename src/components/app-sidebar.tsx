@@ -117,7 +117,7 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
   }
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" className="print:hidden">
       {/* ------------------------- brand ------------------------- */}
       <SidebarHeader>
         <div className="flex items-center gap-2.5 px-2 py-1.5">

@@ -4,16 +4,18 @@ import { resolveOperator } from '@/lib/operator'
 import { ISSUE_TRANSITIONS, ISSUE_STATUS_META } from '@/lib/issues'
 
 type Body = {
-  action?: 'START' | 'RESOLVE' | 'CLOSE' | 'REOPEN' | 'ASSIGN'
+  action?: 'START' | 'RESOLVE' | 'CLOSE' | 'REOPEN' | 'ASSIGN' | 'SET_DUE'
   operatorEmail?: string
   note?: string
   assignedTo?: string
+  dueAt?: string
 }
 
 /**
- * PATCH /api/dq/issues/[id] — เปลี่ยนสถานะ/มอบหมายปัญหา (deny-by-default ตาม lifecycle + RBAC)
- * - START / RESOLVE / REOPEN → ต้องมีสิทธิ์ MANAGE_ISSUES
+ * PATCH /api/dq/issues/[id] — เปลี่ยนสถานะ/มอบหมาย/ตั้งวันครบกำหนด (deny-by-default ตาม lifecycle + RBAC)
+ * - START / RESOLVE / REOPEN / SET_DUE → ต้องมีสิทธิ์ MANAGE_ISSUES
  * - CLOSE → ต้องมีสิทธิ์ APPROVE_EXCEPTIONS (ผู้ปิดต้องไม่ใช่สายแก้ไขโดยตรง — การกำกับดูแลที่ดี)
+ * - SET_DUE (v0.17.0): ตั้งวันครบกำหนด (dueAt) รายปัญหา — ใช้ตรวจ "เกิน SLA" บนแดชบอร์ดผู้บริหาร · ส่งค่าว่าง = ล้างวันครบกำหนด
  */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -24,7 +26,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     const action = body.action
-    if (action !== 'ASSIGN' && !ISSUE_TRANSITIONS[action]) {
+    if (action !== 'ASSIGN' && action !== 'SET_DUE' && !ISSUE_TRANSITIONS[action]) {
       return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง' }, { status: 400 })
     }
 
@@ -66,6 +68,31 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           detail: `มอบหมายปัญหา ${issue.code} ให้ ${user.name} (${user.email}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
+    } else if (action === 'SET_DUE') {
+      if (issue.status === 'RESOLVED' || issue.status === 'CLOSED') {
+        const fromTh = ISSUE_STATUS_META[issue.status]?.th ?? issue.status
+        return NextResponse.json({ error: `ปัญหาอยู่ในสถานะ "${fromTh}" แล้ว — ไม่ต้องตั้งวันครบกำหนด` }, { status: 409 })
+      }
+      const raw = String(body.dueAt ?? '').trim()
+      let dueAt: Date | null = null
+      if (raw) {
+        const d = new Date(raw)
+        if (Number.isNaN(d.getTime())) {
+          return NextResponse.json({ error: 'รูปแบบวันครบกำหนดไม่ถูกต้อง' }, { status: 400 })
+        }
+        dueAt = d
+      }
+      data = { dueAt }
+      await db.auditLog.create({
+        data: {
+          action: 'SET_ISSUE_DUE',
+          actor: op.ctx.email,
+          target: `${issue.code} — ${issue.dataset.name}`,
+          detail: dueAt
+            ? `ตั้งวันครบกำหนดปัญหา ${issue.code} → ${dueAt.toISOString().slice(0, 10)} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`
+            : `ล้างวันครบกำหนดปัญหา ${issue.code} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        },
+      })
     } else {
       const t = ISSUE_TRANSITIONS[action]
       if (!t.from.includes(issue.status)) {
@@ -99,7 +126,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const updated = await db.dqIssue.update({ where: { id }, data })
     return NextResponse.json({
       ok: true,
-      issue: { id: updated.id, code: updated.code, status: updated.status, assignedTo: updated.assignedTo },
+      issue: { id: updated.id, code: updated.code, status: updated.status, assignedTo: updated.assignedTo, dueAt: updated.dueAt },
+      ...(action === 'SET_DUE' ? { message: updated.dueAt ? `ตั้งวันครบกำหนด ${updated.dueAt.toISOString().slice(0, 10)} เรียบร้อย` : 'ล้างวันครบกำหนดแล้ว' } : {}),
     })
   } catch (e) {
     console.error('PATCH /api/dq/issues/[id]', e)

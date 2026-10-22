@@ -113,6 +113,7 @@ interface ApiRule {
   parameters: string
   filter: string | null
   severity: string
+  threshold: number
   enabled: boolean
   sentence: string
   lastRun: { status: string; passRate: number; totalRows: number; failedRows: number; at: string } | null
@@ -295,6 +296,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rbColumn, setRbColumn] = useState('')
   const [rbCondition, setRbCondition] = useState('')
   const [rbSeverity, setRbSeverity] = useState('MEDIUM')
+  const [rbThreshold, setRbThreshold] = useState('95')
   const [rbFilter, setRbFilter] = useState('')
   const [rbParams, setRbParams] = useState<Record<string, string>>({})
   const [rbOperator, setRbOperator] = useState('somchai.owner@company.co.th')
@@ -615,6 +617,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         condition: rbCondition,
         parameters: rbParams,
         severity: rbSeverity,
+        threshold: Number(rbThreshold) || 95,
         filter: rbFilter,
         operatorEmail: rbOperator,
       },
@@ -1020,6 +1023,21 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rb-threshold">
+                    ค่าผ่านขั้นต่ำ (%) <span className="text-[10px] font-normal text-muted-foreground">— แดชบอร์ดผู้บริหารจะเตือนเมื่อผ่านล่าสุดต่ำกว่าค่านี้</span>
+                  </Label>
+                  <Input
+                    id="rb-threshold"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    value={rbThreshold}
+                    onChange={(e) => setRbThreshold(e.target.value)}
+                    aria-label="ค่าผ่านขั้นต่ำเป็นเปอร์เซ็นต์"
+                  />
+                </div>
               </div>
 
               {rbTemplate && (
@@ -1211,12 +1229,20 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                         <Badge
                           variant="outline"
                           className={`border text-[11px] ${
-                            rule.lastRun.status === 'PASSED'
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-rose-50 text-rose-800 border-rose-200'
+                            rule.lastRun.passRate * 100 < rule.threshold
+                              ? 'bg-rose-50 text-rose-800 border-rose-300'
+                              : rule.lastRun.status === 'PASSED'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-rose-50 text-rose-800 border-rose-200'
                           }`}
                         >
                           ผลรันล่าสุด {Math.round(rule.lastRun.passRate * 100)}%
+                          {rule.lastRun.passRate * 100 < rule.threshold && ` · ต่ำกว่าเกณฑ์ ${rule.threshold}%`}
+                        </Badge>
+                      )}
+                      {!rule.lastRun && (
+                        <Badge variant="outline" className="border text-[11px] bg-slate-50 text-slate-500">
+                          เกณฑ์ผ่าน {rule.threshold}%
                         </Badge>
                       )}
                     </div>

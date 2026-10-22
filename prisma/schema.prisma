@@ -123,6 +123,7 @@ model DqRule {
   parameters String   @default("{}") // JSON — พารามิเตอร์ของเงื่อนไข
   filter     String? // ตัวกรองไม่บังคับ (จองไว้)
   severity   String   @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
+  threshold  Float    @default(95) // ค่าผ่านขั้นต่ำ (%) — ใช้เตือนบนแดชบอร์ดผู้บริหารเมื่อ passRate ล่าสุดต่ำกว่าค่านี้ (v0.17.0)
   enabled    Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -263,6 +264,7 @@ model DqIssue {
   dimension      String // มิติ DAMA-DMBOK
   severity       String    @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
   status         String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | CLOSED
+  dueAt          DateTime? // วันครบกำหนดของปัญหา (ตั้งเองต่อปัญหา — ใช้ตรวจ "เกิน SLA" บนแดชบอร์ดผู้บริหาร v0.17.0)
   reportedBy     String // email ผู้รายงาน
   assignedTo     String? // email ผู้รับผิดชอบ
   resolutionNote String    @default("")

@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { buildRuleSentence } from '@/lib/dq'
 import { resolveOperator } from '@/lib/operator'
 
-type Body = { action?: string; operatorEmail?: string }
+type Body = { action?: string; operatorEmail?: string; threshold?: number }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -19,8 +19,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     const action = String(body.action ?? '').trim().toUpperCase()
-    if (!['TOGGLE_ENABLED', 'DELETE'].includes(action)) {
-      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (TOGGLE_ENABLED | DELETE)' }, { status: 400 })
+    if (!['TOGGLE_ENABLED', 'DELETE', 'SET_THRESHOLD'].includes(action)) {
+      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (TOGGLE_ENABLED | DELETE | SET_THRESHOLD)' }, { status: 400 })
     }
 
     const rule = await db.dqRule.findUnique({
@@ -44,6 +44,24 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         },
       })
       return NextResponse.json({ rule: updated })
+    }
+
+    if (action === 'SET_THRESHOLD') {
+      const raw = Number(body.threshold)
+      if (!Number.isFinite(raw) || raw < 0 || raw > 100) {
+        return NextResponse.json({ error: 'ค่าผ่านขั้นต่ำ (threshold) ต้องเป็นตัวเลข 0–100' }, { status: 400 })
+      }
+      const threshold = Math.round(raw * 10) / 10
+      const updated = await db.dqRule.update({ where: { id }, data: { threshold } })
+      await db.auditLog.create({
+        data: {
+          action: 'SET_RULE_THRESHOLD',
+          actor: op.ctx.email,
+          target: targetLabel,
+          detail: `ตั้งค่าผ่านขั้นต่ำของกฎ "${rule.column}" → ${threshold}% (เดิม ${rule.threshold}%) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        },
+      })
+      return NextResponse.json({ rule: updated, message: `ตั้งค่าผ่านขั้นต่ำ ${threshold}% เรียบร้อย` })
     }
 
     // DELETE

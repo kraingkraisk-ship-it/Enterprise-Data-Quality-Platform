@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import {
+  CalendarClock,
   CircleDot,
   Eye,
   Flag,
@@ -66,6 +67,7 @@ interface IssueItem {
   status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED'
   reportedBy: string
   assignedTo: string | null
+  dueAt: string | null
   resolutionNote: string
   detectedAt: string
   resolvedAt: string | null
@@ -96,6 +98,13 @@ function fmtTime(iso: string | null): string {
   } catch {
     return iso
   }
+}
+
+/** ปัญหาเกินวันครบกำหนด = มี dueAt + ยังไม่แก้ (OPEN/IN_PROGRESS) + เลยกำหนดแล้ว (v0.17.0) */
+function daysOverdueOf(it: IssueItem): number | null {
+  if (!it.dueAt || (it.status !== 'OPEN' && it.status !== 'IN_PROGRESS')) return null
+  const diff = Date.now() - new Date(it.dueAt).getTime()
+  return diff > 0 ? Math.max(1, Math.floor(diff / 86_400_000)) : null
 }
 
 export default function DqIssues({ active }: { active: boolean }) {
@@ -133,6 +142,7 @@ export default function DqIssues({ active }: { active: boolean }) {
   const [detail, setDetail] = useState<IssueItem | null>(null)
   const [resolveNote, setResolveNote] = useState('')
   const [assignee, setAssignee] = useState('')
+  const [dueInput, setDueInput] = useState('')
   const [operatorEmail, setOperatorEmail] = useState('somchai.owner@company.co.th')
 
   const reporters = users.filter((u) => u.status === 'ACTIVE' && (ROLES[u.role as keyof typeof ROLES]?.permissions ?? []).includes('MANAGE_ISSUES'))
@@ -257,6 +267,30 @@ export default function DqIssues({ active }: { active: boolean }) {
       }
       toast({ title: `มอบหมายปัญหา ${item.code} เรียบร้อย` })
       setDetail(null)
+      await load()
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /** ตั้งวันครบกำหนด (SLA) — ค่าว่าง = ล้าง (v0.17.0) */
+  async function saveDue(item: IssueItem) {
+    setBusy(`DUE-${item.id}`)
+    try {
+      const res = await fetch(`/api/dq/issues/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'SET_DUE', operatorEmail, dueAt: dueInput }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        toast({ title: 'บันทึกวันครบกำหนดไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      toast({ title: data.message ?? 'บันทึกวันครบกำหนดแล้ว' })
+      setDetail((d) => (d && d.id === item.id ? { ...d, dueAt: data.issue?.dueAt ?? null } : d))
       await load()
     } catch {
       toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
@@ -480,7 +514,7 @@ export default function DqIssues({ active }: { active: boolean }) {
                     <tbody>
                       {items.map((it) => (
                         <Fragment key={it.id}>
-                          <tr className="cursor-pointer border-t transition-colors hover:bg-slate-50" onClick={() => setDetail(it)}>
+                          <tr className="cursor-pointer border-t transition-colors hover:bg-slate-50" onClick={() => { setDetail(it); setDueInput(it.dueAt ? it.dueAt.slice(0, 10) : '') }}>
                             <td className="px-2 py-2">
                               <CircleDot className="size-3.5 text-slate-400" aria-hidden="true" />
                             </td>
@@ -509,6 +543,12 @@ export default function DqIssues({ active }: { active: boolean }) {
                               <Badge variant="outline" className={`border text-[10.5px] ${ISSUE_STATUS_META[it.status]?.cls ?? ''}`}>
                                 {ISSUE_STATUS_META[it.status]?.th ?? it.status}
                               </Badge>
+                              {daysOverdueOf(it) !== null && (
+                                <Badge variant="outline" className="mt-1 block w-fit border-rose-300 bg-rose-50 text-[10px] text-rose-800">
+                                  <CalendarClock className="mr-0.5 size-2.5" aria-hidden="true" />
+                                  เกินกำหนด {daysOverdueOf(it)} วัน
+                                </Badge>
+                              )}
                             </td>
                             <td className="px-3 py-2 text-[10.5px] text-muted-foreground">
                               {it.assignedTo ?? <span className="italic">ยังไม่มอบหมาย</span>}
@@ -688,6 +728,15 @@ export default function DqIssues({ active }: { active: boolean }) {
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-md border p-3 text-[11.5px]">
                   <dt className="text-muted-foreground">ผู้รับผิดชอบ</dt>
                   <dd className="font-medium text-slate-800">{detail.assignedTo ?? '— ยังไม่มอบหมาย —'}</dd>
+                  <dt className="text-muted-foreground">วันครบกำหนด (SLA)</dt>
+                  <dd className="font-medium text-slate-800">
+                    {detail.dueAt ? detail.dueAt.slice(0, 10) : '— ยังไม่ตั้ง —'}
+                    {daysOverdueOf(detail) !== null && (
+                      <Badge variant="outline" className="ml-1.5 border-rose-300 bg-rose-50 text-[10px] text-rose-800">
+                        เกินกำหนด {daysOverdueOf(detail)} วัน
+                      </Badge>
+                    )}
+                  </dd>
                   <dt className="text-muted-foreground">แก้ไขเมื่อ</dt>
                   <dd className="text-slate-700">{fmtTime(detail.resolvedAt)}</dd>
                   <dt className="text-muted-foreground">ปิดเมื่อ</dt>
@@ -773,6 +822,29 @@ export default function DqIssues({ active }: { active: boolean }) {
                     </Button>
                   )}
                 </div>
+
+                {/* ตั้งวันครบกำหนด (SLA) — v0.17.0 */}
+                {detail.status !== 'RESOLVED' && detail.status !== 'CLOSED' && (
+                  <div className="flex items-end gap-2 rounded-md border border-amber-200 bg-amber-50/60 p-3">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <Label htmlFor="is-due" className="flex items-center gap-1 text-xs">
+                        <CalendarClock className="size-3" aria-hidden="true" />
+                        วันครบกำหนดของปัญหา (ใช้แจ้งเตือน "เกิน SLA" บนแดชบอร์ดผู้บริหาร)
+                      </Label>
+                      <Input
+                        id="is-due"
+                        type="date"
+                        value={dueInput}
+                        onChange={(e) => setDueInput(e.target.value)}
+                        className="h-9 text-xs"
+                        aria-label="วันครบกำหนดของปัญหา"
+                      />
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => void saveDue(detail)} disabled={busy !== null}>
+                      บันทึกวันครบกำหนด
+                    </Button>
+                  </div>
+                )}
 
                 {/* มอบหมายผู้รับผิดชอบ */}
                 {detail.status !== 'CLOSED' && (

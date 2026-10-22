@@ -16,6 +16,8 @@ import DqScorecard from '@/components/dq/scorecard'
 import DqFailedRecords from '@/components/dq/failed-records'
 import DqProfiling from '@/components/dq/profiling'
 import DqIssues from '@/components/dq/issues'
+import ExecutiveDashboard from '@/components/dq/executive-dashboard'
+import ExecutiveReports from '@/components/dq/executive-reports'
 import { APP_VERSION, VIEWS, isConsoleView, type ViewKey } from '@/lib/views'
 
 /* ------------------------------------------------------------------ */
@@ -54,7 +56,7 @@ export default function Home() {
         </a>
 
         {/* ----------------------------- header ----------------------------- */}
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/70 sm:gap-3 sm:px-5">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/70 print:hidden sm:gap-3 sm:px-5">
           <SidebarTrigger aria-label="สลับการแสดงเมนูด้านซ้าย" className="size-8" />
           <Separator orientation="vertical" className="h-5" />
           <div className="min-w-0 flex-1 leading-tight">
@@ -112,6 +114,14 @@ export default function Home() {
             <DqIssues active={view === 'issues'} />
           </div>
 
+          {/* หน้าระดับผู้บริหาร — แดชบอร์ด + รายงานพิมพ์/PDF (v0.17.0) สิทธิ์ตรวจใน API */}
+          <div className={view === 'exec-dashboard' ? '' : 'hidden'} aria-hidden={view !== 'exec-dashboard'}>
+            <ExecutiveDashboard active={view === 'exec-dashboard'} />
+          </div>
+          <div className={view === 'exec-reports' ? '' : 'hidden'} aria-hidden={view !== 'exec-reports'}>
+            <ExecutiveReports active={view === 'exec-reports'} />
+          </div>
+
           {/* RBAC Console — คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
           <div className={view === 'rbac' ? '' : 'hidden'} aria-hidden={view !== 'rbac'}>
             <RbacConsole />
@@ -133,7 +143,7 @@ export default function Home() {
         </main>
 
         {/* ----------------------------- footer ----------------------------- */}
-        <footer className="mt-auto border-t bg-slate-900 text-slate-300 pb-[env(safe-area-inset-bottom)]">
+        <footer className="mt-auto border-t bg-slate-900 text-slate-300 pb-[env(safe-area-inset-bottom)] print:hidden">
           <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-3 py-5 sm:flex-row sm:px-5">
             <div className="flex items-center gap-2.5">
               <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white">

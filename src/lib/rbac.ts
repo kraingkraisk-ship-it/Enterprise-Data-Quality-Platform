@@ -26,6 +26,7 @@ export const PERMISSION_KEYS = [
   'APPROVE_EXCEPTIONS',
   'MANAGE_ISSUES',
   'VIEW_DASHBOARDS',
+  'VIEW_EXEC_DASHBOARD',
   'MANAGE_USERS',
 ] as const
 
@@ -40,6 +41,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, { th: string; en: string }
   APPROVE_EXCEPTIONS: { th: 'อนุมัติข้อยกเว้น', en: 'Approve Exceptions' },
   MANAGE_ISSUES: { th: 'จัดการปัญหาคุณภาพข้อมูล', en: 'Manage DQ Issues' },
   VIEW_DASHBOARDS: { th: 'ดูแดชบอร์ด', en: 'View Dashboards' },
+  VIEW_EXEC_DASHBOARD: { th: 'ดูแดชบอร์ดผู้บริหาร', en: 'View Executive Dashboard' },
   MANAGE_USERS: { th: 'จัดการผู้ใช้และสิทธิ์', en: 'Manage Users' },
 }
 
@@ -67,6 +69,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'APPROVE_EXCEPTIONS',
       'MANAGE_ISSUES',
       'VIEW_DASHBOARDS',
+      'VIEW_EXEC_DASHBOARD',
     ],
     scope: 'เห็นเฉพาะชุดข้อมูลที่ตนเป็นเจ้าของหรือได้รับมอบสิทธิ์',
   },
@@ -83,6 +86,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'REVIEW_SIGNALS',
       'MANAGE_ISSUES',
       'VIEW_DASHBOARDS',
+      'VIEW_EXEC_DASHBOARD',
     ],
     scope: 'เห็นเฉพาะชุดข้อมูลในโดเมนที่รับผิดชอบ',
   },
@@ -91,7 +95,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
     th: 'นักวิเคราะห์คุณภาพข้อมูล',
     en: 'Data Quality Analyst',
     desc: 'ทบทวนผลตรวจและสัญญาณ AI วิเคราะห์สาเหตุ และสร้างกฎเพิ่มเติม',
-    permissions: ['VIEW_DATASETS', 'MANAGE_RULES', 'RUN_VALIDATION', 'REVIEW_SIGNALS', 'MANAGE_ISSUES', 'VIEW_DASHBOARDS'],
+    permissions: ['VIEW_DATASETS', 'MANAGE_RULES', 'RUN_VALIDATION', 'REVIEW_SIGNALS', 'MANAGE_ISSUES', 'VIEW_DASHBOARDS', 'VIEW_EXEC_DASHBOARD'],
     scope: 'เห็นเฉพาะชุดข้อมูลที่ได้รับมอบหมายให้วิเคราะห์',
   },
   DATA_ENGINEER: {
@@ -107,7 +111,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
     th: 'เจ้าหน้าที่กำกับดูแล',
     en: 'Compliance Officer',
     desc: 'ตรวจสอบการปฏิบัติตาม PDPA ทบทวนสัญญาณที่มีความเสี่ยง และอนุมัติร่วม',
-    permissions: ['VIEW_DATASETS', 'REVIEW_SIGNALS', 'APPROVE_EXCEPTIONS', 'VIEW_DASHBOARDS'],
+    permissions: ['VIEW_DATASETS', 'REVIEW_SIGNALS', 'APPROVE_EXCEPTIONS', 'VIEW_DASHBOARDS', 'VIEW_EXEC_DASHBOARD'],
     scope: 'เห็นชุดข้อมูลที่เกี่ยวข้องกับการกำกับดูแลเท่านั้น',
   },
   BUSINESS_USER: {
@@ -123,7 +127,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
     th: 'ผู้บริหาร',
     en: 'Executive',
     desc: 'ติดตามภาพรวมคุณภาพข้อมูลองค์กรและอนุมัติการกำกับดูแลระดับสูง',
-    permissions: ['VIEW_DATASETS', 'APPROVE_EXCEPTIONS', 'VIEW_DASHBOARDS'],
+    permissions: ['VIEW_DATASETS', 'APPROVE_EXCEPTIONS', 'VIEW_DASHBOARDS', 'VIEW_EXEC_DASHBOARD'],
     scope: 'เห็นเฉพาะสรุปภาพรวมและชุดข้อมูลระดับบริหาร',
   },
   SYS_ADMIN: {
@@ -138,6 +142,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'RUN_VALIDATION',
       'MANAGE_ISSUES',
       'VIEW_DASHBOARDS',
+      'VIEW_EXEC_DASHBOARD',
       'MANAGE_USERS',
     ],
     scope: 'จัดการการเข้าถึงทุกชุดข้อมูล (ไม่อนุมัติข้อยกเว้นทางธุรกิจ)',

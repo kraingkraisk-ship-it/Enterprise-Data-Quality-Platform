@@ -75,6 +75,7 @@ export async function GET(req: NextRequest) {
         status: i.status,
         reportedBy: i.reportedBy,
         assignedTo: i.assignedTo,
+        dueAt: i.dueAt?.toISOString() ?? null,
         resolutionNote: i.resolutionNote,
         detectedAt: i.detectedAt.toISOString(),
         resolvedAt: i.resolvedAt?.toISOString() ?? null,

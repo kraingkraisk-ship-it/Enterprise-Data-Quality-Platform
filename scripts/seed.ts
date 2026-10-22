@@ -334,8 +334,9 @@ const RULES: Array<{
   condition: string
   parameters: string
   severity: string
+  threshold?: number // ค่าผ่านขั้นต่ำ (%) — default 95 (v0.17.0)
 }> = [
-  { datasets: ['ลูกค้าองค์กร — Master'], column: 'customer_id', condition: 'NOT_NULL', parameters: '{}', severity: 'CRITICAL' },
+  { datasets: ['ลูกค้าองค์กร — Master'], column: 'customer_id', condition: 'NOT_NULL', parameters: '{}', severity: 'CRITICAL', threshold: 100 },
   { datasets: ['ลูกค้าองค์กร — Master'], column: 'email', condition: 'EMAIL', parameters: '{}', severity: 'HIGH' },
   { datasets: ['ลูกค้าองค์กร — Master'], column: 'credit_limit', condition: 'RANGE', parameters: '{"min":0,"max":1000000}', severity: 'HIGH' },
   // กฎที่ใช้ร่วม 2 ชุดข้อมูล — ใช้เงื่อนไขส่วนกลาง CUSTOM_TH_PHONE
@@ -345,6 +346,7 @@ const RULES: Array<{
     condition: 'CUSTOM_TH_PHONE',
     parameters: '{"pattern":"^0\\\\d{9}$"}',
     severity: 'MEDIUM',
+    threshold: 90,
   },
   { datasets: ['รายการธุรกรรมรายวัน'], column: 'txn_id', condition: 'UNIQUE', parameters: '{}', severity: 'HIGH' },
   {
@@ -363,6 +365,7 @@ const RULES: Array<{
     condition: 'CUSTOM_SEGMENT_STD',
     parameters: '{"values":"ENTERPRISE, SME, RETAIL"}',
     severity: 'MEDIUM',
+    threshold: 100,
   },
   // กฎมิติ Timeliness — ธุรกรรมต้องทันตาม SLA 72 ชั่วโมง (เอนจิน MAX_AGE_HOURS)
   {
@@ -386,6 +389,17 @@ const RULES: Array<{
 /* ------------------- ประวัติผลการรันตรวจ (แดชบอร์ดใช้แสดงผลจริง) ------------------- */
 
 const RUN_BATCHES: Array<{ daysAgo: number; label: string }> = [
+  { daysAgo: 210, label: 'รอบตรวจย้อนหลัง 210 วัน' },
+  { daysAgo: 150, label: 'รอบตรวจย้อนหลัง 150 วัน' },
+  { daysAgo: 120, label: 'รอบตรวจย้อนหลัง 120 วัน' },
+  { daysAgo: 95, label: 'รอบตรวจย้อนหลัง 95 วัน' },
+  { daysAgo: 80, label: 'รอบตรวจย้อนหลัง 80 วัน' },
+  { daysAgo: 65, label: 'รอบตรวจย้อนหลัง 65 วัน' },
+  { daysAgo: 50, label: 'รอบตรวจย้อนหลัง 50 วัน' },
+  { daysAgo: 36, label: 'รอบตรวจย้อนหลัง 36 วัน' },
+  { daysAgo: 22, label: 'รอบตรวจย้อนหลัง 22 วัน' },
+  { daysAgo: 14, label: 'รอบตรวจย้อนหลัง 14 วัน' },
+  { daysAgo: 9, label: 'รอบตรวจย้อนหลัง 9 วัน' },
   { daysAgo: 6, label: 'รอบตรวจย้อนหลัง 6 วัน' },
   { daysAgo: 2, label: 'รอบตรวจย้อนหลัง 2 วัน' },
   { daysAgo: 0, label: 'รอบตรวจล่าสุด' },
@@ -471,6 +485,7 @@ async function main() {
         condition: r.condition,
         parameters,
         severity: r.severity,
+        threshold: r.threshold ?? 95,
         enabled: true,
         datasets: { create: datasetIds.map((datasetId) => ({ datasetId })) },
       },
@@ -976,12 +991,13 @@ async function main() {
           code: 'ISS-0001',
           datasetId: dsCust.id,
           title: 'อีเมลลูกค้าไม่ครบถ้วนในบางสาขา',
-          description: 'พบอีเมลว่างในแถวที่นำเข้าจากสาขาใหม่ — กระทบการส่งเอกสารอัตโนมัติ',
+          description: 'พบอีเมลว่างในแถวที่นำเข้าจากสาขาใหม่ — กระทบการส่งเอกสารอัตโนมัติและความน่าเชื่อถือของทะเบียนหลัก',
           source: 'MANUAL',
           dimension: 'COMPLETENESS',
-          severity: 'HIGH',
+          severity: 'CRITICAL',
           reportedBy: 'somchai.owner@company.co.th',
           assignedTo: 'malee.steward@company.co.th',
+          dueAt: new Date(Date.now() - 10 * 86_400_000), // เกินกำหนด 10 วัน — โชว์ SLA บนแดชบอร์ดผู้บริหาร (v0.17.0)
         },
       })
       await db.auditLog.create({
@@ -989,7 +1005,7 @@ async function main() {
           action: 'CREATE_ISSUE',
           actor: 'somchai.owner@company.co.th',
           target: `${i1.code} — ${dsCust.name}`,
-          detail: `Seed เริ่มต้นระบบ: เปิดปัญหาคุณภาพข้อมูล ${i1.code} (ที่มา: รายงานเอง) [ความครบถ้วน/HIGH]: ${i1.title}`,
+          detail: `Seed เริ่มต้นระบบ: เปิดปัญหาคุณภาพข้อมูล ${i1.code} (ที่มา: รายงานเอง) [ความครบถ้วน/CRITICAL]: ${i1.title}`,
         },
       })
     }
@@ -1012,6 +1028,7 @@ async function main() {
             reportedBy: 'anucha.analyst@company.co.th',
             status: 'IN_PROGRESS',
             assignedTo: 'anucha.analyst@company.co.th',
+            dueAt: new Date(Date.now() + 5 * 86_400_000), // ยังไม่เกินกำหนด (v0.17.0)
           },
         })
         await db.auditLog.create({

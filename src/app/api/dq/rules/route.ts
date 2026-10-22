@@ -55,6 +55,7 @@ export async function GET() {
           parameters: r.parameters,
           filter: r.filter,
           severity: r.severity,
+          threshold: r.threshold,
           enabled: r.enabled,
           createdAt: r.createdAt,
           sentence: buildRuleSentence({
@@ -186,6 +187,7 @@ export async function POST(req: NextRequest) {
     const severity = String(body.severity ?? 'MEDIUM').trim().toUpperCase()
     const filter = String(body.filter ?? '').trim()
     const parameters = typeof body.parameters === 'string' ? body.parameters : JSON.stringify(body.parameters ?? {})
+    const thresholdRaw = Number(body.threshold ?? 95)
 
     if (datasetIds.length === 0) return NextResponse.json({ error: 'กรุณาเลือกชุดข้อมูลอย่างน้อย 1 ชุด' }, { status: 400 })
     if (!COLUMN_RE.test(column)) {
@@ -194,6 +196,10 @@ export async function POST(req: NextRequest) {
     if (!isSeverityKey(severity)) {
       return NextResponse.json({ error: 'ระดับความรุนแรงไม่ถูกต้อง' }, { status: 400 })
     }
+    if (!Number.isFinite(thresholdRaw) || thresholdRaw < 0 || thresholdRaw > 100) {
+      return NextResponse.json({ error: 'ค่าผ่านขั้นต่ำ (threshold) ต้องเป็นตัวเลข 0–100' }, { status: 400 })
+    }
+    const threshold = Math.round(thresholdRaw * 10) / 10
     const jsonError = validateParams(parameters)
     if (jsonError) return NextResponse.json({ error: jsonError }, { status: 400 })
 
@@ -237,6 +243,7 @@ export async function POST(req: NextRequest) {
         condition,
         parameters,
         severity,
+        threshold,
         filter: filter || null,
         enabled: true,
         datasets: {
