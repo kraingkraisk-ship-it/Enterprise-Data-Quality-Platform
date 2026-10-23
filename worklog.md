@@ -1030,3 +1030,23 @@ Stage Summary:
 - v0.20.0 ครบโจทย์ผู้ใช้ทั้ง 7 ข้อ: Meta Data กรอกครั้งเดียวระดับ element · 4 กลุ่มครบ · เชิงปฏิบัติการ = กรอกมือคู่ค่าจริง · stewardship 3 บทบาทเลือกจากผู้ใช้จริง · PII/classification ใช้เดิมแสดงในธรรมาภิบาล · workflow อนุมัติจริงบันทึกผู้อนุมัติ+Audit Trail ด้วยสิทธิ์เดิม (MANAGE_DATASETS/APPROVE_EXCEPTIONS) · ธงเฉพาะ CDE/การเงินที่มีผลจริง (แดชบอร์ดนับความครอบคลุม/คะแนนต่ำ<85 + เตือน CDE ไร้กฎ)
 - ไฟล์แก้: prisma/schema.prisma · src/lib/elements.ts · src/lib/views.ts · src/app/api/elements/route.ts · src/app/api/elements/[id]/route.ts · src/components/data-domain-console.tsx · src/components/core-features-console.tsx · src/components/dq/executive-{summary route,dashboard,reports} · scripts/seed.ts · worklog.md
 - สถานะก่อน push: รอ commit + tag v0.20.0 (ผู้ใช้ให้ PAT ในรอบนี้แล้ว)
+
+---
+Task ID: 34-result
+Agent: Z.ai Code (main session)
+Task: Push v0.20.0 ขึ้น GitHub (main + annotated tag) ด้วย GitHub PAT ที่ผู้ใช้ให้ในรอบนี้
+
+Work Log:
+- ใช้ PAT แบบ one-time ผ่าน push URL เท่านั้น (output ผ่าน sed redact token ก่อนแสดง · ไม่บันทึกลง disk / ไม่แตะ .git/config / origin URL ไม่ถูกแตะ)
+- ก่อน push: กู้คืน local จาก v0.15.0 → 0d7c744 (v0.19.0) ตาม remote + seed ฐานข้อมูลใหม่ (sandbox ถูกรีเซ็ต)
+- commit `c8d1679` (v0.20.0 · 12 ไฟล์ +1,153/−174) + annotated tag `v0.20.0` ชี้ commit เดียวกัน
+- `git push <url> main refs/tags/v0.20.0` → สำเร็จ: `0d7c744..c8d1679 main` + `* [new tag] v0.20.0`
+- ตรวจ remote ด้วย `git ls-remote` เทียบ SHA: refs/heads/main = c8d1679… ✓ · refs/tags/v0.20.0^{} = c8d1679… ✓ ตรง local ทุกรายการ
+- ตรวจ security: `rg "github_pat_"` ทั้ง repo (ยกเว้น dev.log ที่ไม่ถูก track) = ไม่พบ · git config ไม่มี token
+- commit docs(worklog) รายการนี้ (Task 34-a/34-b/34-result) แล้ว push ด้วย token เดียวกัน → remote = local 100%
+- แจ้งเตือนผู้ใช้: token ถูกวางลงแชต ควร revoke/rotate หลังใช้งาน (ระบบไม่จัดเก็บ token เลย)
+
+Stage Summary:
+- GitHub ครบถ้วนถึง v0.20.0: Meta Data 4 กลุ่ม + ธง CDE/การเงินที่มีผลจริง + workflow อนุมัติ (สิทธิ์เดิม + Audit Trail)
+- สถานะ sync: remote = local 100% (หลัง push commit เอกสารรายการนี้) — ไม่มี artifact ค้าง local เท่านั้น
+- หมายเหตุสถานะระบบ: sandbox ถูกรีเซ็ตระหว่าง session — local git + ฐานข้อมูลถูกกู้คืน/seed ใหม่ก่อนพัฒนา v0.20.0 (ดู Task 34-a)
