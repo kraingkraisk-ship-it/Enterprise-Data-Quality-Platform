@@ -8,6 +8,7 @@ import { evaluateRule, DIMENSION_LABELS, type DimensionKey, type Row } from '../
 import { inferColumnType } from '../src/lib/asset'
 import { profileRows, PROFILE_MAX_ROWS } from '../src/lib/profiling'
 import { ELEMENT_CATALOG, nextElementCode, prettyColumnLabel, isElementDataType } from '../src/lib/elements'
+import { nextMappingCode } from '../src/lib/mappings'
 
 const db = new PrismaClient()
 
@@ -1038,6 +1039,171 @@ async function main() {
     })
   }
 
+  // (2.6) v0.21.0 — Data Mapping ตัวอย่าง: CRM.customer_master.customer_no → รหัสลูกค้า → DWH.dim_customer.customer_id
+  //        สาธิตการแมปข้ามโดเมน (ตามโครงสร้างที่ผู้ใช้กำหนด) + ประเภท DIRECT / TRANSFORM / LOOKUP
+  //        กติกา: endpoint ต้องเป็น Data Element ในระบบและ ACTIVE เท่านั้น · ห้ามคู่ซ้ำทั้งทิศตรง/ทิศกลับ
+  const mappingSeedActor = 'preecha.engineer@company.co.th'
+  const mappingSeedApprover = 'somchai.owner@company.co.th'
+
+  async function ensureDomain(name: string, nameEn: string, description: string, color: string, parentId: string | null): Promise<string> {
+    const found = await db.dataDomain.findFirst({ where: { name, parentId }, select: { id: true } })
+    if (found) return found.id
+    const created = await db.dataDomain.create({
+      data: { name, nameEn, description, color, parentId, createdBy: mappingSeedActor },
+    })
+    return created.id
+  }
+
+  async function ensureElement(
+    subDomainIdVal: string,
+    nameTh: string,
+    fields: { nameEn?: string; definition?: string; examples?: string; dataType?: string; formatPattern?: string },
+  ): Promise<string> {
+    const found = await db.dataElement.findUnique({
+      where: { subDomainId_nameTh: { subDomainId: subDomainIdVal, nameTh } },
+      select: { id: true },
+    })
+    if (found) return found.id
+    const created = await db.dataElement.create({
+      data: {
+        code: await nextElementCode(db),
+        subDomainId: subDomainIdVal,
+        nameTh,
+        status: 'ACTIVE', // seed สร้างเป็น element ที่ใช้งานได้ทันที (ผ่านการอนุมัติโดยระบบเริ่มต้น)
+        approvedBy: mappingSeedApprover,
+        approvedAt: new Date(),
+        createdBy: mappingSeedActor,
+        ...fields,
+      },
+    })
+    return created.id
+  }
+
+  async function ensureMapping(
+    sourceId: string,
+    targetId: string,
+    type: string,
+    transformNote: string,
+    note: string,
+  ): Promise<boolean> {
+    const dup = await db.dataMapping.findFirst({
+      where: {
+        OR: [
+          { sourceElementId: sourceId, targetElementId: targetId },
+          { sourceElementId: targetId, targetElementId: sourceId },
+        ],
+      },
+      select: { id: true },
+    })
+    if (dup) return false
+    const last = await db.dataMapping.findFirst({ orderBy: { code: 'desc' }, select: { code: true } })
+    await db.dataMapping.create({
+      data: {
+        code: nextMappingCode(last?.code),
+        sourceElementId: sourceId,
+        targetElementId: targetId,
+        mappingType: type,
+        transformNote,
+        note,
+        status: 'ACTIVE',
+        approvedBy: mappingSeedApprover,
+        approvedAt: new Date(),
+        createdBy: mappingSeedActor,
+      },
+    })
+    return true
+  }
+
+  // โดเมนระบบต้นทาง/ปลายทาง — ทำให้เส้นทางแสดงผลตรงตามตัวอย่าง: CRM.customer_master.customer_no
+  const crmRootId = await ensureDomain('CRM', 'CRM', 'ระบบ CRM — แหล่งข้อมูลลูกค้าต้นทางขององค์กร', 'emerald', null)
+  const crmMasterId = await ensureDomain('customer_master', 'Customer Master', 'ตาราง customer_master — ทะเบียนลูกค้าหลักของระบบ CRM', 'emerald', crmRootId)
+  const dwhRootId = await ensureDomain('DWH', 'Data Warehouse', 'คลังข้อมูลองค์กร — ปลายทางการรวมข้อมูลเพื่อรายงาน', 'violet', null)
+  const dwhDimId = await ensureDomain('dim_customer', 'Customer Dimension', 'ตาราง dim_customer — มิติลูกค้าของคลังข้อมูล', 'violet', dwhRootId)
+
+  // element ฝั่งระบบต้นทาง (CRM)
+  const crmCustomerNoId = await ensureElement(crmMasterId, 'customer_no', {
+    nameEn: 'Customer Number',
+    definition: 'รหัสลูกค้าในระบบ CRM (customer_master.customer_no) — ต้นทางของรหัสลูกค้ากลางขององค์กร',
+    examples: 'C000001',
+    dataType: 'TEXT',
+    formatPattern: '^C[0-9]{6}$',
+  })
+  const crmOpenDateId = await ensureElement(crmMasterId, 'open_date', {
+    nameEn: 'Open Date',
+    definition: 'วันที่เปิดทะเบียนลูกค้าในระบบ CRM (รูปแบบ DD/MM/YYYY ตามที่ระบบต้นทางเก็บ)',
+    examples: '01/07/2567',
+    dataType: 'DATE',
+  })
+  const crmCustTypeId = await ensureElement(crmMasterId, 'cust_type_code', {
+    nameEn: 'Customer Type Code',
+    definition: 'รหัสประเภทลูกค้าภายในของระบบ CRM เช่น I=บุคคลธรรมดา, C=นิติบุคคล',
+    examples: 'I, C',
+    dataType: 'TEXT',
+  })
+
+  // element ฝั่งปลายทาง (DWH)
+  const dwhCustomerId = await ensureElement(dwhDimId, 'customer_id', {
+    nameEn: 'Customer ID',
+    definition: 'รหัสลูกค้าในมิติลูกค้าของคลังข้อมูล (dim_customer.customer_id) — ใช้ร่วมกับทุก fact table',
+    examples: 'C000001',
+    dataType: 'TEXT',
+  })
+  const dwhOpenDateId = await ensureElement(dwhDimId, 'open_date', {
+    nameEn: 'Open Date',
+    definition: 'วันที่เปิดทะเบียนลูกค้าในมิติลูกค้า (รูปแบบมาตรฐาน ISO YYYY-MM-DD)',
+    examples: '2024-07-01',
+    dataType: 'DATE',
+  })
+  const dwhCustTypeId = await ensureElement(dwhDimId, 'cust_type', {
+    nameEn: 'Customer Type',
+    definition: 'ประเภทลูกค้าในมิติลูกค้า ตามรหัสมาตรฐานของคลังข้อมูล',
+    examples: 'RETAIL, CORPORATE',
+    dataType: 'TEXT',
+  })
+
+  // element กลางที่มีอยู่แล้ว: "รหัสลูกค้า" — ต้องเป็น ACTIVE จึงใช้เป็น endpoint ของ mapping ได้
+  const centralElement = await db.dataElement.findFirst({
+    where: { nameTh: 'รหัสลูกค้า' },
+    select: { id: true, status: true, code: true, nameTh: true },
+  })
+  if (centralElement && centralElement.status !== 'ACTIVE') {
+    await db.dataElement.update({
+      where: { id: centralElement.id },
+      data: { status: 'ACTIVE', approvedBy: mappingSeedApprover, approvedAt: new Date() },
+    })
+  }
+  const centralId = centralElement?.id
+
+  let seededMappings = 0
+  if (centralId) {
+    // 1) ต้นทาง CRM → element กลาง (DIRECT — ข้อมูลชนิดเดียวกัน)
+    if (await ensureMapping(crmCustomerNoId, centralId, 'DIRECT', '', 'แมปตรง 1:1 จากทะเบียนลูกค้าของระบบ CRM')) seededMappings++
+    // 2) element กลาง → คลังข้อมูล (DIRECT)
+    if (await ensureMapping(centralId, dwhCustomerId, 'DIRECT', '', 'โหลดเข้ามิติลูกค้าของคลังข้อมูลทุกคืน')) seededMappings++
+    // 3) วันที่เปิดทะเบียน (TRANSFORM — แปลงรูปแบบวันที่)
+    if (await ensureMapping(crmOpenDateId, dwhOpenDateId, 'TRANSFORM', 'แปลงรูปแบบวันที่ DD/MM/YYYY → YYYY-MM-DD (ISO 8601) ที่ขั้น ETL ก่อนโหลด', '')) seededMappings++
+    // 4) ประเภทลูกค้า (LOOKUP — ผ่านตารางอ้างอิง)
+    if (await ensureMapping(crmCustTypeId, dwhCustTypeId, 'LOOKUP', 'ผ่านตารางอ้างอิง cust_type_crosswalk: รหัสภายใน (I/C) → รหัสมาตรฐาน (RETAIL/CORPORATE)', '')) seededMappings++
+  }
+  if (seededMappings > 0) {
+    await db.auditLog.create({
+      data: {
+        action: 'CREATE_DATA_MAPPING',
+        actor: mappingSeedActor,
+        target: `${seededMappings} mappings`,
+        detail: `Seed เริ่มต้นระบบ: สร้าง Data Mapping ตัวอย่าง ${seededMappings} เส้นทาง (DIRECT/TRANSFORM/LOOKUP ข้ามโดเมน CRM → ลูกค้า → DWH) — ต้องผ่าน workflow อนุมัติจึงใช้งานได้`,
+      },
+    })
+    await db.auditLog.create({
+      data: {
+        action: 'APPROVE_DATA_MAPPING',
+        actor: mappingSeedApprover,
+        target: `${seededMappings} mappings`,
+        detail: `Seed เริ่มต้นระบบ: อนุมัติ Data Mapping ตัวอย่าง ${seededMappings} เส้นทาง — สถานะ ACTIVE ใช้งานได้`,
+      },
+    })
+  }
+
   // (3) ผูกกฎตัวอย่างกับ Data Element — ให้ flow "เลือกกฎตรวจตาม Data Element" พร้อมใช้ทันที
   const RULE_ELEMENT_BIND: Array<{ column: string; elementNameTh: string }> = [
     { column: 'customer_id', elementNameTh: 'รหัสลูกค้า' },
@@ -1225,6 +1391,7 @@ async function main() {
     domainColumnAssignments: await db.dataDomainColumnAssignment.count(),
     dataElements: await db.dataElement.count(),
     dataElementMappings: await db.dataElementColumnMapping.count(),
+    dataMappings: await db.dataMapping.count(),
     dataAssetRecords: await db.dataAssetRecord.count(),
   })
 }

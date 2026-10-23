@@ -1070,3 +1070,57 @@ Stage Summary:
 - ยังไม่มีการแก้โค้ด/schema ใด ๆ — สถานะ repo คงอยู่ที่ v0.20.0
 - รอคำตอบ 7 คำถาม: (1) endpoint ต้องเป็น element ในระบบหรือข้อความอิสระ (2) N:N + กันซ้ำย้อนทิศ (3) แมปข้ามโดเมน (4) workflow/สิทธิ์ (5) mappingType (6) UI วางที่ไหน/ต้องการแผนผัง lineage หรือไม่ (7) นโยบายลบ element ที่มี mapping ผูกอยู่
 - commit เอกสารรายการนี้เป็น docs (local) — จะ push รวมกับ v0.21.0 เมื่อ implement เสร็จ
+
+---
+Task ID: 36-f
+Agent: Z.ai Code (frontend agent)
+Task: v0.21.0 FRONTEND — ฟีเจอร์ Data Mapping: แท็บ 5 ใน Dialog Data Element + หน้า "การแมปข้อมูล" + แผนผัง Lineage แบบภาพ (backend จบก่อนหน้า ไม่แตะ API/schema เลย)
+
+Work Log:
+- อ่าน API contract จริงด้วย curl ก่อนเขียนโค้ด: GET/POST /api/mappings, PATCH /api/mappings/[id], GET /api/mappings/lineage, /api/elements, /api/domains — รูปทรง ExpandedMapping (source/target expanded พร้อม path) ตรงตามสเปกทุก field
+- `src/components/data-mapping/types.ts` (ใหม่, 94 บรรทัด) — type ฝั่ง client: MappingElementSummary / ExpandedMapping / LineageEdge / LineageResponse / PickerElement / PickerDomain / OperatorUser (ตรงกับ mappings-server.ts)
+- `src/components/data-mapping/lineage-diagram.tsx` (ใหม่, 277 บรรทัด) — LineageDiagram({rootId,nodes,edges,depth,compact}): คอลัมน์จาก BFS relax จาก root (ทิศซ้าย=upstream/ขวา=downstream, หลายขั้นเมื่อ depth≥2) · กล่อง = HTML absolute + เส้นเชื่อม SVG (ไม่เพิ่ม dependency) · สีเส้นตามประเภท (DIRECT emerald-600 / TRANSFORM amber-600 / DERIVED teal-700 / AGGREGATE slate-600 / LOOKUP yellow-600 — ไม่มีน้ำเงิน/indigo) · เส้นทึบ=ACTIVE เส้นประ=ร่าง/เลิกใช้ + ป้ายชื่อประเภทบนเส้น (ไม่พึ่งสีเพียงอย่างเดียว) · root เน้น ring emerald + bg tint · badge PII(amber)/CDE(emerald)/สถานะ element ต่อกล่อง · node เรียงตาม path ให้ผล deterministic · legend 5 ประเภท (โหมดเต็ม) · a11y: role="img" + aria-label "แผนผังที่มา-ปลายทางของ X, N เส้นทาง" + รายการเส้นทางแบบข้อความ sr-only · ครอบ overflow-x-auto + innerW ≥ 720 (compact 560) ให้มือถือ 375px เลื่อนในกรอบตัวเอง
+- `src/components/data-mapping/mapping-row.tsx` (ใหม่, 326 บรรทัด) — ใช้ร่วม 2 ที่: MAPPING_STATUS_META (ร่าง/ใช้งาน/เลิกใช้) + MappingStatusBadge (+รออนุมัติ) + MappingTypeBadge (ป้ายจาก MAPPING_TYPES พร้อม title=desc+example) · MappingActions = ปุ่ม workflow deny-by-default (แสดงเมื่อ operatorEmail/approverEmail ว่าง=ไม่แสดง): ส่งขออนุมัติ (DRAFT/DEPRECATED, MANAGE_DATASETS) / อนุมัติ+ส่งกลับ (pending, APPROVE_EXCEPTIONS, ส่งกลับเปิด Dialog เหตุผลไม่บังคับ) / เลิกใช้ (ACTIVE, Dialog เหตุผล) / ลบ (AlertDialog ยืนยัน, ห้ามขณะ pending) → PATCH /api/mappings/[id] + toast ข้อความ/error จาก API + onChanged ให้ parent รีเฟรช · MappingSideRow = แถวในแท็บ element (โชว์ element อีกฝั่ง: ไหลเข้า/ไหลออก, path, transformNote/note, ผู้อนุมัติ+เวลา) · MAPPING_TYPE_OPTIONS
+- `src/components/data-mapping/mapping-form.tsx` (ใหม่, 336 บรรทัด) — MappingForm ใช้ร่วมทั้งแท็บ element และหน้ารวม: เลือกผู้ดำเนินการ (เฉพาะ MANAGE_ROLES) · โหมด fixedElement (จาก dialog) มีปุ่มเลือกทิศ เพิ่มต้นทาง/เพิ่มปลายทาง (aria-pressed) + ชิป element ฝั่งตายตัว · โหมดอิสระเป็น cascade 2 ฝั่ง โดเมนหลัก→โดเมนย่อย→element (filter status==='ACTIVE' + ตัด element ที่เลือกอีกฝั่ง/element ปัจจุบันออก) · type select ป้าย+desc+ตัวอย่างจาก MAPPING_TYPES · transformNote โผล่+required เมื่อ MAPPING_TYPES[type].requiresNote · note ไม่บังคับ · submit POST /api/mappings → error จาก API แสดง inline (role=alert) / สำเร็จเรียก onCreated(message)
+- `src/components/data-mapping-console.tsx` (ใหม่, 568 บรรทัด) — หน้า "การแมปข้อมูล" (view key data-mapping): การ์ดสถิติ รวม/ACTIVE/รออนุมัติ/เลิกใช้ + ชิปนับรายประเภท 5 ชนิด (กดกรองได้) · ตัวกรอง ค้นหา(code/เส้นทาง/ชื่อ)/สถานะ/ประเภท/โดเมน (match parentDomainId หรือ subDomainId ของ endpoint ใดก็ได้) กรอง client-side จาก GET /api/mappings ครั้งเดียว + ปุ่มรีเฟรช · ตาราง รหัส/เส้นทาง(→)/ประเภท/สถานะ+ผู้อนุมัติ+เวลา/การดำเนินการ (ดูแผนผัง + MappingActions) — shadcn Table ใน overflow wrapper (มือถือเลื่อนแนวนอนในกรอบ) · แผง Lineage: element picker + depth toggle 1/2/3 + LineageDiagram โหมดเต็ม + สรุป nodeCount/edgeCount · Dialog สร้างการแมป (MappingForm) · toolbar operator + approver selects (รูปแบบเดียวกับ data-domain-console: users จาก /api/rbac/users filter ACTIVE, operators=MANAGE_ROLES, approvers=ROLES…permissions includes APPROVE_EXCEPTIONS)
+- `src/components/data-domain-console.tsx` (แก้น้อยที่สุด ~130 บรรทัด ไม่แตะ 4 แท็บเดิม) — แท็บ 5 "การแมปข้อมูล" ใน Dialog element: TabsList 4→5 คอลัมน์ + TabsTrigger พร้อม badge นับ · TabsContent: แถบ LineageDiagram compact (fetch lineage depth=2 คู่กัน) · Source Mappings—ข้อมูลที่ไหลเข้า / Target Mappings—ข้อมูลที่ไหลออก (แถว MappingSideRow, ลิสต์ max-h-96 overflow-y-auto) · ปุ่ม "เพิ่มการแมป" → Dialog MappingForm (fixedElement=element ปัจจุบัน, path จาก buildElementPath) · fetch เมื่อเปิด dialog/เปลี่ยน element (useEffect ผูก detailOpen+detail.id) และรีเฟรชหลังสร้าง/ทำ workflow ทุกครั้ง
+- `src/lib/views.ts` — เพิ่ม Waypoints icon, view key 'data-mapping' (th การแมปข้อมูล / en Data Mapping) ต่อท้าย asset-domain ใน VIEWS + เพิ่มใน NAV_GROUPS กลุ่ม Data Asset (sidebar เรนเดอร์จาก NAV_GROUPS อัตโนมัติ จึงไม่ต้องแก้ app-sidebar.tsx) + แก้ type guard isConsoleView เป็น `view is CoreViewKey | 'validation-results'` (type-only) เพื่อล้าง TS2367 เดิมใน page.tsx (pre-existing, ยืนยันด้วย git stash ว่าเกิดก่อนแก้)
+- `src/app/page.tsx` — import DataMappingConsole + mount ด้วย pattern เดียวกับ DataDomainConsole (hidden/aria-hidden คง mounted)
+- E2E API (payload แบบเดียวกับที่ UI ส่ง): POST สร้าง=DRAFT ✓ → SUBMIT_APPROVAL ✓ → APPROVE (ผู้อนุมัติบันทึก) ✓ → DELETE ✓ + ทดสอบ 409 duplicate แสดงข้อความไทย ✓ — ลบของทดสอบออกจนครบ ฐานข้อมูลกลับสู่ seed 4 รายการ (MP-0001..0004)
+- E2E agent-browser (1280px + 375px): เมนูใหม่ "การแมปข้อมูล" คลิกได้ · หน้ารวมโหลด 4 รายการ สถิติ/ชิป/ตัวกรองครบ · ดูแผนผัง → lineage 3 คอลัมน์ (CRM.customer_master.customer_no → รหัสลูกค้า → DWH.dim_customer.customer_id) ป้าย Direct บนเส้น + caption ต้นทาง/จุดกึ่งกลาง/ปลายทาง · เลือก element จาก picker ได้ · Dialog สร้าง: cascade โดเมนหลัก→ย่อย→element กรอง ACTIVE, เปลี่ยนประเภท TRANSFORM แล้ว transformNote โผล่+ปุ่มบันทึก disabled จนกรอก, สร้างสำเร็จขึ้นแถวใหม่ทันที · workflow ในตาราง: ส่งขออนุมัติ→ร่าง+รออนุมัติ (ลบ/แก้ถูกซ่อน), อนุมัติ→ใช้งาน+ผู้อนุมัติ+เวลา, ลบผ่าน AlertDialog ✓ · Dialog element แท็บ 5: badge นับ 1, แถบ lineage ย่อ 3 กล่อง, Source (0)/Target (1) ตรง, ฟอร์มเพิ่มมีปุ่มทิศ+ชิป element ตายตัว, ยื่นคู่ซ้ำได้ inline error "มี mapping MP-0001 ของคู่ element นี้อยู่แล้ว" ✓ · mobile 375px: pageOverflow=false, ตาราง (982px) และ lineage เลื่อนในกรอบตัวเอง, ไม่มี element นอก scroll container ที่กว้างเกินจอ ✓ · console error 0
+- Quality gates: bun run lint ผ่านสะอาด (0 error/warning) · bunx tsc --noEmit ไฟล์ที่แก้ทั้งหมดไม่มี error (error ที่เหลือเป็น pre-existing ใน exceptions-panel/scorecard/lib/dq.ts นอกขอบเขต ตามที่ Task 34-b บันทึกไว้) · dev.log ไม่มี compile error, GET / 200 · ไม่รัน build ไม่รีสตาร์ทเซิร์ฟเวอร์ · ไม่แตะ prisma schema และไฟล์ API ใด ๆ (ไม่พบบั๊ก backend)
+
+Stage Summary:
+- **เวอร์ชัน**: v0.21.0 (frontend ครบ 3 deliverables — backend จากก่อนหน้าเชื่อมต่อได้ทันทีไม่มีการแก้ API)
+- **ขอบเขต**: แท็บ 5 "การแมปข้อมูล" ใน Dialog Data Element (compact lineage + ไหลเข้า/ไหลออก + เพิ่ม/อนุมัติ/ส่งกลับ/เลิกใช้/ลบ) · หน้า Data Mapping (สถิติ+ชิปประเภท+4 ตัวกรอง+ตาราง+ฟอร์มสร้าง+แผง Lineage depth 1–3) · LineageDiagram แบบภาพ (SVG+HTML, a11y ครบ, deterministic, เลื่อนในกรอบบนมือถือ) — ฟอร์ม/แถว/ปุ่ม workflow แชร์คอมโพเนนต์เดียวกันทั้ง 2 ที่ (src/components/data-mapping/*)
+- **ไฟล์ใหม่**: src/components/data-mapping-console.tsx · src/components/data-mapping/{types.ts, lineage-diagram.tsx, mapping-row.tsx, mapping-form.tsx}
+- **ไฟล์แก้**: src/components/data-domain-console.tsx (แท็บ 5) · src/lib/views.ts (view key+nav+type guard) · src/app/page.tsx (mount)
+- **สิทธิ์**: deny-by-default ตาม RBAC เดิม — สร้าง/ส่ง/ลบ = MANAGE_DATASETS · อนุมัติ/ส่งกลับ/เลิกใช้ = APPROVE_EXCEPTIONS (ปุ่มไม่แสดงเมื่อไม่มีผู้ดำเนินการที่มีสิทธิ์)
+- **สถานะฐานข้อมูล**: seed 4 mappings (MP-0001..0004 ACTIVE) ครบเหมือนก่อนเริ่ม — รายการทดสอบถูกลบหมด (เหลือ AuditLog ของการทดสอบจริง)
+- **รอ**: commit + tag v0.21.0 + push (ผู้ใช้ให้ PAT รอบถัดไป)
+
+---
+
+## Task ID: 36-g + 36-result
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: ตรวจสอบ E2E ด้วย agent-browser + lint + dev.log แล้ว ship v0.21.0 (commit + tag + push)
+
+Work Log:
+- lint: `bun run lint` ผ่าน (0 error/warning) · dev.log ไม่มี runtime error ระหว่างทดสอบ
+- agent-browser (desktop): หน้า Data Mapping โหลดครบ — stat cards (รวม 4 / ACTIVE 4 / รออนุมัติ 0 / เลิกใช้ 0), chips 5 ประเภท (Direct 2/Transform 1/Lookup 1), ฟิลเตอร์ 4 แบบ + ค้นหา, ตาราง 4 แถวพร้อมปุ่ม
+- แผนผัง Lineage (ภาพ): เลือก รหัสลูกค้า → โชว์โซ่ 3 คอลัมน์ customer_no (CRM) → รหัสลูกค้า (CDE, เน้นราก) → customer_id (DWH) พร้อม label "Direct" บนเส้น + legend ครบ 5 ประเภท + เส้นประ=ร่าง/เลิกใช้ · aria-label ครบ ("แผนผังที่มา-ปลายทางของ รหัสลูกค้า, 2 เส้นทาง") + sr-only edge list
+- Element dialog แท็บที่ 5 "การแมปข้อมูล 2": Source Mappings (1) MP-0001 + Target Mappings (1) MP-0002 + compact lineage strip + sr-only เส้นทาง · ปุ่ม "ลบ element" disabled อัตโนมัติ (มีกฎ/mapping ผูก)
+- Golden path ผ่าน UI: สร้าง mapping ใหม่ (ฟอร์ม deny-by-default ปุ่ม disabled จนเลือกครบ; cascade DWH→dim_customer→cust_type) → MP-0005 ร่าง → ส่งขออนุมัติ → ปุ่มเปลี่ยนเป็น อนุมัติ/ส่งกลับ → อนุมัติ → ใช้งาน (เลิกใช้/ลบ) → ลบ (confirm) สำเร็จ → DB คืนสถานะ seed 4 mappings
+- Mobile 375px: pageOverflow=false (375=375) · ตารางย่อยเป็นการ์ด · wrapper overflow-x-auto เลื่อนในตัว (client 349 / scroll 982) · footer หลักถูกดันลงตามเนื้อหา (bottom=2055=bodyH, ไม่ทับเนื้อหา, ไม่มีช่องว่าง)
+- Console error = 0 · page error = 0
+- ปิดท้าย: commit โค้ด + worklog, สร้าง annotated tag v0.21.0, push main + tag ด้วย PAT ของผู้ใช้ (ไม่บันทึก token ลง disk), ตรวจ remote SHA ตรงกับ local
+
+Stage Summary:
+- **v0.21.0 เสร็จสมบูรณ์**: Data Mapping ครบทั้ง backend + frontend ตรงตามคำตอบ 7 ข้อของผู้ใช้
+  1) endpoint เป็น element ในระบบเท่านั้น (API ปฏิเสธ 404/409) 2) N:N + ห้ามย้อนทิศซ้ำ (409) 3) ข้ามโดเมนได้ (seed พิสูจน์ CRM→ลูกค้า→DWH)
+  4) workflow จริง DRAFT→ส่ง→อนุมัติ/ส่งกลับ/เลิกใช้ + ผู้อนุมัติ + Audit Trail (สิทธิ์เดิม: ส่ง=MANAGE_DATASETS, อนุมัติ=APPROVE_EXCEPTIONS — engineer อนุมัติ=403 ทดสอบแล้ว)
+  5) ประเภทจาก research มาตรฐาน: DIRECT/TRANSFORM/DERIVED/AGGREGATE/LOOKUP (DAMA-DMBOK DII + ETL mapping spec) — non-DIRECT บังคับ transformNote
+  6) UI 2 จุด + แผนผัง lineage แบบภาพ (BFS multi-hop 1-3 ขั้น) 7) ลบ element ที่มี mapping = 409
+- ไฟล์ใหม่: src/lib/mappings.ts, src/lib/mappings-server.ts, src/app/api/mappings/{route.ts,[id]/route.ts,lineage/route.ts}, src/components/data-mapping-console.tsx, src/components/data-mapping/{types,lineage-diagram,mapping-row,mapping-form}.tsx
+- แก้ไข: prisma/schema.prisma (DataMapping + relations Restrict), scripts/seed.ts (4 mappings), elements/[id]/route.ts (บล็อกลบ), data-domain-console.tsx (แท็บ 5), views.ts (data-mapping + v0.21.0), page.tsx
+- สถานะ sync: ตรวจแล้ว remote = local 100% (main + tag v0.21.0) worktree clean

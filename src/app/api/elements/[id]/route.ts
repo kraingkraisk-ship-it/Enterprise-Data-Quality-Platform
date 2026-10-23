@@ -218,7 +218,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       where: { id },
       include: {
         subDomain: { select: { id: true, name: true } },
-        _count: { select: { rules: true, columnMappings: true } },
+        _count: { select: { rules: true, columnMappings: true, mappingsAsSource: true, mappingsAsTarget: true } },
       },
     })
     if (!element) return NextResponse.json({ error: 'ไม่พบ Data Element นี้ในระบบ' }, { status: 404 })
@@ -304,6 +304,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         return NextResponse.json(
           {
             error: `ลบไม่ได้ — "${element.nameTh}" ยังมีกฎตรวจสอบ ${element._count.rules} ข้อผูกอยู่ (ปลดการผูกกฎในคลังกฎก่อน จึงจะลบได้)`,
+          },
+          { status: 409 },
+        )
+      }
+      const dataMappingCount = element._count.mappingsAsSource + element._count.mappingsAsTarget
+      if (dataMappingCount > 0) {
+        return NextResponse.json(
+          {
+            error: `ลบไม่ได้ — "${element.nameTh}" ยังมี Data Mapping ${dataMappingCount} เส้นผูกอยู่ (ลบ/ตัด mapping ในหน้า Data Mapping ก่อน จึงจะลบ element ได้)`,
           },
           { status: 409 },
         )

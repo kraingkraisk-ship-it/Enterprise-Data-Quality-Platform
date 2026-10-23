@@ -15,6 +15,7 @@ import {
   ScanSearch,
   ScrollText,
   ShieldCheck,
+  Waypoints,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -24,7 +25,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.20.0'
+export const APP_VERSION = 'v0.21.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -35,8 +36,8 @@ export const APP_VERSION = 'v0.20.0'
  */
 export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'dashboard'
 
-/** มุมมองของโมดูล Data Asset */
-export type AssetViewKey = 'asset-import' | 'asset-inventory' | 'asset-domain'
+/** มุมมองของโมดูล Data Asset (v0.21.0 เพิ่ม data-mapping) */
+export type AssetViewKey = 'asset-import' | 'asset-inventory' | 'asset-domain' | 'data-mapping'
 
 /** มุมมองระดับผู้บริหาร (v0.17.0) — จำกัดสิทธิ์ตาม VIEW_EXEC_DASHBOARD */
 export type ExecViewKey = 'exec-dashboard' | 'exec-reports'
@@ -161,6 +162,13 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     desc: 'โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Element > Meta Data (ISO/IEC 11179) — Meta Data 4 กลุ่ม (Business/Technical/Operational/Governance) กรอกครั้งเดียวต่อ element + ธง CDE/การเงิน + workflow อนุมัติ (บันทึกผู้อนุมัติ+Audit Trail) + แมปคอลัมน์จริงจากคลังข้อมูล',
     icon: FolderTree,
   },
+  'data-mapping': {
+    key: 'data-mapping',
+    th: 'การแมปข้อมูล',
+    en: 'Data Mapping',
+    desc: 'เส้นเชื่อม Data Element ต้นทาง→ปลายทาง ระบุว่าเป็นข้อมูลชนิดเดียวกัน ข้ามระบบ/ข้ามโดเมน พร้อมแผนผัง lineage แบบหลายขั้น (DIRECT/TRANSFORM/DERIVED/AGGREGATE/LOOKUP) + workflow อนุมัติเหมือน Data Element',
+    icon: Waypoints,
+  },
   rbac: {
     key: 'rbac',
     th: 'บทบาทและสิทธิ์',
@@ -183,8 +191,9 @@ export function isCoreView(view: ViewKey): view is CoreViewKey {
   return (CORE_VIEWS as string[]).includes(view)
 }
 
-/** หน้าที่เรนเดอร์ผ่าน CoreFeaturesConsole โหมดเต็ม (แดชบอร์ด / ผลการตรวจ) */
-export function isConsoleView(view: ViewKey): view is CoreViewKey {
+/** หน้าที่เรนเดอร์ผ่าน CoreFeaturesConsole โหมดเต็ม (แดชบอร์ด / ผลการตรวจ)
+ *  'validation-results' เป็นหน้าจอของตัวเองแต่ใช้เอนจินเดียวกัน — ผู้เรียกแปลงเป็น 'run' ก่อนส่ง activeView */
+export function isConsoleView(view: ViewKey): view is CoreViewKey | 'validation-results' {
   return view === 'dashboard' || view === 'run' || view === 'validation-results'
 }
 
@@ -202,7 +211,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     labelTh: 'Data Asset',
     labelEn: 'สินทรัพย์ข้อมูล',
-    items: ['asset-import', 'asset-inventory', 'asset-domain'],
+    items: ['asset-import', 'asset-inventory', 'asset-domain', 'data-mapping'],
   },
   {
     labelTh: 'คุณภาพข้อมูล',

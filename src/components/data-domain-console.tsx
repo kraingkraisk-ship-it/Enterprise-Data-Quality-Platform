@@ -28,6 +28,7 @@ import {
   Star,
   Table2,
   Trash2,
+  Waypoints,
   XCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -86,6 +87,11 @@ import {
   type OpUpdateFrequency,
 } from '@/lib/elements'
 import { DATA_CLASSIFICATIONS, UNCLASSIFIED } from '@/lib/regulation'
+import { buildElementPath } from '@/lib/mappings'
+import MappingForm from '@/components/data-mapping/mapping-form'
+import { LineageDiagram } from '@/components/data-mapping/lineage-diagram'
+import { MappingSideRow } from '@/components/data-mapping/mapping-row'
+import type { ExpandedMapping, LineageResponse } from '@/components/data-mapping/types'
 
 /* ------------------------------------------------------------------ */
 /* Data Domain Console (v0.18.0) — เมนูอิสระภายใต้กลุ่ม Data Asset      */
@@ -433,13 +439,19 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [detailStewardship, setDetailStewardship] = useState<{ owner: StewardPerson | null; steward: StewardPerson | null; custodian: StewardPerson | null } | null>(null)
   const [detailOps, setDetailOps] = useState<OperationalActual | null>(null)
   const [detailAudit, setDetailAudit] = useState<AuditEntry[]>([])
-  const [detailTab, setDetailTab] = useState<'business' | 'technical' | 'operational' | 'governance'>('business')
+  const [detailTab, setDetailTab] = useState<'business' | 'technical' | 'operational' | 'governance' | 'mapping'>('business')
   const [detailLoading, setElementDetailLoading] = useState(false)
   const [deleteElementId, setDeleteElementId] = useState<string | null>(null)
   const [elementBusy, setElementBusy] = useState(false)
   const [workflowBusy, setWorkflowBusy] = useState(false)
   const [approverEmail, setApproverEmail] = useState('')
   const [workflowNote, setWorkflowNote] = useState('')
+
+  /* ---------- Data Mapping ของ element (แท็บ 5 — v0.21.0) ---------- */
+  const [detailMappings, setDetailMappings] = useState<ExpandedMapping[]>([])
+  const [detailMappingsLoading, setDetailMappingsLoading] = useState(false)
+  const [detailLineage, setDetailLineage] = useState<LineageResponse | null>(null)
+  const [mapAddOpen, setMapAddOpen] = useState(false)
 
   /* ---------- ฟอร์ม element (สร้าง/แก้ไข) ---------- */
   const [elFormOpen, setElFormOpen] = useState(false)
@@ -598,6 +610,42 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     const def = approvers.find((u) => u.email === operatorEmail)?.email ?? approvers[0].email
     setApproverEmail(def)
   }, [detailOpen, approverEmail, approvers, operatorEmail])
+
+  /* ------------------------- Data Mapping ของ element (แท็บ 5 — v0.21.0) ------------------------- */
+  const loadDetailMappings = useCallback(async (id: string) => {
+    setDetailMappingsLoading(true)
+    try {
+      const [mRes, lRes] = await Promise.all([
+        fetch(`/api/mappings?elementId=${encodeURIComponent(id)}`),
+        fetch(`/api/mappings/lineage?elementId=${encodeURIComponent(id)}&depth=2`),
+      ])
+      const mData = await mRes.json()
+      const lData = lRes.ok ? await lRes.json() : null
+      setDetailMappings(mData?.mappings ?? [])
+      setDetailLineage(lData && lRes.ok ? (lData as LineageResponse) : null)
+    } catch {
+      setDetailMappings([])
+      setDetailLineage(null)
+    } finally {
+      setDetailMappingsLoading(false)
+    }
+  }, [])
+
+  // เปิด Dialog element ครั้งใด (หรือเปลี่ยน element) ให้โหลด mapping + lineage ของ element นั้นทันที
+  useEffect(() => {
+    if (detailOpen && detail?.id) {
+      void loadDetailMappings(detail.id)
+    } else if (!detailOpen) {
+      setDetailMappings([])
+      setDetailLineage(null)
+      setMapAddOpen(false)
+    }
+  }, [detailOpen, detail?.id, loadDetailMappings])
+
+  /** เส้นทางเต็มของ element ที่เปิดอยู่ (โดเมนหลัก.โดเมนย่อย.ชื่อ) — ใช้ในฟอร์มเพิ่มการแมป */
+  const detailElementPath = detail
+    ? buildElementPath({ parentDomainName: detail.subDomain.parent?.name ?? '', subDomainName: detail.subDomain.name, elementName: detail.nameTh })
+    : ''
 
   /* ------------------------- โหลดคอลัมน์ + การจัดหมวดเดิมของ asset (แท็บจัดหมวด) ------------------------- */
   const loadAssetDetail = useCallback(
@@ -1693,11 +1741,19 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
 
               <div className="grid gap-4">
                 <Tabs value={detailTab} onValueChange={(v) => setDetailTab(v as typeof detailTab)}>
-                  <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
                     <TabsTrigger value="business">เชิงธุรกิจ</TabsTrigger>
                     <TabsTrigger value="technical">เชิงเทคนิค</TabsTrigger>
                     <TabsTrigger value="operational">เชิงปฏิบัติการ</TabsTrigger>
                     <TabsTrigger value="governance">ธรรมาภิบาล</TabsTrigger>
+                    <TabsTrigger value="mapping">
+                      การแมปข้อมูล
+                      {detailMappings.length > 0 && (
+                        <span className="ml-1 rounded-full bg-emerald-100 px-1.5 text-[10px] font-semibold tabular-nums text-emerald-800">
+                          {detailMappings.length}
+                        </span>
+                      )}
+                    </TabsTrigger>
                   </TabsList>
 
                   {/* ------------------------- แท็บ 1: Meta Data เชิงธุรกิจ ------------------------- */}
@@ -2052,6 +2108,127 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                         </ul>
                       )}
                     </div>
+                  </TabsContent>
+
+                  {/* ------------------------- แท็บ 5: Data Mapping (v0.21.0) — เส้นเชื่อมต้นทาง→ปลายทาง ------------------------- */}
+                  <TabsContent value="mapping" className="mt-3 space-y-3">
+                    {/* แผนผัง lineage แบบย่อ: ต้นทาง (ซ้าย) → element นี้ (กลาง) → ปลายทาง (ขวา) */}
+                    {detailLineage && detailLineage.edgeCount > 0 && (
+                      <div className="rounded-lg border p-3">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold">
+                          <Waypoints className="size-3.5 text-emerald-700" aria-hidden="true" /> แผนผัง Lineage แบบย่อ — {detailLineage.nodeCount} element · {detailLineage.edgeCount} เส้นทาง
+                        </p>
+                        <div className="mt-2">
+                          <LineageDiagram rootId={detailLineage.rootId} nodes={detailLineage.nodes} edges={detailLineage.edges} depth={detailLineage.depth} compact />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">เส้นเชื่อม element นี้กับ element อื่น — ระบุว่าเป็นข้อมูลชนิดเดียวกัน ข้ามระบบ/ข้ามโดเมน</p>
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 text-white hover:bg-emerald-700"
+                        disabled={!operatorEmail}
+                        title={operatorEmail ? 'เพิ่มการแมปใหม่' : 'เลือกผู้ดำเนินการก่อน (ต้องมีสิทธิ์จัดการชุดข้อมูล)'}
+                        onClick={() => setMapAddOpen(true)}
+                      >
+                        <Plus className="size-3.5" aria-hidden="true" /> เพิ่มการแมป
+                      </Button>
+                    </div>
+
+                    {detailMappingsLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                        <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลด mapping…
+                      </div>
+                    ) : detailMappings.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-6 text-center">
+                        <Waypoints className="mx-auto size-7 text-muted-foreground/40" aria-hidden="true" />
+                        <p className="mt-2 text-sm font-medium">element นี้ยังไม่มีการแมปข้อมูล</p>
+                        <p className="mt-1 text-xs text-muted-foreground">กด &quot;เพิ่มการแมป&quot; เพื่อเชื่อมต้นทาง (ไหลเข้า) หรือปลายทาง (ไหลออก)</p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Source Mappings — ข้อมูลที่ไหลเข้า (element อื่นเป็นต้นทาง → element นี้เป็นปลายทาง) */}
+                        <div className="rounded-lg border p-3">
+                          <p className="flex items-center gap-1.5 text-xs font-semibold">
+                            <Waypoints className="size-3.5 text-emerald-700" aria-hidden="true" />
+                            Source Mappings — ข้อมูลที่ไหลเข้า ({detailMappings.filter((m) => m.target.id === detail.id).length})
+                          </p>
+                          {detailMappings.filter((m) => m.target.id === detail.id).length === 0 ? (
+                            <p className="mt-2 text-xs text-muted-foreground">ยังไม่มีต้นทางที่ไหลเข้า element นี้</p>
+                          ) : (
+                            <ul className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
+                              {detailMappings
+                                .filter((m) => m.target.id === detail.id)
+                                .map((m) => (
+                                  <MappingSideRow
+                                    key={m.id}
+                                    mapping={m}
+                                    elementId={detail.id}
+                                    operatorEmail={operatorEmail}
+                                    approverEmail={approverEmail}
+                                    onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
+                                  />
+                                ))}
+                            </ul>
+                          )}
+                        </div>
+
+                        {/* Target Mappings — ข้อมูลที่ไหลออก (element นี้เป็นต้นทาง → element อื่นเป็นปลายทาง) */}
+                        <div className="rounded-lg border p-3">
+                          <p className="flex items-center gap-1.5 text-xs font-semibold">
+                            <Waypoints className="size-3.5 text-emerald-700" aria-hidden="true" />
+                            Target Mappings — ข้อมูลที่ไหลออก ({detailMappings.filter((m) => m.source.id === detail.id).length})
+                          </p>
+                          {detailMappings.filter((m) => m.source.id === detail.id).length === 0 ? (
+                            <p className="mt-2 text-xs text-muted-foreground">element นี้ยังไม่ไหลออกไปยัง element อื่น</p>
+                          ) : (
+                            <ul className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
+                              {detailMappings
+                                .filter((m) => m.source.id === detail.id)
+                                .map((m) => (
+                                  <MappingSideRow
+                                    key={m.id}
+                                    mapping={m}
+                                    elementId={detail.id}
+                                    operatorEmail={operatorEmail}
+                                    approverEmail={approverEmail}
+                                    onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
+                                  />
+                                ))}
+                            </ul>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Dialog เพิ่มการแมป (ฟอร์มใช้ร่วมกับหน้า Data Mapping) */}
+                    <Dialog open={mapAddOpen} onOpenChange={setMapAddOpen}>
+                      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+                        <DialogHeader>
+                          <DialogTitle>
+                            เพิ่มการแมป — <span className="font-mono text-sm text-muted-foreground">{detail.code}</span> {detail.nameTh}
+                          </DialogTitle>
+                          <DialogDescription>
+                            เลือกทิศทางและ element อีกฝั่ง (ต้องเป็นสถานะ ACTIVE) — สร้างแล้วสถานะ DRAFT ต้องส่งขออนุมัติจึงจะใช้งานได้
+                          </DialogDescription>
+                        </DialogHeader>
+                        <MappingForm
+                          operators={operators}
+                          defaultOperator={operatorEmail}
+                          domains={domains}
+                          elements={elements}
+                          fixedElement={{ id: detail.id, code: detail.code, nameTh: detail.nameTh, path: detailElementPath }}
+                          onCreated={(msg) => {
+                            toast({ title: msg })
+                            setMapAddOpen(false)
+                            void loadDetailMappings(detail.id)
+                          }}
+                          onCancel={() => setMapAddOpen(false)}
+                        />
+                      </DialogContent>
+                    </Dialog>
                   </TabsContent>
                 </Tabs>
               </div>

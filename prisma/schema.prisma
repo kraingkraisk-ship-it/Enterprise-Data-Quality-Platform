@@ -451,10 +451,44 @@ model DataElement {
   subDomain      DataDomain                 @relation(fields: [subDomainId], references: [id], onDelete: Cascade)
   columnMappings DataElementColumnMapping[]
   rules          DqRule[]
+  mappingsAsSource DataMapping[] @relation("MappingSource") // Data Mapping ที่ element นี้เป็นต้นทาง (v0.21.0)
+  mappingsAsTarget DataMapping[] @relation("MappingTarget") // Data Mapping ที่ element นี้เป็นปลายทาง (v0.21.0)
   // หมายเหตุ: DqRun.dataElementId เป็น snapshot แบบ string (ไม่ใช่ FK) เพื่อคงประวัติแม้ลบ element — คิวรีด้วย where dataElementId
 
   @@unique([subDomainId, nameTh])
   @@index([subDomainId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Data Mapping (v0.21.0) — เส้นเชื่อมระหว่าง Data Element 2 ตัว (ต้นทาง → ปลายทาง)
+// เพื่อระบุว่าเป็น "ข้อมูลชนิดเดียวกัน" หรือข้อมูลที่ไหลแปลงกันข้ามระบบ/ข้ามโดเมน
+// ปลายทางต้องเป็น Data Element ที่ลงทะเบียนในระบบเท่านั้น (ตรวจใน API — deny-by-default)
+// แมปข้าม Data Domain ได้ · แต่ละคู่ (A→B) แมปได้ 1 เส้น และห้ามแมปย้อนทิศ (B→A) ซ้ำ
+// สถานะเปลี่ยนผ่าน workflow อนุมัติเท่านั้น: DRAFT → (ส่ง) รออนุมัติ → ACTIVE → DEPRECATED
+// ---------------------------------------------------------------------------
+
+model DataMapping {
+  id              String    @id @default(cuid())
+  code            String    @unique // รหัสระบบ MP-0001 … (สร้างอัตโนมัติ)
+  sourceElementId String // Data Element ต้นทาง — ข้อมูลไหล "เข้า"
+  targetElementId String // Data Element ปลายทาง — ข้อมูลไหล "ออก"
+  mappingType     String    @default("DIRECT") // DIRECT | TRANSFORM | DERIVED | AGGREGATE | LOOKUP (ดู MAPPING_TYPES ใน lib/mappings.ts)
+  transformNote   String    @default("") // รายละเอียดการแปลง/สูตร/ตารางอ้างอิง (บังคับเมื่อ mappingType != DIRECT — ตรวจใน API)
+  note            String    @default("") // หมายเหตุเพิ่มเติม
+  status          String    @default("DRAFT") // DRAFT | ACTIVE | DEPRECATED — ACTIVE/DEPRECATED เปลี่ยนผ่าน workflow อนุมัติเท่านั้น
+  pendingApproval Boolean   @default(false) // workflow อนุมัติ: รอผู้มีสิทธิ์อนุมัติตัดสินอยู่ (ล็อกแก้ไข/ลบขณะรอ)
+  approvedBy      String? // email ผู้อนุมัติล่าสุด (workflow อนุมัติ — บันทึก Audit Trail ทุกครั้ง)
+  approvedAt      DateTime? // เวลาที่อนุมัติล่าสุด
+  createdBy       String // email ผู้สร้าง
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  source DataElement @relation("MappingSource", fields: [sourceElementId], references: [id], onDelete: Restrict) // ลบ element ไม่ได้ถ้ายังมี mapping ผูกอยู่
+  target DataElement @relation("MappingTarget", fields: [targetElementId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceElementId, targetElementId])
+  @@index([targetElementId])
+  @@index([status])
 }
 
 // การแมป Data Element ↔ คอลัมน์จริงในคลังข้อมูล (Data Asset)

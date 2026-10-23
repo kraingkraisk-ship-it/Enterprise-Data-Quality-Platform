@@ -12,6 +12,7 @@ import PlatformOverview from '@/components/platform-overview'
 import AssetImport from '@/components/asset-import'
 import AssetInventory from '@/components/asset-inventory'
 import DataDomainConsole from '@/components/data-domain-console'
+import DataMappingConsole from '@/components/data-mapping-console'
 import DqScorecard from '@/components/dq/scorecard'
 import DqFailedRecords from '@/components/dq/failed-records'
 import DqProfiling from '@/components/dq/profiling'
@@ -98,6 +99,12 @@ export default function Home() {
               คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
           <div className={view === 'asset-domain' ? '' : 'hidden'} aria-hidden={view !== 'asset-domain'}>
             <DataDomainConsole active={view === 'asset-domain'} />
+          </div>
+
+          {/* Data Mapping Console — เส้นเชื่อม element ต้นทาง→ปลายทาง + lineage (v0.21.0)
+              คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
+          <div className={view === 'data-mapping' ? '' : 'hidden'} aria-hidden={view !== 'data-mapping'}>
+            <DataMappingConsole active={view === 'data-mapping'} />
           </div>
 
           {/* หน้าใหม่ของโมดูล Data Quality — บัตรคะแนน + ข้อมูลที่ไม่ผ่าน + โปรไฟล์ + ปัญหา */}
