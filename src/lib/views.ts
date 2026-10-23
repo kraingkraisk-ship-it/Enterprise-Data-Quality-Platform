@@ -24,7 +24,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.19.0'
+export const APP_VERSION = 'v0.20.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -158,7 +158,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'asset-domain',
     th: 'Data Domain',
     en: 'Data Domain · Element · Meta',
-    desc: 'โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Element > Meta Data (ISO/IEC 11179) — จัดการโดเมน สร้าง/แก้ไข element พร้อม meta และแมปคอลัมน์จริงจากคลังข้อมูล',
+    desc: 'โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Element > Meta Data (ISO/IEC 11179) — Meta Data 4 กลุ่ม (Business/Technical/Operational/Governance) กรอกครั้งเดียวต่อ element + ธง CDE/การเงิน + workflow อนุมัติ (บันทึกผู้อนุมัติ+Audit Trail) + แมปคอลัมน์จริงจากคลังข้อมูล',
     icon: FolderTree,
   },
   rbac: {

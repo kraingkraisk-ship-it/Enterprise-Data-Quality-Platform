@@ -24,6 +24,8 @@ import {
   Lightbulb,
   BookOpen,
   Box,
+  Star,
+  Banknote,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -81,6 +83,10 @@ interface ElementRowLite {
   formatPattern: string
   valueDomain: string
   pii: boolean
+  isCde: boolean
+  isFinancial: boolean
+  pendingApproval: boolean
+  status: string
   ruleCount: number
   mappingCount: number
 }
@@ -1118,7 +1124,10 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                       {rbElementOptions.map((e) => (
                         <SelectItem key={e.id} value={e.id}>
                           {e.nameTh}
+                          {e.isCde ? ' · CDE' : ''}
+                          {e.isFinancial ? ' · การเงิน' : ''}
                           {e.pii ? ' · PII' : ''}
+                          {e.status === 'DRAFT' ? ' (ร่าง)' : e.status === 'DEPRECATED' ? ' (เลิกใช้)' : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1128,6 +1137,16 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-white px-2.5 py-1.5 text-[11px]">
                     <span className="font-mono text-muted-foreground">{rbSelectedElement.code}</span>
                     <span className="font-medium">{rbSelectedElement.nameTh}</span>
+                    {rbSelectedElement.isCde && (
+                      <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[9.5px] font-medium text-amber-800">
+                        <Star className="mr-0.5 size-2.5" aria-hidden="true" /> CDE
+                      </Badge>
+                    )}
+                    {rbSelectedElement.isFinancial && (
+                      <Badge variant="outline" className="border-teal-300 bg-teal-50 text-[9.5px] font-medium text-teal-800">
+                        <Banknote className="mr-0.5 size-2.5" aria-hidden="true" /> การเงิน
+                      </Badge>
+                    )}
                     <Badge variant="outline" className="text-[9.5px]">
                       {ELEMENT_DATA_TYPE_LABELS[rbSelectedElement.dataType as ElementDataType]?.th ?? rbSelectedElement.dataType}
                     </Badge>
@@ -1138,6 +1157,8 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     ) : (
                       <span className="text-amber-700">ยังไม่แมปคอลัมน์จริง (แมปได้ในหน้า Data Domain)</span>
                     )}
+                    {rbSelectedElement.status === 'DRAFT' && <span className="text-amber-700">element สถานะร่าง — ต้องอนุมัติก่อนรันโดเมนได้</span>}
+                    {rbSelectedElement.status === 'DEPRECATED' && <span className="text-muted-foreground">element เลิกใช้ — จะไม่ถูกรันในรอบโดเมน</span>}
                   </div>
                 )}
               </div>

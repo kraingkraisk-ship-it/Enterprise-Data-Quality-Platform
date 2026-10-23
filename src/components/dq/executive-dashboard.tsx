@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  Banknote,
   CalendarClock,
   CircleGauge,
   Crown,
@@ -12,6 +13,7 @@ import {
   RefreshCw,
   ShieldAlert,
   Split,
+  Star,
   TrendingDown,
 } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -33,6 +35,7 @@ import { domainColor } from '@/lib/domains'
 /* 5 แนวโน้มคะแนนย้อนหลัง 30/90/180/365 วัน                             */
 /* 6 กฎที่ต่ำกว่า Threshold                                             */
 /* 7 ปัญหาที่เกิน SLA (dueAt ที่ตั้งรายปัญหา)                           */
+/* v0.20.0 — ธง CDE/การเงินมีผลจริง: governance รวม + ต่อโดเมน        */
 /* สิทธิ์: VIEW_EXEC_DASHBOARD — ตรวจจาก viewer ใน API (deny-by-default) */
 /* ------------------------------------------------------------------ */
 
@@ -59,9 +62,10 @@ interface ExecSummary {
   rules: { passed: number; failed: number; total: number }
   byDomain: {
     method: string
-    groups: Array<{ id: string; name: string; color: string; parentName: string | null; elementCount: number; elementsMeasured: number; score: number }>
+    groups: Array<{ id: string; name: string; color: string; parentName: string | null; elementCount: number; elementsMeasured: number; cdeTotal: number; cdeMeasured: number; cdeBelow: number; finTotal: number; finBelow: number; score: number }>
     unassigned: { datasetCount: number; score: number | null }
   }
+  governance: { cdeTotal: number; cdeMeasured: number; cdeBelow: number; finTotal: number; finBelow: number }
   trend: { days: number; weekly: boolean; points: Array<{ date: string; label: string; score: number; runs: number }> }
   criticalIssues: {
     mode: 'open' | 'all'
@@ -388,6 +392,18 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
                   <CircleGauge className="size-4 shrink-0 text-emerald-700" aria-hidden="true" /> คะแนนแยกตาม Data Domain
                   <span className="rounded-full border bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">Element Rollup</span>
                 </p>
+                {data.byDomain.groups.length > 0 && (
+                  <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-relaxed text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <Star className="size-3 shrink-0 text-amber-500" aria-hidden="true" />
+                      <span className="tabular-nums">CDE วัดแล้ว {data.governance.cdeMeasured}/{data.governance.cdeTotal} · ต่ำกว่าเกณฑ์ {data.governance.cdeBelow}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Banknote className="size-3 shrink-0 text-emerald-600" aria-hidden="true" />
+                      <span className="tabular-nums">การเงิน {data.governance.finTotal} รายการ · ต่ำกว่าเกณฑ์ {data.governance.finBelow}</span>
+                    </span>
+                  </p>
+                )}
                 {data.byDomain.groups.length === 0 && data.byDomain.unassigned.datasetCount === 0 ? (
                   <p className="flex flex-1 items-center justify-center rounded-lg border border-dashed py-12 text-sm text-muted-foreground">
                     ยังไม่มีโดเมนที่มี Data Element — จัดโครงสร้าง 4 ระดับในหน้า Data Domain ก่อน
@@ -406,6 +422,18 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
                             </p>
                             <p className="text-[10px] text-muted-foreground tabular-nums">
                               {g.elementCount} element · วัดแล้ว {g.elementsMeasured}
+                              {g.cdeTotal > 0 && (
+                                <>
+                                  {' · CDE '}{g.cdeMeasured}/{g.cdeTotal}
+                                  {g.cdeBelow > 0 && <span className="font-medium text-amber-700"> · CDE ต่ำ {g.cdeBelow}</span>}
+                                </>
+                              )}
+                              {g.finTotal > 0 && (
+                                <>
+                                  {' · การเงิน '}{g.finTotal}
+                                  {g.finBelow > 0 && <span className="font-medium text-amber-700"> · ต่ำ {g.finBelow}</span>}
+                                </>
+                              )}
                             </p>
                           </div>
                           <div className="hidden h-2 w-24 overflow-hidden rounded-full bg-muted sm:block" aria-hidden="true">

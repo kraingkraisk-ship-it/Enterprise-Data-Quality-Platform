@@ -1002,6 +1002,42 @@ async function main() {
     },
   })
 
+  // (2.5) v0.20.0 — Meta Data 4 กลุ่ม: ตัวอย่าง stewardship (owner/steward/custodian คนละ 1 คนต่อบทบาท)
+  //        + ธง CDE/การเงิน (เฉพาะธงที่มีผลต่อระบบจริง) + เชิงปฏิบัติการ (กรอกมือ)
+  const META_ENRICH: Array<{
+    nameTh: string
+    isCde?: boolean
+    isFinancial?: boolean
+    opUpdateFrequency?: string
+    opNotes?: string
+  }> = [
+    { nameTh: 'รหัสลูกค้า', isCde: true, opUpdateFrequency: 'REALTIME', opNotes: 'สร้างรหัสอัตโนมัติเมื่อเปิดทะเบียน — ห้ามซ้ำทั้งระบบ' },
+    { nameTh: 'ชื่อ-นามสกุล', opUpdateFrequency: 'ON_DEMAND', opNotes: 'แก้ไขผ่านระบบ CRM เท่านั้น (ข้อมูลส่วนบุคคล)' },
+    { nameTh: 'ยอดเงินคงเหลือ', isCde: true, isFinancial: true, opUpdateFrequency: 'DAILY', opNotes: 'ดึงยอดปลายวันทุกวัน 06:00 น. — ใช้ปิดงบรายวัน' },
+    { nameTh: 'อัตราซื้อ', isFinancial: true, opUpdateFrequency: 'DAILY', opNotes: 'อัปเดตอัตราแลกเปลี่ยนรายวันทำการ' },
+    { nameTh: 'อัตราขาย', isFinancial: true, opUpdateFrequency: 'DAILY', opNotes: 'อัปเดตอัตราแลกเปลี่ยนรายวันทำการ' },
+    { nameTh: 'วันที่ทำ KYC', opUpdateFrequency: 'ON_DEMAND', opNotes: 'ผูกกับกระบวนการ AML — ต้องทำซ้ำทุก 2 ปี' },
+  ]
+  const seedOwner = 'somchai.owner@company.co.th'
+  const seedSteward = 'malee.steward@company.co.th'
+  const seedCustodian = 'preecha.engineer@company.co.th'
+  for (const m of META_ENRICH) {
+    const target = await db.dataElement.findFirst({ where: { nameTh: m.nameTh }, select: { id: true } })
+    if (!target) continue
+    await db.dataElement.update({
+      where: { id: target.id },
+      data: {
+        ownerId: seedOwner,
+        stewardId: seedSteward,
+        custodianId: seedCustodian,
+        isCde: m.isCde ?? false,
+        isFinancial: m.isFinancial ?? false,
+        opUpdateFrequency: m.opUpdateFrequency ?? '',
+        opNotes: m.opNotes ?? '',
+      },
+    })
+  }
+
   // (3) ผูกกฎตัวอย่างกับ Data Element — ให้ flow "เลือกกฎตรวจตาม Data Element" พร้อมใช้ทันที
   const RULE_ELEMENT_BIND: Array<{ column: string; elementNameTh: string }> = [
     { column: 'customer_id', elementNameTh: 'รหัสลูกค้า' },

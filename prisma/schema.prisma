@@ -429,10 +429,19 @@ model DataElement {
   valueDomain    String   @default("") // ค่าอนุญาต/ช่วงค่า (ISO 11179: Value Domain)
   maxLength      Int? // ความยาวสูงสุด (null = ไม่ระบุ)
   unit           String   @default("") // หน่วย เช่น THB, %
-  ownerId        String? // email เจ้าของข้อมูล (ISO 11179: Steward / Responsible)
+  ownerId        String? // email เจ้าของข้อมูล (Data Owner) — เลือกจากผู้ใช้ในระบบ (ISO 11179: Steward / Responsible)
+  stewardId      String? // email ผู้ดูแลข้อมูล (Data Steward) — เลือกจากผู้ใช้ในระบบ คนละ 1 คนต่อบทบาท (v0.20.0)
+  custodianId    String? // email ผู้เก็บรักษาข้อมูล (Data Custodian) — เลือกจากผู้ใช้ในระบบ คนละ 1 คนต่อบทบาท (v0.20.0)
   pii            Boolean  @default(false) // เป็นข้อมูลส่วนบุคคล (PDPA)
   classification String   @default("UNCLASSIFIED") // การจำแนกข้อมูล (DataClassificationDef.id หรือ UNCLASSIFIED)
-  status         String   @default("ACTIVE") // DRAFT | ACTIVE | DEPRECATED (ISO 11179: registration status)
+  isCde          Boolean  @default(false) // Critical Data Element — ข้อมูลวิกฤตต่อองค์กร (ผลจริง: แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำ, เตือนเมื่อยังไม่มีกฎ) (v0.20.0)
+  isFinancial    Boolean  @default(false) // ผลกระทบต่อการรายงานทางการเงิน (ผลจริง: แดชบอร์ดผู้บริหารนับความเสี่ยงรายงานเงิน) (v0.20.0)
+  status         String   @default("ACTIVE") // DRAFT | ACTIVE | DEPRECATED (ISO 11179: registration status) — ACTIVE/DEPRECATED เปลี่ยนผ่าน workflow อนุมัติเท่านั้น (v0.20.0)
+  opUpdateFrequency String @default("") // เชิงปฏิบัติการ (กรอกมือ): ความถี่การปรับปรุง REALTIME|HOURLY|DAILY|WEEKLY|MONTHLY|ON_DEMAND (v0.20.0)
+  opNotes        String   @default("") // เชิงปฏิบัติการ (กรอกมือ): หมายเหตุ เช่น ช่วงเวลาโหลด, ผู้รับผิดชอบรอบ (v0.20.0)
+  pendingApproval Boolean @default(false) // workflow อนุมัติ: รอผู้มีสิทธิ์อนุมัติตัดสินอยู่ (v0.20.0)
+  approvedBy     String? // email ผู้อนุมัติล่าสุด (workflow อนุมัติ — บันทึก Audit Trail ทุกครั้ง) (v0.20.0)
+  approvedAt     DateTime? // เวลาที่อนุมัติล่าสุด (v0.20.0)
   position       Int      @default(0) // ลำดับการแสดงผล
   customFields   String   @default("{}") // JSON object — field เสริมตามองค์กรกำหนด
   createdBy      String // email ผู้สร้าง

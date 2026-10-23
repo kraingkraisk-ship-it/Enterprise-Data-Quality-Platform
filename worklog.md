@@ -986,3 +986,47 @@ Stage Summary:
 - GitHub ครบถ้วนถึง v0.19.0: Phase 5 จบตามแผนล็อก — byDomain = Element Rollup 4 ระดับ (Element→Sub→Domain) ทั้งแดชบอร์ดและรายงาน PDF
 - Roadmap 4 ระดับ (Phase 1–5) ครบทั้งหมดแล้ว: schema/DataElement · UI master-detail · Rule-Element binding · Domain Run Rollup · Executive Dashboard rollup
 - สถานะ sync: remote = local 100% — ไม่มี artifact ค้าง local เท่านั้น
+
+---
+Task ID: 34-b
+Agent: general-purpose subagent
+Task: v0.20.0 Executive Dashboard/Reports — ธง CDE/การเงินมีผลจริง (นับความครอบคลุม + คะแนนต่ำกว่าเกณฑ์ 85)
+
+Work Log:
+- src/app/api/executive/summary/route.ts: select เพิ่ม isCde/isFinancial ในคิวรี DataElement (ACTIVE) · loop byDomain (Element Rollup 4 ระดับ) ขยายนับต่อโดเมนหลัก: cdeTotal/cdeMeasured (rollup score != null)/cdeBelow (score < ELEMENT_FLAG_BELOW_THRESHOLD import จาก @/lib/elements) + finTotal/finBelow แบบเดียวกัน · เพิ่ม top-level response field governance { cdeTotal, cdeMeasured, cdeBelow, finTotal, finBelow } รวมจากทุกโดเมนที่แสดงใน byDomain.groups เท่านั้น (reduce หลัง filter elementCount>0) · อัปเดต doc comment หัวไฟล์ระบุนิยาม governance v0.20.0 · ส่วนอื่น (permission/trend/issues/SLA) ไม่แตะเลย
+- src/components/dq/executive-dashboard.tsx: ExecSummary ขยาย group + governance · เพิ่ม lucide Star + Banknote · widget "คะแนนแยกตาม Data Domain" เพิ่มบรรทัดสรุปใต้ header (แสดงเมื่อ groups ไม่ว่าง): ★ CDE วัดแล้ว {measured}/{total} · ต่ำกว่าเกณฑ์ {below} + การเงิน {total} รายการ · ต่ำกว่าเกณฑ์ {below} (flex-wrap + text-[10px] + tabular-nums ปลอดภัย 375px) · แถวโดเมน: เติม " · CDE {measured}/{total}" เมื่อ cdeTotal>0 + " · CDE ต่ำ {below}" เหลือง (text-amber-700 font-medium) เมื่อ cdeBelow>0 + " · การเงิน {total}" เมื่อ finTotal>0 + " · ต่ำ {below}" เหลืองเมื่อ finBelow>0 · วิดเจ็ตอื่นไม่แตะ
+- src/components/dq/executive-reports.tsx: ExecSummary ขยายเหมือนกัน · คอลัมน์ "Element (วัดแล้ว/ทั้งหมด)" เติม " · CDE {measured}/{total}" เมื่อ cdeTotal>0 + " · CDE ต่ำ {below}" เหลืองเมื่อ below>0 (text wrap ปลอดภัยงานพิมพ์) · เพิ่มประโยคสรุปใต้ตารางส่วน 3: ความครอบคลุมธง CDE/การเงินรวม + นิยามเกณฑ์ 85 (แสดงเฉพาะเมื่อมีธง) · ประโยคอื่น/ส่วนอื่นคงเดิม
+- ตรวจ: bun run lint ผ่านสะอาด (eslint) · bunx tsc --noEmit ไม่มี error ใน 3 ไฟล์ที่แก้ (error ที่เหลือล้วน pre-existing ในไฟล์อื่นนอกขอบเขต)
+
+Stage Summary:
+- API /api/executive/summary มี field ใหม่: governance { cdeTotal, cdeMeasured, cdeBelow, finTotal, finBelow } (top-level) และทุก group ใน byDomain.groups เพิ่ม cdeTotal/cdeMeasured/cdeBelow/finTotal/finBelow — ธง CDE/การเงินจาก Task 34-a มีผลต่อระบบจริงแล้ว (ความครอบคลุมวัด + นับความเสี่ยงคะแนน < 85)
+- แดชบอร์ดผู้บริหาร: สรุป CDE/การเงินรวมใต้ header + ต่อโดเมน (ตัวเลขต่ำกว่าเกณฑ์ไฮไลต์สีเหลืองอำพัน) · รายงาน PDF: คอลัมน์ element ระบุ CDE + ประโยคสรุปความครอบคลุม
+- ไม่แตะ: prisma/, src/lib/elements.ts, views.ts, data-domain-console, core-features-console — ไม่มี dependency ใหม่ ไม่ commit ไม่รัน dev server
+
+---
+Task ID: 34-a
+Agent: Z.ai Code (main session)
+Task: v0.20.0 — Meta Data รายละเอียด 4 กลุ่ม (Business/Technical/Operational/Governance) + ธง CDE/การเงิน + workflow อนุมัติ (ตามคำตอบผู้ใช้ 7 ข้อ: กรอกครั้งเดียว/ตกลงแบบข้อเสนอ/operational กรอกมือคู่ค่าจริง/steward เลือก user คนละบทบาท/pii+classification ใช้เดิมแสดงใหม่/workflow จริงสิทธิ์เดิม/ธงเฉพาะที่มีผลจริง)
+
+Work Log:
+- กู้คืนสถานะก่อนเริ่ม: พบ sandbox ถูกรีเซ็ต — local main หลงเหลือ v0.15.0 (commit เก่า 549f9ad) ขณะ remote = 0d7c744 (v0.19.0 ครบ) → ตรวจ merge-base แล้ว git reset --hard ไป 0d7c744 + ยืนยัน tag ครบ
+- พบฐานข้อมูลว่างหลัง reset (db/custom.db ไม่มีข้อมูล) → bun run db:push + รัน scripts/seed.ts ใหม่ (ครบ: 8 โดเมน 12 element 11 กฎ 168 ผลรัน ผู้ใช้ 10)
+- Schema (prisma/schema.prisma): DataElement เพิ่ม stewardId/custodianId (email ผู้ใช้จริง คนละ 1 คนต่อบทบาท), isCde/isFinancial (ธงที่มีผลจริง), opUpdateFrequency (REALTIME|HOURLY|DAILY|WEEKLY|MONTHLY|ON_DEMAND), opNotes, pendingApproval/approvedBy/approvedAt (workflow) — db:push สำเร็จ
+- lib/elements.ts: META_GROUPS 4 กลุ่ม + STEWARDSHIP_ROLES + OP_UPDATE_FREQUENCIES/LABELS + ELEMENT_FLAGS (ผลต่อระบบแต่ละธง) + ELEMENT_FLAG_BELOW_THRESHOLD=85 (เกรด < ดี) + ElementItem เพิ่ม isCde/isFinancial/pendingApproval
+- API /api/elements: GET คืนธง+สถานะ workflow · POST สร้าง = DRAFT เสมอ (workflow จริง) + ตรวจ owner/steward/custodian ต้องเป็นบัญชี ACTIVE จริง (deny-by-default)
+- API /api/elements/[id]: GET คืน stewardship (resolve ชื่อ+บทบาท), operational (ค่าจริง: mapping/asset/rule/datasetCount + รันล่าสุด + คะแนน element ถ่วงแถวจาก rollupByElement + lastRunAt), auditTrail (8 รายการล่าสุดของ element จาก AuditLog target startsWith code) · PATCH เพิ่ม action SUBMIT_APPROVAL (MANAGE_DATASETS) / APPROVE / REJECT_APPROVAL / DEPRECATE (APPROVE_EXCEPTIONS — สิทธิ์เดิมไม่เพิ่ม) + ล็อกแก้ไข/ลบขณะรออนุมัติ + status ไม่รับจากฟอร์ม (workflow เป็นเจ้าของสถานะ)
+- UI data-domain-console.tsx (~2,450 บรรทัด): Dialog รายละเอียดเป็น 4 แท็บ — เชิงธุรกิจ (นิยาม/ตัวอย่าง/รหัส/ชื่อ EN/โดเมน/เวลา) · เชิงเทคนิค (ประเภท/รูปแบบ/ค่าอนุญาต/ความยาว + แมปคอลัมน์จริง+editor ย้ายมาไว้แท็บนี้) · เชิงปฏิบัติการ (กรอกมือซ้าย: ความถี่/หมายเหตุ คู่ ค่าจริงจากระบบขวา: แมป/กฎ/ชุดข้อมูล/รันล่าสุด/คะแนน 100.0/100 ถ่วงแถว + กฎที่ผูก) · ธรรมาภิบาล (Owner/Steward/Custodian แสดงชื่อ+บทบาท, PII+การจำแนกใช้ฟิลด์เดิมแสดงใหม่, ธง CDE/การเงิน พร้อมคำอธิบายผล, Workflow card ทุกสถานะ: ส่งขออนุมัติ/เลือกผู้อนุมัติ+เหตุผล→อนุมัติ/ส่งกลับ/เลิกใช้, Audit Trail รายการ) — badge CDE(Star)/การเงิน(Banknote)/รออนุมัติ บนการ์ด+หัว dialog + เตือน "CDE ยังไม่มีกฎ" ในลิสต์
+- ฟอร์มสร้าง/แก้ไข: สถานะเป็น chip อ่านอย่างเดียว (เปลี่ยนผ่านแท็บธรรมาภิบาล) + เพิ่ม Steward/Custodian select + Switch CDE/การเงิน (พร้อมคำอธิบายผล) + ความถี่การปรับปรุง + หมายเหตุปฏิบัติการ
+- Rule Builder (core-features-console.tsx): element cascade โชว์ CDE/การเงิน/PII/สถานะ + chip meta เพิ่ม badge CDE/การเงิน + เตือน element ร่าง/เลิกใช้ตอนผูกกฎ
+- seed.ts: META_ENRICH — รหัสลูกค้า CDE · ยอดเงินคงเหลือ CDE+การเงิน · อัตราซื้อ/ขาย การเงิน + owner/steward/custodian + ความถี่/หมายเหตุ 6 element
+- views.ts: APP_VERSION v0.20.0 + desc หน้า Data Domain
+- จุดที่แก้ระหว่างทาง: import nextElementCode หายทำ POST 500 (พบจาก dev.log แก้ทันที) · ย้าย useEffect ผู้อนุมัติเริ่มต้นไปหลัง memo approvers (กัน TDZ)
+- Task 34-b (subagent ขนาน): executive summary API + แดชบอร์ด + รายงาน — byDomain.groups เพิ่ม cdeTotal/cdeMeasured/cdeBelow/finTotal/finBelow + top-level governance + widget แสดง "CDE วัดแล้ว x/y · ต่ำกว่าเกณฑ์ z" + รายงานประโยคสรุปความครอบคลุม (worklog 34-b แยก)
+- E2E API: สร้าง=DRAFT ✓ แก้ตอน DRAFT ✓ SUBMIT→pending ✓ แก้/ลบตอน pending=409 ✓ วิศวกรอนุมัติ=403 (ระบุบทบาทที่ผ่าน) ✓ เจ้าของข้อมูลอนุมัติ→ACTIVE+approvedBy ✓ กำกับดูแล DEPRECATE ✓ Audit Trail 5 รายการครบ ✓ ลบ ✓
+- E2E agent-browser: dialog 4 แท็บ + side-by-side + workflow ใน UI (สร้าง→ร่าง→ส่ง→รออนุมัติ→อนุมัติ บันทึกผู้อนุมัติ+เวลา) + stewardship เลือก Radix จริง 3 บทบาท + audit trail แสดง + แดชบอร์ด/รายงานตัวเลขตรงกัน 1/3 (หลัง reload) + mobile 375px NO-OVERFLOW (DQ Dashboard/Data Domain/dialog 2×2 tabs) + footer ติดขอบล่าง (bottom=800=vh) + ไม่มี console error + lint สะอาด
+- หมายเหตุ: ข้อความ "1/2 ที่เห็นครั้งแรก" คือ render เก่าช่วงข้อมูลกำลังเปลี่ยน (fresh reload = 1/3 ตรงทั้งคู่) — ไม่ใช่บั๊ก
+
+Stage Summary:
+- v0.20.0 ครบโจทย์ผู้ใช้ทั้ง 7 ข้อ: Meta Data กรอกครั้งเดียวระดับ element · 4 กลุ่มครบ · เชิงปฏิบัติการ = กรอกมือคู่ค่าจริง · stewardship 3 บทบาทเลือกจากผู้ใช้จริง · PII/classification ใช้เดิมแสดงในธรรมาภิบาล · workflow อนุมัติจริงบันทึกผู้อนุมัติ+Audit Trail ด้วยสิทธิ์เดิม (MANAGE_DATASETS/APPROVE_EXCEPTIONS) · ธงเฉพาะ CDE/การเงินที่มีผลจริง (แดชบอร์ดนับความครอบคลุม/คะแนนต่ำ<85 + เตือน CDE ไร้กฎ)
+- ไฟล์แก้: prisma/schema.prisma · src/lib/elements.ts · src/lib/views.ts · src/app/api/elements/route.ts · src/app/api/elements/[id]/route.ts · src/components/data-domain-console.tsx · src/components/core-features-console.tsx · src/components/dq/executive-{summary route,dashboard,reports} · scripts/seed.ts · worklog.md
+- สถานะก่อน push: รอ commit + tag v0.20.0 (ผู้ใช้ให้ PAT ในรอบนี้แล้ว)

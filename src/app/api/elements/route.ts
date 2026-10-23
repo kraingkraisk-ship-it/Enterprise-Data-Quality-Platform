@@ -4,27 +4,28 @@ import { resolveOperator } from '@/lib/operator'
 import {
   ELEMENT_DATA_TYPES,
   ELEMENT_NAME_MAX,
-  ELEMENT_STATUSES,
   ELEMENT_TEXT_MAX,
   isElementDataType,
-  isElementStatus,
+  isOpUpdateFrequency,
+  nextElementCode,
 } from '@/lib/elements'
 
 /**
- * Data Element API (v0.18.0) — องค์ประกอบข้อมูลเชิงตรรกะภายใต้โดเมนย่อย (ISO/IEC 11179)
+ * Data Element API (v0.18.0 · meta 4 กลุ่ม + workflow อนุมัติ ใน v0.20.0) — องค์ประกอบข้อมูลเชิงตรรกะภายใต้โดเมนย่อย (ISO/IEC 11179)
  *
  * GET  /api/elements?subDomainId=… — รายการ element ทั้งหมด (หรือกรองตามโดเมนย่อย)
- *      คืน flat list พร้อม ruleCount/mappingCount และข้อมูลโดเมนย่อย+โดเมนหลัก (client ประกอบ path เอง)
- * POST /api/elements — สร้าง element ใหม่
+ *      คืน flat list พร้อม ruleCount/mappingCount ธง CDE/Financial + สถานะ workflow และข้อมูลโดเมนย่อย+โดเมนหลัก (client ประกอบ path เอง)
+ * POST /api/elements — สร้าง element ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — ต้องผ่าน workflow อนุมัติจึงจะ ACTIVE ใช้งานได้)
  *      body: { operatorEmail, subDomainId, nameTh, nameEn?, definition?, examples?, dataType?,
- *              formatPattern?, valueDomain?, maxLength?, unit?, ownerId?, pii?, classification?,
- *              status?, customFields? }
+ *              formatPattern?, valueDomain?, maxLength?, unit?, ownerId?, stewardId?, custodianId?,
+ *              pii?, classification?, isCde?, isFinancial?, opUpdateFrequency?, opNotes?, customFields? }
  *
  * สิทธิ์ (เฉพาะ POST): MANAGE_DATASETS — ทุกการสร้างบันทึก Audit Trail
  * กติกา (deny-by-default):
  * - element ต้องแขวนใต้ "โดเมนย่อย" เท่านั้น (parentId != null) — ชี้โดเมนหลักตรง ๆ = ปฏิเสธ
  * - ชื่อ (nameTh) ซ้ำในโดเมนย่อยเดียวกันไม่ได้
  * - รหัส EL-#### สร้างอัตโนมัติเสมอ
+ * - email ผู้รับผิดชอบ (owner/steward/custodian) ต้องเป็นบัญชีผู้ใช้ ACTIVE ในระบบเท่านั้น
  */
 export async function GET(req: NextRequest) {
   try {
@@ -71,6 +72,9 @@ export async function GET(req: NextRequest) {
         ownerId: e.ownerId,
         pii: e.pii,
         classification: e.classification,
+        isCde: e.isCde,
+        isFinancial: e.isFinancial,
+        pendingApproval: e.pendingApproval,
         status: e.status,
         position: e.position,
         ruleCount: rulesByElement.get(e.id) ?? 0,
@@ -86,27 +90,43 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** ตรวจรูปแบบฟิลด์ meta ร่วมของ POST/PATCH — คืนข้อความ error หรือ null */
+/** ตรวจรูปแบบฟิลด์ meta ร่วมของ POST/PATCH — คืนข้อความ error หรือ null (สถานะเปลี่ยนผ่าน workflow อนุมัติเท่านั้น — ไม่รับจากฟอร์ม) */
 function validateMetaFields(body: Record<string, unknown>): string | null {
   const dataType = String(body.dataType ?? 'TEXT').trim()
   if (!isElementDataType(dataType)) {
     return `ประเภทข้อมูลไม่ถูกต้อง — ต้องเป็น: ${ELEMENT_DATA_TYPES.join(', ')}`
   }
-  const status = String(body.status ?? 'ACTIVE').trim()
-  if (!isElementStatus(status)) {
-    return `สถานะไม่ถูกต้อง — ต้องเป็น: ${ELEMENT_STATUSES.join(', ')}`
-  }
   const maxLength = body.maxLength
   if (maxLength !== null && maxLength !== undefined && maxLength !== '' && (Number.isNaN(Number(maxLength)) || Number(maxLength) < 0)) {
     return 'ความยาวสูงสุดต้องเป็นตัวเลขที่ไม่ติดลบ'
   }
+  const freq = String(body.opUpdateFrequency ?? '').trim().toUpperCase()
+  if (freq && !isOpUpdateFrequency(freq)) {
+    return 'ความถี่การปรับปรุงไม่ถูกต้อง'
+  }
   return null
 }
 
-/** ประกอบ object ของฟิลด์ meta จาก body (ตัดช่องว่าง/จำกัดความยาว) */
+/** ตรวจว่า email ผู้รับผิดชอบ (owner/steward/custodian) มีจริงในระบบและ ACTIVE — deny-by-default (v0.20.0) */
+async function validateStewardshipEmails(body: Record<string, unknown>): Promise<string | null> {
+  const emails = [body.ownerId, body.stewardId, body.custodianId]
+    .map((v) => String(v ?? '').trim().toLowerCase())
+    .filter(Boolean)
+  if (emails.length === 0) return null
+  const unique = [...new Set(emails)]
+  const users = await db.user.findMany({ where: { email: { in: unique } }, select: { email: true, status: true, name: true } })
+  const found = new Map(users.map((u) => [u.email, u]))
+  for (const e of unique) {
+    const u = found.get(e)
+    if (!u) return `ไม่พบบัญชีผู้รับผิดชอบ "${e}" ในระบบ — ต้องเลือกจากผู้ใช้ที่มีอยู่เท่านั้น`
+    if (u.status !== 'ACTIVE') return `บัญชี "${u.name}" ถูกระงับการใช้งาน — เลือกผู้ใช้ที่ ACTIVE เท่านั้น`
+  }
+  return null
+}
+
+/** ประกอบ object ของฟิลด์ meta จาก body (ตัดช่องว่าง/จำกัดความยาว) — ไม่รวม status (workflow เป็นเจ้าของ) */
 function metaFieldsFrom(body: Record<string, unknown>) {
   const dataType = String(body.dataType ?? 'TEXT').trim()
-  const status = String(body.status ?? 'ACTIVE').trim()
   const maxLengthRaw = body.maxLength
   const maxLength =
     maxLengthRaw === null || maxLengthRaw === undefined || maxLengthRaw === '' ? null : Math.max(0, Math.floor(Number(maxLengthRaw)))
@@ -121,6 +141,7 @@ function metaFieldsFrom(body: Record<string, unknown>) {
       // ไม่ใช่ JSON — ใช้ค่าเริ่มต้น (deny-by-default: ไม่เก็บข้อมูลที่ตรวจไม่ได้)
     }
   }
+  const freq = String(body.opUpdateFrequency ?? '').trim().toUpperCase()
   return {
     nameEn: String(body.nameEn ?? '').trim().slice(0, ELEMENT_NAME_MAX),
     definition: String(body.definition ?? '').trim().slice(0, ELEMENT_TEXT_MAX),
@@ -131,9 +152,14 @@ function metaFieldsFrom(body: Record<string, unknown>) {
     maxLength,
     unit: String(body.unit ?? '').trim().slice(0, 40),
     ownerId: String(body.ownerId ?? '').trim().toLowerCase() || null,
+    stewardId: String(body.stewardId ?? '').trim().toLowerCase() || null,
+    custodianId: String(body.custodianId ?? '').trim().toLowerCase() || null,
     pii: Boolean(body.pii),
     classification: String(body.classification ?? 'UNCLASSIFIED').trim() || 'UNCLASSIFIED',
-    status: isElementStatus(status) ? status : 'ACTIVE',
+    isCde: Boolean(body.isCde),
+    isFinancial: Boolean(body.isFinancial),
+    opUpdateFrequency: isOpUpdateFrequency(freq) ? freq : '',
+    opNotes: String(body.opNotes ?? '').trim().slice(0, ELEMENT_TEXT_MAX),
     customFields,
   }
 }
@@ -170,6 +196,10 @@ export async function POST(req: NextRequest) {
     const metaError = validateMetaFields(body)
     if (metaError) return NextResponse.json({ error: metaError }, { status: 400 })
 
+    // ---------- deny-by-default: ผู้รับผิดชอบต้องเป็นผู้ใช้ ACTIVE ในระบบ ----------
+    const peopleError = await validateStewardshipEmails(body)
+    if (peopleError) return NextResponse.json({ error: peopleError }, { status: 400 })
+
     // ---------- กันชื่อซ้ำในโดเมนย่อยเดียวกัน ----------
     const dup = await db.dataElement.findFirst({ where: { subDomainId, nameTh }, select: { id: true } })
     if (dup) {
@@ -184,6 +214,7 @@ export async function POST(req: NextRequest) {
         nameTh,
         position,
         createdBy: op.ctx.email,
+        status: 'DRAFT', // v0.20.0: workflow อนุมัติ — element ใหม่เริ่มที่ DRAFT เสมอ ต้องผ่านการอนุมัติจึงจะ ACTIVE
         ...metaFieldsFrom(body),
       },
     })
@@ -193,7 +224,7 @@ export async function POST(req: NextRequest) {
         action: 'CREATE_DATA_ELEMENT',
         actor: op.ctx.email,
         target: `${created.code} ${created.nameTh}`,
-        detail: `สร้าง Data Element "${created.nameTh}" (${created.code}) ภายใต้โดเมนย่อย "${subDomain.name}" โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `สร้าง Data Element "${created.nameTh}" (${created.code}) ภายใต้โดเมนย่อย "${subDomain.name}" — สถานะเริ่มต้น DRAFT (รอส่งขออนุมัติ)${created.isCde ? ' · CDE' : ''}${created.isFinancial ? ' · การเงิน' : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 

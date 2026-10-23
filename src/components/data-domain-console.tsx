@@ -3,12 +3,17 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  Archive,
+  Banknote,
   Box,
   Boxes,
   Braces,
+  CheckCircle2,
+  Clock3,
   Database,
   FolderPlus,
   FolderTree,
+  History,
   Info,
   Link2,
   Loader2,
@@ -17,9 +22,13 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Send,
   ShieldAlert,
+  ShieldCheck,
+  Star,
   Table2,
   Trash2,
+  XCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -70,8 +79,11 @@ import {
   ELEMENT_STATUSES,
   ELEMENT_STATUS_LABELS,
   ELEMENT_TEXT_MAX,
+  OP_UPDATE_FREQUENCIES,
+  OP_UPDATE_FREQUENCY_LABELS,
   type ElementDataType,
   type ElementStatus,
+  type OpUpdateFrequency,
 } from '@/lib/elements'
 import { DATA_CLASSIFICATIONS, UNCLASSIFIED } from '@/lib/regulation'
 
@@ -165,6 +177,9 @@ interface ElementRow {
   ownerId: string | null
   pii: boolean
   classification: string
+  isCde: boolean
+  isFinancial: boolean
+  pendingApproval: boolean
   status: string
   position: number
   ruleCount: number
@@ -173,7 +188,7 @@ interface ElementRow {
   updatedAt: string
 }
 
-/** Data Element จาก API /api/elements/[id] (รายละเอียดเต็ม) */
+/** Data Element จาก API /api/elements/[id] (รายละเอียดเต็ม — meta 4 กลุ่ม v0.20.0) */
 interface ElementDetail {
   id: string
   code: string
@@ -188,15 +203,54 @@ interface ElementDetail {
   maxLength: number | null
   unit: string
   ownerId: string | null
+  stewardId: string | null
+  custodianId: string | null
   pii: boolean
   classification: string
+  isCde: boolean
+  isFinancial: boolean
   status: string
+  opUpdateFrequency: string
+  opNotes: string
+  pendingApproval: boolean
+  approvedBy: string | null
+  approvedAt: string | null
   customFields: string
+  createdBy: string
   createdAt: string
   updatedAt: string
   subDomain: { id: string; name: string; nameEn: string; parentId: string | null; parent?: { id: string; name: string; color: string } | null }
   columnMappings: Array<{ id: string; assetId: string; columnName: string; note: string; asset: { id: string; name: string } }>
   rules: Array<{ id: string; column: string; condition: string; conditionName: string; dimension: string; severity: string; threshold: number }>
+}
+
+/** ผู้รับผิดชอบ (resolve จากบัญชีผู้ใช้จริง) */
+interface StewardPerson {
+  email: string
+  name: string
+  roleTh: string | null
+}
+
+/** ค่าจริงจากระบบ (เชิงปฏิบัติการ — อ่านอย่างเดียว) */
+interface OperationalActual {
+  mappingCount: number
+  assetCount: number
+  ruleCount: number
+  datasetCount: number
+  datasetNames: string[]
+  lastRunAt: string | null
+  lastScore: number | null
+  lastRows: number
+  lastFailedRules: number
+}
+
+interface AuditEntry {
+  id: string
+  action: string
+  actor: string
+  target: string
+  detail: string
+  createdAt: string
 }
 
 const SEVERITY_DOT: Record<string, string> = {
@@ -303,6 +357,7 @@ function DomainTreeRow({
 function ElementRowCard({ e, onClick }: { e: ElementRow; onClick: () => void }) {
   const status = ELEMENT_STATUS_LABELS[e.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE
   const dt = ELEMENT_DATA_TYPE_LABELS[e.dataType as ElementDataType] ?? { th: e.dataType }
+  const cdeWarning = e.isCde && e.ruleCount === 0
   return (
     <button
       type="button"
@@ -314,9 +369,24 @@ function ElementRowCard({ e, onClick }: { e: ElementRow; onClick: () => void }) 
         <span className="font-mono text-[10px] text-muted-foreground">{e.code}</span>
         <span className="text-sm font-medium">{e.nameTh}</span>
         {e.nameEn && <span className="text-xs text-muted-foreground">{e.nameEn}</span>}
+        {e.isCde && (
+          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[9px] font-medium text-amber-800" title="Critical Data Element — ข้อมูลวิกฤตต่อองค์กร">
+            <Star className="mr-0.5 size-2.5" aria-hidden="true" /> CDE
+          </Badge>
+        )}
+        {e.isFinancial && (
+          <Badge variant="outline" className="border-teal-300 bg-teal-50 text-[9px] font-medium text-teal-800" title="ผลกระทบต่อการรายงานทางการเงิน">
+            <Banknote className="mr-0.5 size-2.5" aria-hidden="true" /> การเงิน
+          </Badge>
+        )}
         {e.pii && (
           <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[9px] text-rose-700">
             <ShieldAlert className="mr-0.5 size-2.5" aria-hidden="true" /> PII
+          </Badge>
+        )}
+        {e.pendingApproval && (
+          <Badge variant="outline" className="border-sky-300 bg-sky-50 text-[9px] text-sky-800">
+            <Clock3 className="mr-0.5 size-2.5" aria-hidden="true" /> รออนุมัติ
           </Badge>
         )}
         <Badge variant="outline" className={`text-[9px] ${status.chip}`}>
@@ -329,8 +399,9 @@ function ElementRowCard({ e, onClick }: { e: ElementRow; onClick: () => void }) 
         <span className="inline-flex items-center gap-1">
           <Link2 className="size-3" aria-hidden="true" /> แมป {e.mappingCount} คอลัมน์
         </span>
-        <span className="inline-flex items-center gap-1">
+        <span className={`inline-flex items-center gap-1 ${cdeWarning ? 'font-medium text-amber-700' : ''}`}>
           <Braces className="size-3" aria-hidden="true" /> ผูกกฎ {e.ruleCount} ข้อ
+          {cdeWarning && ' · CDE ยังไม่มีกฎ — ควรผูกกฎตรวจ'}
         </span>
       </div>
       {e.definition && <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{e.definition}</p>}
@@ -359,9 +430,16 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [elementsLoading, setElementsLoading] = useState(true)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detail, setDetail] = useState<ElementDetail | null>(null)
+  const [detailStewardship, setDetailStewardship] = useState<{ owner: StewardPerson | null; steward: StewardPerson | null; custodian: StewardPerson | null } | null>(null)
+  const [detailOps, setDetailOps] = useState<OperationalActual | null>(null)
+  const [detailAudit, setDetailAudit] = useState<AuditEntry[]>([])
+  const [detailTab, setDetailTab] = useState<'business' | 'technical' | 'operational' | 'governance'>('business')
   const [detailLoading, setElementDetailLoading] = useState(false)
   const [deleteElementId, setDeleteElementId] = useState<string | null>(null)
   const [elementBusy, setElementBusy] = useState(false)
+  const [workflowBusy, setWorkflowBusy] = useState(false)
+  const [approverEmail, setApproverEmail] = useState('')
+  const [workflowNote, setWorkflowNote] = useState('')
 
   /* ---------- ฟอร์ม element (สร้าง/แก้ไข) ---------- */
   const [elFormOpen, setElFormOpen] = useState(false)
@@ -377,8 +455,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [elMaxLength, setElMaxLength] = useState('')
   const [elUnit, setElUnit] = useState('')
   const [elOwner, setElOwner] = useState('')
+  const [elSteward, setElSteward] = useState('')
+  const [elCustodian, setElCustodian] = useState('')
   const [elPii, setElPii] = useState(false)
-  const [elStatus, setElStatus] = useState<string>('ACTIVE')
+  const [elStatus, setElStatus] = useState<string>('ACTIVE') // สถานะปัจจุบันของ element ที่กำลังแก้ (อ่านอย่างเดียว — workflow เป็นเจ้าของ)
+  const [elCde, setElCde] = useState(false)
+  const [elFinancial, setElFinancial] = useState(false)
+  const [elOpFreq, setElOpFreq] = useState<string>('')
+  const [elOpNotes, setElOpNotes] = useState('')
   const [elClassification, setElClassification] = useState<string>(UNCLASSIFIED)
   const [elCustom, setElCustom] = useState('')
   const [elFormBusy, setElFormBusy] = useState(false)
@@ -504,6 +588,16 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   }, [])
 
   const operators = useMemo(() => users.filter((u) => MANAGE_ROLES.includes(u.role)), [users])
+  /** ผู้ที่มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) — ใช้เลือกผู้อนุมัติใน workflow (สิทธิ์เดิม ไม่เพิ่มบทบาทใหม่) */
+  const approvers = useMemo(() => users.filter((u) => ROLES[u.role as keyof typeof ROLES]?.permissions.includes('APPROVE_EXCEPTIONS')), [users])
+
+  // เลือกผู้อนุมัติเริ่มต้น — ถ้าผู้ดำเนินการหน้าหลักมีสิทธิ์อนุมัติให้ใช้คนนั้น ไม่งั้นใช้รายแรกที่มีสิทธิ์
+  useEffect(() => {
+    if (!detailOpen || approvers.length === 0) return
+    if (approverEmail && approvers.some((u) => u.email === approverEmail)) return
+    const def = approvers.find((u) => u.email === operatorEmail)?.email ?? approvers[0].email
+    setApproverEmail(def)
+  }, [detailOpen, approverEmail, approvers, operatorEmail])
 
   /* ------------------------- โหลดคอลัมน์ + การจัดหมวดเดิมของ asset (แท็บจัดหมวด) ------------------------- */
   const loadAssetDetail = useCallback(
@@ -666,6 +760,9 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       const data = await res.json()
       if (!res.ok) return null
       setDetail(data?.element ?? null)
+      setDetailStewardship(data?.stewardship ?? null)
+      setDetailOps(data?.operational ?? null)
+      setDetailAudit(data?.auditTrail ?? [])
       return (data?.element as ElementDetail) ?? null
     } catch {
       return null
@@ -676,6 +773,10 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
 
   function openElementDetail(e: ElementRow) {
     setDetail(null)
+    setDetailStewardship(null)
+    setDetailOps(null)
+    setDetailAudit([])
+    setDetailTab('business')
     setDetailOpen(true)
     setMapAssetId('')
     setMapColumns([])
@@ -701,8 +802,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElMaxLength('')
     setElUnit('')
     setElOwner('')
+    setElSteward('')
+    setElCustodian('')
     setElPii(false)
-    setElStatus('ACTIVE')
+    setElStatus('DRAFT')
+    setElCde(false)
+    setElFinancial(false)
+    setElOpFreq('')
+    setElOpNotes('')
     setElClassification(UNCLASSIFIED)
     setElCustom('')
     setElFormOpen(true)
@@ -722,8 +829,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElMaxLength(detail.maxLength !== null ? String(detail.maxLength) : '')
     setElUnit(detail.unit)
     setElOwner(detail.ownerId ?? '')
+    setElSteward(detail.stewardId ?? '')
+    setElCustodian(detail.custodianId ?? '')
     setElPii(detail.pii)
     setElStatus(detail.status)
+    setElCde(detail.isCde)
+    setElFinancial(detail.isFinancial)
+    setElOpFreq(detail.opUpdateFrequency ?? '')
+    setElOpNotes(detail.opNotes ?? '')
     setElClassification(detail.classification || UNCLASSIFIED)
     setElCustom(detail.customFields && detail.customFields !== '{}' ? detail.customFields : '')
     setDetailOpen(false)
@@ -752,8 +865,13 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
           maxLength: elMaxLength.trim() === '' ? null : Number(elMaxLength),
           unit: elUnit.trim(),
           ownerId: elOwner || null,
+          stewardId: elSteward || null,
+          custodianId: elCustodian || null,
           pii: elPii,
-          status: elStatus,
+          isCde: elCde,
+          isFinancial: elFinancial,
+          opUpdateFrequency: elOpFreq,
+          opNotes: elOpNotes.trim(),
           classification: elClassification,
           customFields: elCustom.trim() || '{}',
         }),
@@ -774,6 +892,36 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
     } finally {
       setElFormBusy(false)
+    }
+  }
+
+  /* ------------------------- workflow อนุมัติ (v0.20.0) — สิทธิ์เดิม: ส่ง = MANAGE_DATASETS · อนุมัติ/เลิกใช้ = APPROVE_EXCEPTIONS ------------------------- */
+  async function doWorkflowAction(action: 'SUBMIT_APPROVAL' | 'APPROVE' | 'REJECT_APPROVAL' | 'DEPRECATE', note = '') {
+    if (!detail) return
+    const operator = action === 'SUBMIT_APPROVAL' ? operatorEmail : approverEmail
+    if (!operator) {
+      toast({ title: 'กรุณาเลือกผู้ดำเนินการก่อน', variant: 'destructive' })
+      return
+    }
+    setWorkflowBusy(true)
+    try {
+      const res = await fetch(`/api/elements/${detail.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorEmail: operator, action, ...(note ? { note } : {}) }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: 'ดำเนินการไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      toast({ title: data.message ?? 'ดำเนินการแล้ว' })
+      setWorkflowNote('')
+      await Promise.all([loadElementDetail(detail.id), loadElements()])
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setWorkflowBusy(false)
     }
   }
 
@@ -1513,9 +1661,24 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   <Box className="size-4 text-emerald-700" aria-hidden="true" />
                   <span className="font-mono text-sm text-muted-foreground">{detail.code}</span>
                   {detail.nameTh}
+                  {detail.isCde && (
+                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] font-medium text-amber-800">
+                      <Star className="mr-0.5 size-2.5" aria-hidden="true" /> CDE
+                    </Badge>
+                  )}
+                  {detail.isFinancial && (
+                    <Badge variant="outline" className="border-teal-300 bg-teal-50 text-[10px] font-medium text-teal-800">
+                      <Banknote className="mr-0.5 size-2.5" aria-hidden="true" /> การเงิน
+                    </Badge>
+                  )}
                   {detail.pii && (
                     <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[10px] text-rose-700">
                       <ShieldAlert className="mr-0.5 size-2.5" aria-hidden="true" /> PII
+                    </Badge>
+                  )}
+                  {detail.pendingApproval && (
+                    <Badge variant="outline" className="border-sky-300 bg-sky-50 text-[10px] text-sky-800">
+                      <Clock3 className="mr-0.5 size-2.5" aria-hidden="true" /> รออนุมัติ
                     </Badge>
                   )}
                   <Badge variant="outline" className={`text-[10px] ${(ELEMENT_STATUS_LABELS[detail.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE).chip}`}>
@@ -1524,119 +1687,373 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 </DialogTitle>
                 <DialogDescription>
                   Data Element ใต้โดเมนย่อย &quot;{detail.subDomain.parent ? `${detail.subDomain.parent.name} / ` : ''}
-                  {detail.subDomain.name}&quot; — Meta Data ตามมาตรฐาน ISO/IEC 11179
+                  {detail.subDomain.name}&quot; — Meta Data 4 กลุ่มตามแนวคิด ISO/IEC 11179 (กรอกครั้งเดียวต่อ element)
                 </DialogDescription>
               </DialogHeader>
 
               <div className="grid gap-4">
-                {/* Meta Data */}
-                <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
-                  <MetaField label="นิยามทางธุรกิจ" value={detail.definition || '—'} wide />
-                  <MetaField label="ตัวอย่างค่า" value={detail.examples || '—'} />
-                  <MetaField
-                    label="ประเภทข้อมูล"
-                    value={`${ELEMENT_DATA_TYPE_LABELS[detail.dataType as ElementDataType]?.th ?? detail.dataType}${detail.unit ? ` (${detail.unit})` : ''}`}
-                  />
-                  <MetaField label="รูปแบบ / พาเทิร์น" value={detail.formatPattern || '—'} />
-                  <MetaField label="ค่าอนุญาต (Value Domain)" value={detail.valueDomain || '—'} />
-                  <MetaField label="ความยาวสูงสุด" value={detail.maxLength !== null ? String(detail.maxLength) : '—'} />
-                  <MetaField label="เจ้าของข้อมูล (Steward)" value={detail.ownerId || '—'} />
-                  <MetaField
-                    label="การจำแนกข้อมูล"
-                    value={
-                      detail.classification && detail.classification !== 'UNCLASSIFIED'
-                        ? (DATA_CLASSIFICATIONS.find((c) => c.id === detail?.classification)?.th ?? detail.classification)
-                        : 'ไม่ระบุ'
-                    }
-                  />
-                  {detail.customFields && detail.customFields !== '{}' && <MetaField label="Field เสริม" value={detail.customFields} wide />}
-                </div>
+                <Tabs value={detailTab} onValueChange={(v) => setDetailTab(v as typeof detailTab)}>
+                  <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+                    <TabsTrigger value="business">เชิงธุรกิจ</TabsTrigger>
+                    <TabsTrigger value="technical">เชิงเทคนิค</TabsTrigger>
+                    <TabsTrigger value="operational">เชิงปฏิบัติการ</TabsTrigger>
+                    <TabsTrigger value="governance">ธรรมาภิบาล</TabsTrigger>
+                  </TabsList>
 
-                {/* การแมปคอลัมน์จริง */}
-                <div className="rounded-lg border p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="flex items-center gap-1.5 text-xs font-semibold">
-                      <Link2 className="size-3.5 text-emerald-700" aria-hidden="true" /> แหล่งข้อมูลที่แมป ({mapDraft.length} คอลัมน์)
-                    </p>
-                    {detail.rules.length === 0 && (
-                      <p className="text-[11px] text-muted-foreground">element ที่ไม่มีกฎผูกสามารถลบได้ — การแมปจะถูกลบตาม</p>
-                    )}
-                  </div>
-                  {mapDraft.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {mapDraft.map((m) => {
-                        const asset = assets.find((a) => a.id === m.assetId)
-                        return (
-                          <span key={`${m.assetId}.${m.columnName}`} className="rounded-full border bg-muted/50 px-2 py-0.5 font-mono text-[10px]">
-                            {asset?.name ?? '(asset)'}<span className="opacity-50"> · </span>{m.columnName}
-                          </span>
-                        )
-                      })}
+                  {/* ------------------------- แท็บ 1: Meta Data เชิงธุรกิจ ------------------------- */}
+                  <TabsContent value="business" className="mt-3">
+                    <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
+                      <MetaField label="นิยามทางธุรกิจ (Definition)" value={detail.definition || '—'} wide />
+                      <MetaField label="ตัวอย่างค่า" value={detail.examples || '—'} />
+                      <MetaField label="รหัสอ้างอิง" value={detail.code} />
+                      <MetaField label="ชื่อภาษาอังกฤษ" value={detail.nameEn || '—'} />
+                      <MetaField label="โดเมน / โดเมนย่อย" value={`${detail.subDomain.parent?.name ?? '—'} / ${detail.subDomain.name}`} />
+                      <MetaField label="สร้างเมื่อ" value={fmtDateTime(detail.createdAt)} />
+                      <MetaField label="แก้ไขล่าสุด" value={fmtDateTime(detail.updatedAt)} wide />
                     </div>
-                  )}
+                  </TabsContent>
 
-                  {/* editor */}
-                  <div className="mt-3 grid gap-2">
-                    <Select value={mapAssetId} onValueChange={(v) => void loadMappingAssetColumns(v)}>
-                      <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือกข้อมูลเพื่อแมปคอลัมน์">
-                        <SelectValue placeholder="— เลือกข้อมูลจากคลังเพื่อแมปคอลัมน์ —" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {assets.map((a) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.name} · {a.columnCount} คอลัมน์
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {mapAssetId && (
-                      mapLoading ? (
-                        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                          <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> กำลังโหลดคอลัมน์…
-                        </div>
-                      ) : (
-                        <div className="grid max-h-40 gap-1 overflow-y-auto rounded border p-2 sm:grid-cols-2">
-                          {mapColumns.map((c) => {
-                            const checked = mapDraft.some((m) => m.assetId === mapAssetId && m.columnName === c.name)
+                  {/* ------------------------- แท็บ 2: Meta Data เชิงเทคนิค ------------------------- */}
+                  <TabsContent value="technical" className="mt-3 space-y-3">
+                    <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
+                      <MetaField
+                        label="ประเภทข้อมูล"
+                        value={`${ELEMENT_DATA_TYPE_LABELS[detail.dataType as ElementDataType]?.th ?? detail.dataType}${detail.unit ? ` (${detail.unit})` : ''}`}
+                      />
+                      <MetaField label="รูปแบบ / พาเทิร์น" value={detail.formatPattern || '—'} />
+                      <MetaField label="ค่าอนุญาต (Value Domain)" value={detail.valueDomain || '—'} />
+                      <MetaField label="ความยาวสูงสุด" value={detail.maxLength !== null ? String(detail.maxLength) : '—'} />
+                    </div>
+
+                    {/* การแมปคอลัมน์จริง */}
+                    <div className="rounded-lg border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold">
+                          <Link2 className="size-3.5 text-emerald-700" aria-hidden="true" /> แหล่งข้อมูลที่แมป ({mapDraft.length} คอลัมน์)
+                        </p>
+                        {detail.rules.length === 0 && (
+                          <p className="text-[11px] text-muted-foreground">element ที่ไม่มีกฎผูกสามารถลบได้ — การแมปจะถูกลบตาม</p>
+                        )}
+                      </div>
+                      {mapDraft.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {mapDraft.map((m) => {
+                            const asset = assets.find((a) => a.id === m.assetId)
                             return (
-                              <label key={c.name} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/60">
-                                <Checkbox checked={checked} onCheckedChange={() => toggleMapping(mapAssetId, c.name)} aria-label={`แมปคอลัมน์ ${c.name}`} />
-                                <span className="font-mono">{c.name}</span>
-                                <span className="text-[10px] text-muted-foreground">{DATA_TYPE_LABELS[c.dataType] ?? c.dataType}</span>
-                              </label>
+                              <span key={`${m.assetId}.${m.columnName}`} className="rounded-full border bg-muted/50 px-2 py-0.5 font-mono text-[10px]">
+                                {asset?.name ?? '(asset)'}<span className="opacity-50"> · </span>{m.columnName}
+                              </span>
                             )
                           })}
-                          {mapColumns.length === 0 && <p className="p-2 text-xs text-muted-foreground">ไม่พบคอลัมน์</p>}
                         </div>
-                      )
-                    )}
-                    <Button size="sm" variant="outline" className="w-full sm:w-fit" disabled={mapSaving || !operatorEmail} onClick={() => void saveMappings()}>
-                      {mapSaving ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <Save className="size-3.5" aria-hidden="true" />}
-                      บันทึกการแมป ({mapDraft.length})
-                    </Button>
-                  </div>
-                </div>
+                      )}
 
-                {/* กฎที่ผูก */}
-                <div className="rounded-lg border p-3">
-                  <p className="flex items-center gap-1.5 text-xs font-semibold">
-                    <Braces className="size-3.5 text-emerald-700" aria-hidden="true" /> กฎตรวจสอบที่ผูกกับ element นี้ ({detail.rules.length} ข้อ)
-                  </p>
-                  {detail.rules.length === 0 ? (
-                    <p className="mt-2 text-xs text-muted-foreground">ยังไม่มีกฎผูก — ไปที่คลังกฎ (DQ Rule Library) เพื่อสร้างกฎโดยเลือก element นี้</p>
-                  ) : (
-                    <ul className="mt-2 space-y-1.5">
-                      {detail.rules.map((r) => (
-                        <li key={r.id} className="flex flex-wrap items-center gap-1.5 rounded border bg-muted/30 px-2 py-1.5 text-xs">
-                          <span className={`size-2 shrink-0 rounded-full ${SEVERITY_DOT[r.severity] ?? 'bg-slate-400'}`} aria-hidden="true" />
-                          <span className="font-medium">{r.conditionName}</span>
-                          <span className="font-mono text-[10px] text-muted-foreground">คอลัมน์ {r.column}</span>
-                          <span className="text-[10px] text-muted-foreground">เกณฑ์ผ่าน ≥ {r.threshold}%</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                      {/* editor */}
+                      <div className="mt-3 grid gap-2">
+                        <Select value={mapAssetId} onValueChange={(v) => void loadMappingAssetColumns(v)}>
+                          <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือกข้อมูลเพื่อแมปคอลัมน์">
+                            <SelectValue placeholder="— เลือกข้อมูลจากคลังเพื่อแมปคอลัมน์ —" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {assets.map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.name} · {a.columnCount} คอลัมน์
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {mapAssetId && (
+                          mapLoading ? (
+                            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> กำลังโหลดคอลัมน์…
+                            </div>
+                          ) : (
+                            <div className="grid max-h-40 gap-1 overflow-y-auto rounded border p-2 sm:grid-cols-2">
+                              {mapColumns.map((c) => {
+                                const checked = mapDraft.some((m) => m.assetId === mapAssetId && m.columnName === c.name)
+                                return (
+                                  <label key={c.name} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/60">
+                                    <Checkbox checked={checked} onCheckedChange={() => toggleMapping(mapAssetId, c.name)} aria-label={`แมปคอลัมน์ ${c.name}`} />
+                                    <span className="font-mono">{c.name}</span>
+                                    <span className="text-[10px] text-muted-foreground">{DATA_TYPE_LABELS[c.dataType] ?? c.dataType}</span>
+                                  </label>
+                                )
+                              })}
+                              {mapColumns.length === 0 && <p className="p-2 text-xs text-muted-foreground">ไม่พบคอลัมน์</p>}
+                            </div>
+                          )
+                        )}
+                        <Button size="sm" variant="outline" className="w-full sm:w-fit" disabled={mapSaving || !operatorEmail} onClick={() => void saveMappings()}>
+                          {mapSaving ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <Save className="size-3.5" aria-hidden="true" />}
+                          บันทึกการแมป ({mapDraft.length})
+                        </Button>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  {/* ------------------------- แท็บ 3: Meta Data เชิงปฏิบัติการ — กรอกมือ (ซ้าย) คู่กับค่าจริงจากระบบ (ขวา) ------------------------- */}
+                  <TabsContent value="operational" className="mt-3 space-y-3">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-lg border p-3">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold">
+                          <Pencil className="size-3.5 text-emerald-700" aria-hidden="true" /> กรอกมือ (Meta Data)
+                        </p>
+                        <div className="mt-2 grid gap-2">
+                          <MetaField
+                            label="ความถี่การปรับปรุงข้อมูล"
+                            value={(detail.opUpdateFrequency && OP_UPDATE_FREQUENCY_LABELS[detail.opUpdateFrequency as OpUpdateFrequency]?.th) || 'ไม่ระบุ'}
+                          />
+                          <MetaField label="หมายเหตุเชิงปฏิบัติการ" value={detail.opNotes || '—'} wide />
+                        </div>
+                        <p className="mt-2 flex items-start gap-1.5 text-[10px] text-muted-foreground">
+                          <Info className="mt-0.5 size-3 shrink-0" aria-hidden="true" /> แก้ไขส่วนนี้ได้จากปุ่ม &quot;แก้ไข Meta Data&quot; ด้านล่าง
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 p-3">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold">
+                          <Boxes className="size-3.5 text-emerald-700" aria-hidden="true" /> ค่าจริงจากระบบ (อ่านอย่างเดียว)
+                        </p>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <MetaField label="คอลัมน์ที่แมป" value={`${detailOps?.mappingCount ?? 0} คอลัมน์ / ${detailOps?.assetCount ?? 0} ข้อมูล`} />
+                          <MetaField label="กฎที่ผูกใช้งาน" value={`${detailOps?.ruleCount ?? 0} ข้อ`} />
+                          <MetaField label="ชุดข้อมูลที่ตรวจ" value={`${detailOps?.datasetCount ?? 0} ชุด`} />
+                          <MetaField label="รันตรวจล่าสุด" value={detailOps?.lastRunAt ? fmtDateTime(detailOps.lastRunAt) : 'ยังไม่เคยรัน'} />
+                          <MetaField
+                            label="คะแนน element ล่าสุด"
+                            value={detailOps?.lastScore != null ? `${detailOps.lastScore.toFixed(1)} / 100 (ถ่วงแถว)` : 'ยังไม่มีผลรัน'}
+                          />
+                          <MetaField label="แถวที่ประเมินล่าสุด" value={`${detailOps?.lastRows ?? 0} แถว · กฎไม่ผ่าน ${detailOps?.lastFailedRules ?? 0}`} />
+                        </div>
+                        {detailOps && detailOps.datasetNames.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {detailOps.datasetNames.map((n) => (
+                              <span key={n} className="rounded-full border bg-background px-2 py-0.5 text-[10px] text-muted-foreground">{n}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* กฎที่ผูก */}
+                    <div className="rounded-lg border p-3">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold">
+                        <Braces className="size-3.5 text-emerald-700" aria-hidden="true" /> กฎตรวจสอบที่ผูกกับ element นี้ ({detail.rules.length} ข้อ)
+                      </p>
+                      {detail.rules.length === 0 ? (
+                        <p className="mt-2 text-xs text-muted-foreground">ยังไม่มีกฎผูก — ไปที่คลังกฎ (DQ Rule Library) เพื่อสร้างกฎโดยเลือก element นี้</p>
+                      ) : (
+                        <ul className="mt-2 space-y-1.5">
+                          {detail.rules.map((r) => (
+                            <li key={r.id} className="flex flex-wrap items-center gap-1.5 rounded border bg-muted/30 px-2 py-1.5 text-xs">
+                              <span className={`size-2 shrink-0 rounded-full ${SEVERITY_DOT[r.severity] ?? 'bg-slate-400'}`} aria-hidden="true" />
+                              <span className="font-medium">{r.conditionName}</span>
+                              <span className="font-mono text-[10px] text-muted-foreground">คอลัมน์ {r.column}</span>
+                              <span className="text-[10px] text-muted-foreground">เกณฑ์ผ่าน ≥ {r.threshold}%</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  {/* ------------------------- แท็บ 4: Meta Data ธรรมาภิบาล ------------------------- */}
+                  <TabsContent value="governance" className="mt-3 space-y-3">
+                    {/* ผู้รับผิดชอบ 3 บทบาท — เลือกจากผู้ใช้ในระบบ คนละ 1 คนต่อบทบาท */}
+                    <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-3">
+                      <div>
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">เจ้าของข้อมูล (Data Owner)</p>
+                        <p className="mt-0.5 text-xs font-medium">{detailStewardship?.owner ? detailStewardship.owner.name : '— ไม่ระบุ —'}</p>
+                        {detailStewardship?.owner && <p className="text-[10px] text-muted-foreground">{detailStewardship.owner.roleTh ?? ''} · {detailStewardship.owner.email}</p>}
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">ผู้ดูแลข้อมูล (Data Steward)</p>
+                        <p className="mt-0.5 text-xs font-medium">{detailStewardship?.steward ? detailStewardship.steward.name : '— ไม่ระบุ —'}</p>
+                        {detailStewardship?.steward && <p className="text-[10px] text-muted-foreground">{detailStewardship.steward.roleTh ?? ''} · {detailStewardship.steward.email}</p>}
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">ผู้เก็บรักษาข้อมูล (Data Custodian)</p>
+                        <p className="mt-0.5 text-xs font-medium">{detailStewardship?.custodian ? detailStewardship.custodian.name : '— ไม่ระบุ —'}</p>
+                        {detailStewardship?.custodian && <p className="text-[10px] text-muted-foreground">{detailStewardship.custodian.roleTh ?? ''} · {detailStewardship.custodian.email}</p>}
+                      </div>
+                    </div>
+
+                    {/* PII + การจำแนก (ใช้ฟิลด์เดิมมาแสดงใหม่ในกลุ่มธรรมาภิบาล) + ธงพิเศษที่มีผลต่อระบบจริง */}
+                    <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
+                      <MetaField label="ข้อมูลส่วนบุคคล (PII)" value={detail.pii ? 'เป็น PII — ปิดบังค่าตามบทบาทเมื่อแสดงผล (PDPA)' : 'ไม่ใช่'} />
+                      <MetaField
+                        label="การจำแนกข้อมูล"
+                        value={
+                          detail.classification && detail.classification !== 'UNCLASSIFIED'
+                            ? (DATA_CLASSIFICATIONS.find((c) => c.id === detail?.classification)?.th ?? detail.classification)
+                            : 'ไม่ระบุ'
+                        }
+                      />
+                      <div>
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">ธง CDE (Critical Data Element)</p>
+                        <p className={`mt-0.5 text-xs ${detail.isCde ? 'font-medium text-amber-800' : 'text-foreground'}`}>
+                          {detail.isCde ? 'เปิด — แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำแยกเป็นความเสี่ยง · เตือนเมื่อยังไม่มีกฎผูก' : 'ปิด'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">ธงการเงิน (Financial Reporting)</p>
+                        <p className={`mt-0.5 text-xs ${detail.isFinancial ? 'font-medium text-teal-800' : 'text-foreground'}`}>
+                          {detail.isFinancial ? 'เปิด — แดชบอร์ดผู้บริหารนับความเสี่ยงต่อการรายงานทางการเงินเมื่อคะแนนต่ำกว่าเกณฑ์' : 'ปิด'}
+                        </p>
+                      </div>
+                      {detail.customFields && detail.customFields !== '{}' && <MetaField label="Field เสริม" value={detail.customFields} wide />}
+                    </div>
+
+                    {/* Workflow อนุมัติ — สิทธิ์เดิม: ส่ง = MANAGE_DATASETS · อนุมัติ/ส่งกลับ/เลิกใช้ = APPROVE_EXCEPTIONS */}
+                    <div className="rounded-lg border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold">
+                          <ShieldCheck className="size-3.5 text-emerald-700" aria-hidden="true" /> สถานะและการอนุมัติ (Workflow)
+                        </p>
+                        <div className="flex items-center gap-1.5">
+                          {detail.pendingApproval && (
+                            <Badge variant="outline" className="border-sky-300 bg-sky-50 text-[10px] text-sky-800">
+                              <Clock3 className="mr-0.5 size-2.5" aria-hidden="true" /> รออนุมัติ
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className={`text-[10px] ${(ELEMENT_STATUS_LABELS[detail.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE).chip}`}>
+                            {(ELEMENT_STATUS_LABELS[detail.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE).th}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <MetaField
+                          label="ผู้อนุมัติล่าสุด"
+                          value={
+                            detail.approvedBy
+                              ? `${detail.approvedBy}${detail.approvedAt ? ` · ${fmtDateTime(detail.approvedAt)}` : ''}`
+                              : 'ไม่มีประวัติอนุมัติ (สร้างก่อนระบบ workflow หรือยังไม่เคยส่งขออนุมัติ)'
+                          }
+                          wide
+                        />
+                      </div>
+
+                      {detail.pendingApproval ? (
+                        <div className="mt-3 grid gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2.5">
+                          <p className="text-xs text-sky-900">
+                            element นี้รอการตัดสิน — เลือกผู้อนุมัติ (ต้องมีสิทธิ์ &quot;อนุมัติข้อยกเว้น&quot;: เจ้าของข้อมูล / เจ้าหน้าที่กำกับดูแล / ผู้บริหาร)
+                          </p>
+                          <Select value={approverEmail} onValueChange={setApproverEmail}>
+                            <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือกผู้อนุมัติ">
+                              <SelectValue placeholder="— เลือกผู้อนุมัติ —" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {approvers.map((u) => (
+                                <SelectItem key={u.email} value={u.email}>
+                                  {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            value={workflowNote}
+                            onChange={(ev) => setWorkflowNote(ev.target.value)}
+                            placeholder="เหตุผลประกอบการส่งกลับ (ไม่บังคับ — บันทึกใน Audit Trail)"
+                            className="h-8 text-xs"
+                            aria-label="เหตุผลการส่งกลับ"
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 text-white hover:bg-emerald-700"
+                              disabled={workflowBusy || !approverEmail}
+                              onClick={() => void doWorkflowAction('APPROVE')}
+                            >
+                              {workflowBusy ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-3.5" aria-hidden="true" />}
+                              อนุมัติ (ACTIVE)
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                              disabled={workflowBusy || !approverEmail}
+                              onClick={() => void doWorkflowAction('REJECT_APPROVAL', workflowNote)}
+                            >
+                              <XCircle className="size-3.5" aria-hidden="true" /> ส่งกลับให้แก้ไข
+                            </Button>
+                          </div>
+                        </div>
+                      ) : detail.status === 'DRAFT' || detail.status === 'DEPRECATED' ? (
+                        <div className="mt-3 grid gap-2 rounded-lg border bg-muted/40 p-2.5">
+                          <p className="text-xs text-muted-foreground">
+                            ส่งขออนุมัติเพื่อเปิดใช้งาน — ผู้ดำเนินการหน้านี้ ({operatorEmail || 'ยังไม่เลือก'}) ต้องมีสิทธิ์ &quot;จัดการชุดข้อมูล&quot;
+                            {detail.status === 'DEPRECATED' && ' · อนุมัติแล้วจะกลับมาใช้งาน (ACTIVE) อีกครั้ง'}
+                          </p>
+                          <Button
+                            size="sm"
+                            className="w-fit bg-emerald-600 text-white hover:bg-emerald-700"
+                            disabled={workflowBusy || !operatorEmail}
+                            onClick={() => void doWorkflowAction('SUBMIT_APPROVAL')}
+                          >
+                            {workflowBusy ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <Send className="size-3.5" aria-hidden="true" />}
+                            ส่งขออนุมัติ
+                          </Button>
+                        </div>
+                      ) : detail.status === 'ACTIVE' ? (
+                        <div className="mt-3 grid gap-2 rounded-lg border bg-muted/40 p-2.5">
+                          <p className="text-xs text-muted-foreground">เลิกใช้ element นี้ — กฎที่ผูกจะไม่ถูกรันในรอบโดเมนถัดไป (ต้องมีสิทธิ์อนุมัติ)</p>
+                          <Select value={approverEmail} onValueChange={setApproverEmail}>
+                            <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือกผู้ดำเนินการเลิกใช้">
+                              <SelectValue placeholder="— เลือกผู้ดำเนินการ (ต้องมีสิทธิ์อนุมัติ) —" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {approvers.map((u) => (
+                                <SelectItem key={u.email} value={u.email}>
+                                  {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            value={workflowNote}
+                            onChange={(ev) => setWorkflowNote(ev.target.value)}
+                            placeholder="เหตุผลการเลิกใช้ (ไม่บังคับ — บันทึกใน Audit Trail)"
+                            className="h-8 text-xs"
+                            aria-label="เหตุผลการเลิกใช้"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-fit border-amber-300 text-amber-800 hover:bg-amber-50"
+                            disabled={workflowBusy || !approverEmail}
+                            onClick={() => void doWorkflowAction('DEPRECATE', workflowNote)}
+                          >
+                            <Archive className="size-3.5" aria-hidden="true" /> เลิกใช้ (DEPRECATED)
+                          </Button>
+                        </div>
+                      ) : null}
+
+                      <p className="mt-2 flex items-start gap-1.5 text-[10px] text-muted-foreground">
+                        <Info className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                        สิทธิ์ตาม RBAC เดิม: ส่งขออนุมัติ = จัดการชุดข้อมูล · อนุมัติ/ส่งกลับ/เลิกใช้ = อนุมัติข้อยกเว้น — ทุกครั้งบันทึกผู้ดำเนินการใน Audit Trail
+                        ขณะรออนุมัติแก้ไข Meta Data ไม่ได้
+                      </p>
+                    </div>
+
+                    {/* Audit Trail ของ element นี้ */}
+                    <div className="rounded-lg border p-3">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold">
+                        <History className="size-3.5 text-emerald-700" aria-hidden="true" /> Audit Trail ของ element นี้ ({detailAudit.length} รายการล่าสุด)
+                      </p>
+                      {detailAudit.length === 0 ? (
+                        <p className="mt-2 text-xs text-muted-foreground">ยังไม่มีประวัติการทำรายการ</p>
+                      ) : (
+                        <ul className="mt-2 max-h-44 space-y-1.5 overflow-y-auto pr-1">
+                          {detailAudit.map((a) => (
+                            <li key={a.id} className="rounded border bg-muted/30 px-2 py-1.5 text-[11px]">
+                              <p className="font-medium">{a.detail}</p>
+                              <p className="mt-0.5 text-[10px] text-muted-foreground">{fmtDateTime(a.createdAt)}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </div>
 
               <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
@@ -1671,8 +2088,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
             <DialogTitle>{elFormMode === 'create' ? 'เพิ่ม Data Element' : 'แก้ไข Meta Data ของ Data Element'}</DialogTitle>
             <DialogDescription>
               {elFormMode === 'create'
-                ? `สร้างใต้โดเมนย่อย "${selectedDomainLabel}" — กรอก Meta Data ตามแนวคิด ISO/IEC 11179 (รหัส EL-#### สร้างอัตโนมัติ)`
-                : 'แก้ไขได้ทุกฟิลด์ Meta Data (ยกเว้นโดเมนย่อย — ย้าย = ลบแล้วสร้างใหม่เพื่อคงประวัติ)'}
+                ? `สร้างใต้โดเมนย่อย "${selectedDomainLabel}" — กรอก Meta Data 4 กลุ่มครั้งเดียวต่อ element (รหัส EL-#### สร้างอัตโนมัติ · สถานะเริ่มต้น "ร่าง" ต้องผ่านการอนุมัติจึงใช้งานได้)`
+                : 'แก้ไขได้ทุกฟิลด์ Meta Data (สถานะเปลี่ยนผ่าน workflow อนุมัติในแท็บธรรมาภิบาล · ย้ายโดเมนย่อย = ลบแล้วสร้างใหม่เพื่อคงประวัติ)'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -1740,26 +2157,52 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 <Input id="el-unit" value={elUnit} onChange={(e) => setElUnit(e.target.value)} maxLength={40} placeholder="เช่น THB, %" />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="el-status">สถานะทะเบียน</Label>
-                <Select value={elStatus} onValueChange={setElStatus}>
-                  <SelectTrigger id="el-status" aria-label="สถานะของ element">
-                    <SelectValue />
+                <Label>สถานะ (workflow อนุมัติ)</Label>
+                <div className="flex h-9 items-center">
+                  <Badge variant="outline" className={`text-[11px] ${(ELEMENT_STATUS_LABELS[elStatus as ElementStatus] ?? ELEMENT_STATUS_LABELS.DRAFT).chip}`}>
+                    {(ELEMENT_STATUS_LABELS[elStatus as ElementStatus] ?? ELEMENT_STATUS_LABELS.DRAFT).th}
+                  </Badge>
+                  <span className="ml-2 text-[10px] text-muted-foreground">เปลี่ยนผ่านแท็บธรรมาภิบาล</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="el-owner">เจ้าของข้อมูล (Data Owner)</Label>
+                <Select value={elOwner || NO_DOMAIN} onValueChange={(v) => setElOwner(v === NO_DOMAIN ? '' : v)}>
+                  <SelectTrigger id="el-owner" aria-label="เจ้าของข้อมูล">
+                    <SelectValue placeholder="— ไม่ระบุ —" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ELEMENT_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {ELEMENT_STATUS_LABELS[s].th} ({s})
+                    <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
+                    {users.map((u) => (
+                      <SelectItem key={u.email} value={u.email}>
+                        {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="el-owner">เจ้าของข้อมูล (Steward)</Label>
-                <Select value={elOwner || NO_DOMAIN} onValueChange={(v) => setElOwner(v === NO_DOMAIN ? '' : v)}>
-                  <SelectTrigger id="el-owner" aria-label="เจ้าของข้อมูล">
+                <Label htmlFor="el-steward">ผู้ดูแลข้อมูล (Data Steward)</Label>
+                <Select value={elSteward || NO_DOMAIN} onValueChange={(v) => setElSteward(v === NO_DOMAIN ? '' : v)}>
+                  <SelectTrigger id="el-steward" aria-label="ผู้ดูแลข้อมูล">
+                    <SelectValue placeholder="— ไม่ระบุ —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
+                    {users.map((u) => (
+                      <SelectItem key={u.email} value={u.email}>
+                        {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="el-custodian">ผู้เก็บรักษาข้อมูล (Data Custodian)</Label>
+                <Select value={elCustodian || NO_DOMAIN} onValueChange={(v) => setElCustodian(v === NO_DOMAIN ? '' : v)}>
+                  <SelectTrigger id="el-custodian" aria-label="ผู้เก็บรักษาข้อมูล">
                     <SelectValue placeholder="— ไม่ระบุ —" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1797,6 +2240,59 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 <p className="text-[11px] text-muted-foreground">เมื่อเป็น PII ระบบจะปิดบังค่าตามบทบาทเมื่อแสดงผล (PDPA)</p>
               </div>
               <Switch id="el-pii" checked={elPii} onCheckedChange={setElPii} aria-label="เปิด/ปิดสถานะ PII" />
+            </div>
+            {/* ธงพิเศษ — เฉพาะธงที่มีผลต่อระบบจริง */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                <div>
+                  <Label htmlFor="el-cde" className="flex items-center gap-1 text-sm">
+                    <Star className="size-3.5 text-amber-600" aria-hidden="true" /> CDE — ข้อมูลวิกฤต
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำเป็นความเสี่ยง · เตือนเมื่อยังไม่มีกฎ</p>
+                </div>
+                <Switch id="el-cde" checked={elCde} onCheckedChange={setElCde} aria-label="เปิด/ปิดธง CDE" />
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50/60 p-3">
+                <div>
+                  <Label htmlFor="el-financial" className="flex items-center gap-1 text-sm">
+                    <Banknote className="size-3.5 text-teal-600" aria-hidden="true" /> ผลต่อการรายงานการเงิน
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">แดชบอร์ดผู้บริหารนับความเสี่ยงรายงานเงินเมื่อคะแนนต่ำกว่าเกณฑ์</p>
+                </div>
+                <Switch id="el-financial" checked={elFinancial} onCheckedChange={setElFinancial} aria-label="เปิด/ปิดธงการเงิน" />
+              </div>
+            </div>
+            {/* เชิงปฏิบัติการ — กรอกมือ (ค่าจริงจากระบบแสดงในหน้ารายละเอียด) */}
+            <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="el-opfreq">ความถี่การปรับปรุงข้อมูล (เชิงปฏิบัติการ)</Label>
+                <Select value={elOpFreq || NO_DOMAIN} onValueChange={(v) => setElOpFreq(v === NO_DOMAIN ? '' : v)}>
+                  <SelectTrigger id="el-opfreq" aria-label="ความถี่การปรับปรุงข้อมูล">
+                    <SelectValue placeholder="— ไม่ระบุ —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
+                    {OP_UPDATE_FREQUENCIES.map((f) => (
+                      <SelectItem key={f} value={f}>
+                        {OP_UPDATE_FREQUENCY_LABELS[f].th} ({f})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="el-opnotes">หมายเหตุเชิงปฏิบัติการ</Label>
+                <Input
+                  id="el-opnotes"
+                  value={elOpNotes}
+                  onChange={(e) => setElOpNotes(e.target.value)}
+                  maxLength={ELEMENT_TEXT_MAX}
+                  placeholder="เช่น โหลดข้อมูลทุกวัน 06:00 น. โดยทีม Data Engineering"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground sm:col-span-2">
+                ค่าจริงจากระบบ (จำนวนคอลัมน์ที่แมป / กฎ / ผลรันล่าสุด / คะแนน) แสดงคู่กันอัตโนมัติในแท็บ "เชิงปฏิบัติการ" ของหน้ารายละเอียด
+              </p>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="el-custom">Field เสริม (JSON object — ไม่บังคับ)</Label>
@@ -2017,6 +2513,16 @@ function MetaField({ label, value, wide = false }: { label: string; value: strin
       <p className="mt-0.5 break-words text-xs text-foreground">{value}</p>
     </div>
   )
+}
+
+/** แสดงวันเวลาแบบอ่านง่าย (th-TH) — null = "—" */
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+  } catch {
+    return iso
+  }
 }
 
 export default DataDomainConsole

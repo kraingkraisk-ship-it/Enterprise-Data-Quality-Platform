@@ -3,10 +3,10 @@ import { db } from '@/lib/db'
 import { hasPermission, ROLES } from '@/lib/rbac'
 import { buildRuleSentence, isDimensionKey, DIMENSION_LABELS } from '@/lib/dq'
 import { gradeOf } from '@/lib/dama'
-import { rollupByElement, type RollupRunInput } from '@/lib/elements'
+import { ELEMENT_FLAG_BELOW_THRESHOLD, rollupByElement, type RollupRunInput } from '@/lib/elements'
 
 /**
- * GET /api/executive/summary — ข้อมูลแดชบอร์ดผู้บริหาร (v0.17.0 · byDomain อัปเกรดเป็น Element Rollup ใน v0.19.0)
+ * GET /api/executive/summary — ข้อมูลแดชบอร์ดผู้บริหาร (v0.17.0 · byDomain Element Rollup ใน v0.19.0 · governance ธง CDE/การเงินใน v0.20.0)
  * query: viewer=<email> (บังคับ — ตรวจสิทธิ์ VIEW_EXEC_DASHBOARD) · days=30|90|180|365 · issuesMode=open|all
  *
  * นิยามคะแนน (ตรงกับหน้าบัตรคะแนน DQ — คำนวณจากผลรันจริง DqRun):
@@ -18,6 +18,9 @@ import { rollupByElement, type RollupRunInput } from '@/lib/elements'
  *     โดเมนหลัก = เฉลี่ยคะแนนโดเมนย่อยที่มี element อยู่
  *     ที่มาของ element: DqRule.dataElementId (การผูกกฎ–element ปัจจุบัน) — จึงครอบทั้งรันเดี่ยวและรันระดับโดเมน
  * - แนวโน้ม = เฉลี่ย passRate ของทุกผลรันในแต่ละวัน (เกิน 90 วัน → รวมเป็นรายสัปดาห์)
+ * - governance (v0.20.0 — ธง CDE/การเงินที่มีผลต่อระบบจริง) นับจาก element ACTIVE ในโดเมนที่แสดงใน byDomain.groups:
+ *     cdeTotal/cdeMeasured/cdeBelow (ธง isCde) · finTotal/finBelow (ธง isFinancial)
+ *     cdeBelow/finBelow = element ที่มีคะแนน rollup ล่าสุดและคะแนน < ELEMENT_FLAG_BELOW_THRESHOLD (85 — เกรด "ต้องปรับปรุง" หรือ "วิกฤต")
  * อ่านอย่างเดียว — ไม่มี PII (คะแนน/สถานะล้วน)
  */
 
@@ -85,7 +88,7 @@ export async function GET(req: NextRequest) {
       db.dataDomain.findMany({ orderBy: [{ position: 'asc' }, { name: 'asc' }], select: { id: true, name: true, color: true, parentId: true, parent: { select: { name: true } } } }),
       db.dataElement.findMany({
         where: { status: 'ACTIVE' },
-        select: { id: true, code: true, nameTh: true, subDomainId: true, subDomain: { select: { id: true, name: true, parentId: true } } },
+        select: { id: true, code: true, nameTh: true, isCde: true, isFinancial: true, subDomainId: true, subDomain: { select: { id: true, name: true, parentId: true } } },
         orderBy: [{ position: 'asc' }, { nameTh: 'asc' }],
       }),
     ])
@@ -189,13 +192,30 @@ export async function GET(req: NextRequest) {
         const subs = subsByParent.get(top.id) ?? []
         let elementCount = 0
         let elementsMeasured = 0
+        let cdeTotal = 0 // ธง CDE (v0.20.0)
+        let cdeMeasured = 0
+        let cdeBelow = 0
+        let finTotal = 0 // ธงการเงิน (v0.20.0)
+        let finBelow = 0
         const subScores: number[] = []
         for (const s of subs) {
           const els = elementsBySub.get(s.id) ?? []
           if (els.length === 0) continue // โดเมนย่อยไม่มี element — ไม่เข้าเฉลี่ย
           for (const e of els) {
             elementCount += 1
-            if (elementRollups.get(e.id)?.score != null) elementsMeasured += 1
+            const sc = elementRollups.get(e.id)?.score ?? null
+            if (sc != null) elementsMeasured += 1
+            // ธง CDE — นับความครอบคลุม + คะแนนต่ำกว่าเกณฑ์ 85 (เกรด "ต้องปรับปรุง"/"วิกฤต")
+            if (e.isCde) {
+              cdeTotal += 1
+              if (sc != null) cdeMeasured += 1
+              if (sc != null && sc < ELEMENT_FLAG_BELOW_THRESHOLD) cdeBelow += 1
+            }
+            // ธงการเงิน — เสี่ยงต่อการรายงานทางการเงินเมื่อคะแนนต่ำกว่าเกณฑ์
+            if (e.isFinancial) {
+              finTotal += 1
+              if (sc != null && sc < ELEMENT_FLAG_BELOW_THRESHOLD) finBelow += 1
+            }
           }
           subScores.push(els.reduce((sum, e) => sum + (elementRollups.get(e.id)?.score ?? 0), 0) / els.length)
         }
@@ -207,11 +227,28 @@ export async function GET(req: NextRequest) {
           parentName: null as string | null,
           elementCount,
           elementsMeasured,
+          cdeTotal,
+          cdeMeasured,
+          cdeBelow,
+          finTotal,
+          finBelow,
           score: Math.round(score * 10) / 10,
         }
       })
       .filter((g) => g.elementCount > 0) // โดเมนหลักที่ยังไม่มี element — ยังไม่มีคะแนน element rollup ให้แสดง
       .sort((a, b) => a.score - b.score) // แย่สุดก่อน
+
+    /* ธง CDE/การเงิน (v0.20.0) — สรุปรวมจากทุกโดเมนที่ถูกแสดงใน byDomain.groups เท่านั้น */
+    const governance = byDomain.reduce(
+      (acc, g) => ({
+        cdeTotal: acc.cdeTotal + g.cdeTotal,
+        cdeMeasured: acc.cdeMeasured + g.cdeMeasured,
+        cdeBelow: acc.cdeBelow + g.cdeBelow,
+        finTotal: acc.finTotal + g.finTotal,
+        finBelow: acc.finBelow + g.finBelow,
+      }),
+      { cdeTotal: 0, cdeMeasured: 0, cdeBelow: 0, finTotal: 0, finBelow: 0 },
+    )
 
     // ชุดข้อมูลที่ไม่สังกัดโดเมนใด — คะแนนยังคงมาจากชุดข้อมูล (เหมือนเดิม เพราะไม่มี element คลุม)
     const unassigned = { sum: 0, n: 0 }
@@ -311,6 +348,7 @@ export async function GET(req: NextRequest) {
         groups: byDomain,
         unassigned: { datasetCount: unassigned.n, score: unassigned.n > 0 ? Math.round((unassigned.sum / unassigned.n) * 10) / 10 : null },
       },
+      governance,
       trend: { days, weekly, points: trendPoints },
       criticalIssues: { mode: issuesMode, count: criticalCount, openCount: criticalOpen.length, totalCount: criticalAll.length, items: criticalItems },
       belowThreshold: { count: belowItems.length, items: belowItems.slice(0, 10) },

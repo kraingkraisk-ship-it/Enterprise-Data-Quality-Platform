@@ -48,6 +48,61 @@ export function isElementStatus(v: string): v is ElementStatus {
   return (ELEMENT_STATUSES as readonly string[]).includes(v)
 }
 
+/**
+ * Meta Data 4 กลุ่ม (v0.20.0) — กรอกครั้งเดียวต่อ Data Element (ระดับ element ไม่ใช่รายคอลัมน์)
+ * 1) เชิงธุรกิจ (Business) 2) เชิงเทคนิค (Technical) 3) เชิงปฏิบัติการ (Operational) 4) ธรรมาภิบาล (Governance)
+ */
+export const META_GROUPS = [
+  { key: 'BUSINESS', th: 'เชิงธุรกิจ', en: 'Business', desc: 'ความหมายและขอบเขตของข้อมูล' },
+  { key: 'TECHNICAL', th: 'เชิงเทคนิค', en: 'Technical', desc: 'รูปแบบข้อมูลและการแมปคอลัมน์จริง' },
+  { key: 'OPERATIONAL', th: 'เชิงปฏิบัติการ', en: 'Operational', desc: 'การกรอกมือคู่กับค่าจริงจากระบบ' },
+  { key: 'GOVERNANCE', th: 'ธรรมาภิบาล', en: 'Governance', desc: 'ผู้รับผิดชอบ · PII · การอนุมัติ' },
+] as const
+
+/** บทบาท Data Stewardship — เลือกผู้ใช้ในระบบ คนละ 1 คนต่อบทบาท (v0.20.0) */
+export const STEWARDSHIP_ROLES = [
+  { key: 'owner', th: 'เจ้าของข้อมูล', en: 'Data Owner', hint: 'กำกับนโยบายและรับผิดชอบข้อมูลนี้' },
+  { key: 'steward', th: 'ผู้ดูแลข้อมูล', en: 'Data Steward', hint: 'ดูแลคุณภาพและนิยามในงานประจำวัน' },
+  { key: 'custodian', th: 'ผู้เก็บรักษาข้อมูล', en: 'Data Custodian', hint: 'ดูแลการจัดเก็บ/สำรอง/สิทธิ์เข้าถึงเชิงเทคนิค' },
+] as const
+export type StewardshipRoleKey = (typeof STEWARDSHIP_ROLES)[number]['key']
+
+/** ความถี่การปรับปรุงข้อมูล (เชิงปฏิบัติการ — กรอกมือ) (v0.20.0) */
+export const OP_UPDATE_FREQUENCIES = ['REALTIME', 'HOURLY', 'DAILY', 'WEEKLY', 'MONTHLY', 'ON_DEMAND'] as const
+export type OpUpdateFrequency = (typeof OP_UPDATE_FREQUENCIES)[number]
+
+export const OP_UPDATE_FREQUENCY_LABELS: Record<OpUpdateFrequency, { th: string; en: string }> = {
+  REALTIME: { th: 'แบบเรียลไทม์', en: 'Realtime' },
+  HOURLY: { th: 'ทุกชั่วโมง', en: 'Hourly' },
+  DAILY: { th: 'รายวัน', en: 'Daily' },
+  WEEKLY: { th: 'รายสัปดาห์', en: 'Weekly' },
+  MONTHLY: { th: 'รายเดือน', en: 'Monthly' },
+  ON_DEMAND: { th: 'ตามคำสั่ง (On demand)', en: 'On demand' },
+}
+
+export function isOpUpdateFrequency(v: string): v is OpUpdateFrequency {
+  return (OP_UPDATE_FREQUENCIES as readonly string[]).includes(v)
+}
+
+/** ธงพิเศษที่ "มีผลต่อระบบจริง" — ทุกธงต้องมีผลที่โค้ดอ่านจริง (v0.20.0) */
+export const ELEMENT_FLAGS = [
+  {
+    key: 'isCde',
+    th: 'CDE — ข้อมูลวิกฤต',
+    en: 'Critical Data Element',
+    effect: 'แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำกว่าเกณฑ์ (เกรด < ดี) แยกเป็นความเสี่ยง · เตือนเมื่อยังไม่มีกฎผูก',
+  },
+  {
+    key: 'isFinancial',
+    th: 'การเงิน',
+    en: 'Financial Reporting Impact',
+    effect: 'แดชบอร์ดผู้บริหารนับความเสี่ยงต่อการรายงานทางการเงินเมื่อคะแนนต่ำกว่าเกณฑ์',
+  },
+] as const
+
+/** คะแนน element ต่ำกว่าค่านี้ = เกรด "ต้องปรับปรุง" หรือ "วิกฤต" (ใช้นับ CDE/Financial คะแนนต่ำ) — ตรงกับเกรด ดี (85) ใน lib/dama */
+export const ELEMENT_FLAG_BELOW_THRESHOLD = 85
+
 /* ------------------------------------------------------------------ */
 /* Types — รูปทรงข้อมูลที่ API คืนให้ UI                               */
 /* ------------------------------------------------------------------ */
@@ -71,6 +126,12 @@ export interface ElementItem {
   classification: string
   status: string
   position: number
+  /** ธง CDE — ข้อมูลวิกฤต (v0.20.0) */
+  isCde: boolean
+  /** ธงผลกระทบการเงิน (v0.20.0) */
+  isFinancial: boolean
+  /** กำลังรออนุมัติ (workflow v0.20.0) */
+  pendingApproval: boolean
   /** จำนวนกฎ DQ ที่ผูกกับ element นี้ */
   ruleCount: number
   /** จำนวนคอลัมน์จริงที่แมปไว้ */

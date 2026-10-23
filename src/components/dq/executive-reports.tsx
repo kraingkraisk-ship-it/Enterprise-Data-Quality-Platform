@@ -14,6 +14,7 @@ import { APP_VERSION } from '@/lib/views'
 /* Executive Reports (v0.17.0) — เมนูแยกสำหรับพิมพ์/บันทึก PDF          */
 /* เลย์เอาต์รายงานสะอาด (พื้นขาว) — ปุ่มควบคุมถูกซ่อนตอนพิมพ์ (print:hidden) */
 /* ใช้ API เดียวกับแดชบอร์ดผู้บริหาร — สิทธิ์ VIEW_EXEC_DASHBOARD          */
+/* v0.20.0 — คอลัมน์ element + ความครอบคลุมธง CDE/การเงิน (governance)  */
 /* ------------------------------------------------------------------ */
 
 interface ApiUser {
@@ -39,9 +40,10 @@ interface ExecSummary {
   rules: { passed: number; failed: number; skipped: number; total: number }
   byDomain: {
     method: string
-    groups: Array<{ id: string; name: string; color: string; parentName: string | null; elementCount: number; elementsMeasured: number; score: number }>
+    groups: Array<{ id: string; name: string; color: string; parentName: string | null; elementCount: number; elementsMeasured: number; cdeTotal: number; cdeMeasured: number; cdeBelow: number; finTotal: number; finBelow: number; score: number }>
     unassigned: { datasetCount: number; score: number | null }
   }
+  governance: { cdeTotal: number; cdeMeasured: number; cdeBelow: number; finTotal: number; finBelow: number }
   trend: { days: number; weekly: boolean; points: Array<{ date: string; label: string; score: number; runs: number }> }
   criticalIssues: { mode: string; count: number; openCount: number; totalCount: number }
   belowThreshold: { count: number; items: Array<{ id: string; sentence: string; severity: string; passRate: number; threshold: number; gap: number }> }
@@ -277,7 +279,11 @@ export default function ExecutiveReports({ active }: { active?: boolean }) {
                 {data.byDomain.groups.map((g) => (
                   <tr key={g.id} className="border-b text-slate-800">
                     <td className="px-3 py-2">{g.parentName && <span className="text-slate-500">{g.parentName} / </span>}{g.name}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{g.elementsMeasured}/{g.elementCount}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {g.elementsMeasured}/{g.elementCount}
+                      {g.cdeTotal > 0 && <span className="text-slate-600"> · CDE {g.cdeMeasured}/{g.cdeTotal}</span>}
+                      {g.cdeBelow > 0 && <span className="font-semibold text-amber-700"> · CDE ต่ำ {g.cdeBelow}</span>}
+                    </td>
                     <td className={`px-3 py-2 text-right font-bold tabular-nums ${g.score >= 90 ? 'text-emerald-700' : g.score >= 75 ? 'text-amber-700' : 'text-rose-700'}`}>
                       {g.score.toFixed(1)}
                     </td>
@@ -299,6 +305,13 @@ export default function ExecutiveReports({ active }: { active?: boolean }) {
                 )}
               </tbody>
             </table>
+            {data.byDomain.groups.length > 0 && (data.governance.cdeTotal > 0 || data.governance.finTotal > 0) && (
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
+                ธง CDE วัดครอบคลุม {data.governance.cdeMeasured}/{data.governance.cdeTotal} รายการ{data.governance.cdeBelow > 0 ? ` · ต่ำกว่าเกณฑ์ ${data.governance.cdeBelow} รายการ` : ''}
+                {' · '}ธงการเงิน {data.governance.finTotal} รายการ{data.governance.finBelow > 0 ? ` · ต่ำกว่าเกณฑ์ ${data.governance.finBelow} รายการ` : ''}
+                {' '}(คะแนน element ต่ำกว่า 85 = เกรดต้องปรับปรุง/วิกฤต)
+              </p>
+            )}
           </section>
 
           {/* กฎต่ำกว่าเกณฑ์ */}
