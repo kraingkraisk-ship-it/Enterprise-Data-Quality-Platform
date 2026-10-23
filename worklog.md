@@ -1050,3 +1050,23 @@ Stage Summary:
 - GitHub ครบถ้วนถึง v0.20.0: Meta Data 4 กลุ่ม + ธง CDE/การเงินที่มีผลจริง + workflow อนุมัติ (สิทธิ์เดิม + Audit Trail)
 - สถานะ sync: remote = local 100% (หลัง push commit เอกสารรายการนี้) — ไม่มี artifact ค้าง local เท่านั้น
 - หมายเหตุสถานะระบบ: sandbox ถูกรีเซ็ตระหว่าง session — local git + ฐานข้อมูลถูกกู้คืน/seed ใหม่ก่อนพัฒนา v0.20.0 (ดู Task 34-a)
+
+---
+
+## Task ID: 35
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: ออกแบบฟีเจอร์ Data Mapping (v0.21.0) — วางแผน/ออกแบบก่อน ยังไม่ implement (รอคำตอบคำถามจากผู้ใช้)
+
+Work Log:
+- ผู้ใช้เสนอความต้องการใหม่: เพิ่มกระบวนการ Data Mapping — ระบุ source (data element) และ target (data element) เพื่อ mapping ข้อมูลกัน ระบุว่าเป็นข้อมูลชนิดเดียวกัน
+- ตัวอย่างโครงสร้างจากผู้ใช้: Data Domain (Customer) > Sub Data Domain (Customer Identification) > Business Data Element (Customer ID) > Source Mapping (CRM.customer_master.customer_no) / Target Mapping (DWH.dim_customer.customer_id)
+- ตรวจสอบสถานะ repo: v0.20.0 (commit c8d1679, tag v0.20.0, worklog 046960d) push สำเร็จ remote=local 100% worktree clean — งานถัดไปคือ v0.21.0
+- ศึกษา schema ปัจจุบัน: DataElement (มี status/workflow อนุมัติ/Owner-Steward-Custodian/CDE-Financial), DataElementColumnMapping (element ↔ คอลัมน์จริงใน Data Asset — คนละเรื่องกับ Data Mapping ที่เสนอ), AuditLog, บทบาท 8 แบบ (RBAC deny-by-default)
+- ศึกษา UI ปัจจุบัน: Dialog รายละเอียด Data Element มี 4 แท็บ (เชิงธุรกิจ/เชิงเทคนิค/เชิงปฏิบัติการ/ธรรมาภิบาล)
+- จัดทำข้อเสนอออกแบบ: โมเดล DataMapping (code MP-####, sourceElementId → targetElementId, mappingType, status workflow, audit fields) + กฎ deny-by-default (ห้ามแมปตัวเอง/ห้ามคู่ซ้ำ) + workflow อนุมัติแบบเดียวกับ v0.20.0 + UI (แท็บใหม่ใน dialog element + หน้ารวม) + ตัวอย่างเส้นทางแสดงผล Domain.SubDomain.Element
+- ยื่นคำถามชี้ขาด 7 ข้อให้ผู้ใช้ตอบก่อนเริ่มเขียนโค้ด (ตามวิธีทำงานที่ผู้ใช้กำหนด: ถามก่อนทำ)
+
+Stage Summary:
+- ยังไม่มีการแก้โค้ด/schema ใด ๆ — สถานะ repo คงอยู่ที่ v0.20.0
+- รอคำตอบ 7 คำถาม: (1) endpoint ต้องเป็น element ในระบบหรือข้อความอิสระ (2) N:N + กันซ้ำย้อนทิศ (3) แมปข้ามโดเมน (4) workflow/สิทธิ์ (5) mappingType (6) UI วางที่ไหน/ต้องการแผนผัง lineage หรือไม่ (7) นโยบายลบ element ที่มี mapping ผูกอยู่
+- commit เอกสารรายการนี้เป็น docs (local) — จะ push รวมกับ v0.21.0 เมื่อ implement เสร็จ
