@@ -888,3 +888,23 @@ Work Log:
 Stage Summary:
 - agent-browser E2E ผ่านทั้งหมด: หน้า 4 ระดับ (ต้นไม้ 8 โดเมน + 12 element, dialog ISO meta, mapping editor, ลบกันถูก) · Rule Builder (badge 4 กฎ + cascade) · รันโดเมนจริงบนหน้าเว็บ → 91.7/100 เกรด ดี + ตาราง element ถูกทุกค่า (100/85/90/ยังไม่ประเมิน) · console error = 0 (แก้ DialogTitle แล้ว) · mobile 390px NO-OVERFLOW · lint สะอาด
 - v0.18.0 ครบโจทย์ผู้ใช้ทุกข้อ: 4 ระดับ + Meta Data ดูรายละเอียด + กฎตรวจตาม element + flow นำเข้า→คลัง→แบ่ง→เลือกโดเมน→เลือกกฎราย element + rollup แสดงในผลรัน
+
+---
+Task ID: 30
+Agent: Z.ai Code (main session)
+Task: Push v0.18.0 ขึ้น GitHub (main + annotated tag) ด้วย GitHub PAT ใหม่ที่ผู้ใช้ให้มา
+
+Work Log:
+- รับ GitHub PAT ใหม่จากผู้ใช้ — ใช้แบบ one-time ผ่าน push URL เท่านั้น ไม่บันทึกลง disk / ไม่แตะ .git/config / ไม่เข้าไฟล์ใด ๆ
+- ตรวจก่อน push: main นำ remote (ca97e46) อยู่ 2 commits (`9d41157` docs Task 27 แผนออกแบบ + `863483b` v0.18.0) + annotated tag `v0.18.0` ชี้ `863483b`
+- `git push <url> main refs/tags/v0.18.0` → สำเร็จ: `ca97e46..863483b main`, `* [new tag] v0.18.0`
+- ตรวจสอบ remote ด้วย `git ls-remote` เทียบ SHA ระดับ commit:
+  - `refs/heads/main` = `863483b29799e2b5c0cd0fc623f4c42a2dfbd875` ✓ ตรงกับ local
+  - `refs/tags/v0.18.0^{}` = `863483b29799e2b5c0cd0fc623f4c42a2dfbd875` ✓ ตรงกับ local (tag ชี้ commit feat โดยตรง)
+- commit `docs(worklog)` รายการนี้แล้ว push ตามด้วย token เดียวกัน → remote = local 100%
+- แจ้งเตือนผู้ใช้: token ถูกวางลงแชต ควร revoke/rotate หลังใช้งาน (ระบบไม่จัดเก็บ token เลย)
+
+Stage Summary:
+- GitHub ครบถ้วนถึง v0.18.0: โครงสร้าง 4 ระดับ Data Domain > Sub > Element > Meta Data + Rule-Element binding + Domain Run Rollup
+- สถานะ sync: remote = local 100% (หลัง push commit เอกสารรายการนี้)
+- ไม่มี artifact ใดค้างบน local เท่านั้น — รอบถัดไปเริ่มจาก v0.18.0 ที่ push แล้ว
