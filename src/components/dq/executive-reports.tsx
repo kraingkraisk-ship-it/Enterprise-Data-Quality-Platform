@@ -38,7 +38,8 @@ interface ExecSummary {
   }
   rules: { passed: number; failed: number; skipped: number; total: number }
   byDomain: {
-    groups: Array<{ id: string; name: string; color: string; parentName: string | null; datasetCount: number; score: number }>
+    method: string
+    groups: Array<{ id: string; name: string; color: string; parentName: string | null; elementCount: number; elementsMeasured: number; score: number }>
     unassigned: { datasetCount: number; score: number | null }
   }
   trend: { days: number; weekly: boolean; points: Array<{ date: string; label: string; score: number; runs: number }> }
@@ -268,7 +269,7 @@ export default function ExecutiveReports({ active }: { active?: boolean }) {
               <thead>
                 <tr className="border-b bg-slate-50 text-left text-slate-700">
                   <th scope="col" className="px-3 py-2 font-semibold">โดเมนข้อมูล</th>
-                  <th scope="col" className="px-3 py-2 text-right font-semibold">ชุดข้อมูล</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold">Element (วัดแล้ว/ทั้งหมด)</th>
                   <th scope="col" className="px-3 py-2 text-right font-semibold">คะแนน</th>
                 </tr>
               </thead>
@@ -276,7 +277,7 @@ export default function ExecutiveReports({ active }: { active?: boolean }) {
                 {data.byDomain.groups.map((g) => (
                   <tr key={g.id} className="border-b text-slate-800">
                     <td className="px-3 py-2">{g.parentName && <span className="text-slate-500">{g.parentName} / </span>}{g.name}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{g.datasetCount}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{g.elementsMeasured}/{g.elementCount}</td>
                     <td className={`px-3 py-2 text-right font-bold tabular-nums ${g.score >= 90 ? 'text-emerald-700' : g.score >= 75 ? 'text-amber-700' : 'text-rose-700'}`}>
                       {g.score.toFixed(1)}
                     </td>
@@ -293,7 +294,7 @@ export default function ExecutiveReports({ active }: { active?: boolean }) {
                 )}
                 {data.byDomain.groups.length === 0 && data.byDomain.unassigned.datasetCount === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-3 py-4 text-center text-slate-500">ยังไม่มีชุดข้อมูลผูกโดเมน</td>
+                    <td colSpan={3} className="px-3 py-4 text-center text-slate-500">ยังไม่มีโดเมนที่มี Data Element</td>
                   </tr>
                 )}
               </tbody>

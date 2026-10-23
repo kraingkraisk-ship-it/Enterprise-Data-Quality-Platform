@@ -24,7 +24,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.18.1'
+export const APP_VERSION = 'v0.19.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -67,7 +67,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'exec-dashboard',
     th: 'แดชบอร์ดผู้บริหาร',
     en: 'Executive Dashboard',
-    desc: 'ภาพรวมระดับบริหาร 7 ส่วน: คะแนนรวม · คะแนนราย Data Domain · กฎผ่าน/ไม่ผ่าน · Critical Issues · แนวโน้ม 30/90/180/365 วัน · กฎต่ำกว่าเกณฑ์ · ปัญหาเกินกำหนด',
+    desc: 'ภาพรวมระดับบริหาร 7 ส่วน: คะแนนรวม · คะแนนราย Data Domain (Element Rollup 4 ระดับ) · กฎผ่าน/ไม่ผ่าน · Critical Issues · แนวโน้ม 30/90/180/365 วัน · กฎต่ำกว่าเกณฑ์ · ปัญหาเกินกำหนด',
     icon: Crown,
   },
   'exec-reports': {

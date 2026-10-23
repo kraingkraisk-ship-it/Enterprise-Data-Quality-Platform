@@ -58,7 +58,8 @@ interface ExecSummary {
   }
   rules: { passed: number; failed: number; total: number }
   byDomain: {
-    groups: Array<{ id: string; name: string; color: string; parentName: string | null; datasetCount: number; score: number }>
+    method: string
+    groups: Array<{ id: string; name: string; color: string; parentName: string | null; elementCount: number; elementsMeasured: number; score: number }>
     unassigned: { datasetCount: number; score: number | null }
   }
   trend: { days: number; weekly: boolean; points: Array<{ date: string; label: string; score: number; runs: number }> }
@@ -385,10 +386,11 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
               <CardContent className="flex h-full flex-col gap-3 p-4">
                 <p className="flex items-center gap-1.5 text-sm font-semibold">
                   <CircleGauge className="size-4 shrink-0 text-emerald-700" aria-hidden="true" /> คะแนนแยกตาม Data Domain
+                  <span className="rounded-full border bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">Element Rollup</span>
                 </p>
                 {data.byDomain.groups.length === 0 && data.byDomain.unassigned.datasetCount === 0 ? (
                   <p className="flex flex-1 items-center justify-center rounded-lg border border-dashed py-12 text-sm text-muted-foreground">
-                    ยังไม่มีชุดข้อมูลผูกโดเมน — จัดโดเมนให้ชุดข้อมูลที่หน้า Data Domain ก่อน
+                    ยังไม่มีโดเมนที่มี Data Element — จัดโครงสร้าง 4 ระดับในหน้า Data Domain ก่อน
                   </p>
                 ) : (
                   <div className="max-h-72 space-y-2 overflow-y-auto rounded-lg border p-2">
@@ -402,7 +404,9 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
                               {g.parentName && <span className="text-muted-foreground">{g.parentName} / </span>}
                               {g.name}
                             </p>
-                            <p className="text-[10px] text-muted-foreground tabular-nums">{g.datasetCount} ชุดข้อมูล</p>
+                            <p className="text-[10px] text-muted-foreground tabular-nums">
+                              {g.elementCount} element · วัดแล้ว {g.elementsMeasured}
+                            </p>
                           </div>
                           <div className="hidden h-2 w-24 overflow-hidden rounded-full bg-muted sm:block" aria-hidden="true">
                             <div className={`h-full ${scoreBar(g.score)}`} style={{ width: `${Math.min(100, Math.max(0, g.score))}%` }} />
@@ -426,7 +430,7 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
                   </div>
                 )}
                 <p className="mt-auto text-[11px] text-muted-foreground">
-                  เรียงคะแนนแย่ที่สุดก่อน · คะแนนโดเมน = เฉลี่ยคะแนนชุดข้อมูลที่สังกัด (ชุดที่ไม่เคยรันนับ 0)
+                  เรียงคะแนนแย่ที่สุดก่อน · คะแนน element = ถ่วงแถวจากผลรันล่าสุดของกฎที่ผูก element → เฉลี่ยเป็นโดเมนย่อย → โดเมนหลัก (element ยังไม่ถูกวัด นับ 0)
                 </p>
               </CardContent>
             </Card>

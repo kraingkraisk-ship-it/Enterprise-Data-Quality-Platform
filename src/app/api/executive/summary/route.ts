@@ -3,15 +3,20 @@ import { db } from '@/lib/db'
 import { hasPermission, ROLES } from '@/lib/rbac'
 import { buildRuleSentence, isDimensionKey, DIMENSION_LABELS } from '@/lib/dq'
 import { gradeOf } from '@/lib/dama'
+import { rollupByElement, type RollupRunInput } from '@/lib/elements'
 
 /**
- * GET /api/executive/summary — ข้อมูลแดชบอร์ดผู้บริหาร (v0.17.0)
+ * GET /api/executive/summary — ข้อมูลแดชบอร์ดผู้บริหาร (v0.17.0 · byDomain อัปเกรดเป็น Element Rollup ใน v0.19.0)
  * query: viewer=<email> (บังคับ — ตรวจสิทธิ์ VIEW_EXEC_DASHBOARD) · days=30|90|180|365 · issuesMode=open|all
  *
  * นิยามคะแนน (ตรงกับหน้าบัตรคะแนน DQ — คำนวณจากผลรันจริง DqRun):
  * - คะแนนชุดข้อมูล = เฉลี่ย passRate ของผลรันล่าสุดรายกฎ (×100)
  * - ชุดข้อมูลที่ยังไม่เคยรันตรวจ = คะแนน 0 (ตามที่ผู้บริหารกำหนด)
- * - คะแนนโดเมน = เฉลี่ยคะแนนชุดข้อมูลที่สังกัดโดเมนนั้น (ผูกผ่าน Dataset.domainId — v0.16.0)
+ * - คะแนนโดเมน (v0.19.0 — Element Rollup ตามโครงสร้าง 4 ระดับ):
+ *     element = อัตราผ่านถ่วงน้ำหนักแถวของผลรันล่าสุดราย (กฎ × ชุดข้อมูล) ของกฎที่ผูก element นั้น
+ *     โดเมนย่อย = เฉลี่ยคะแนน element ทั้งหมดใต้โดเมนย่อย (element ที่ยังไม่ถูกวัด นับ 0 — นิยามผู้บริหาร "ไม่เคยรัน = 0")
+ *     โดเมนหลัก = เฉลี่ยคะแนนโดเมนย่อยที่มี element อยู่
+ *     ที่มาของ element: DqRule.dataElementId (การผูกกฎ–element ปัจจุบัน) — จึงครอบทั้งรันเดี่ยวและรันระดับโดเมน
  * - แนวโน้ม = เฉลี่ย passRate ของทุกผลรันในแต่ละวัน (เกิน 90 วัน → รวมเป็นรายสัปดาห์)
  * อ่านอย่างเดียว — ไม่มี PII (คะแนน/สถานะล้วน)
  */
@@ -50,7 +55,7 @@ export async function GET(req: NextRequest) {
     const cutoff = now - days * DAY_MS
 
     /* ------------------------- โหลดข้อมูลทั้งหมด ------------------------- */
-    const [datasets, runsWindow, templates, allRules, issuesRaw, allUsers, domains] = await Promise.all([
+    const [datasets, runsWindow, templates, allRules, issuesRaw, allUsers, domains, elements] = await Promise.all([
       db.dataset.findMany({
         where: { status: 'ACTIVE' },
         orderBy: { createdAt: 'asc' },
@@ -65,7 +70,11 @@ export async function GET(req: NextRequest) {
       db.conditionTemplate.findMany(),
       db.dqRule.findMany({
         where: { enabled: true },
-        include: { datasets: { include: { dataset: { select: { id: true, name: true } } }, orderBy: { datasetId: 'asc' } }, runs: { orderBy: { createdAt: 'desc' }, take: 1 } },
+        include: {
+          element: { select: { id: true, code: true, nameTh: true } },
+          datasets: { include: { dataset: { select: { id: true, name: true } } }, orderBy: { datasetId: 'asc' } },
+          runs: { orderBy: { createdAt: 'desc' }, take: 1 },
+        },
       }),
       db.dqIssue.findMany({
         where: issuesMode === 'all' ? {} : { status: { in: ['OPEN', 'IN_PROGRESS'] } },
@@ -74,6 +83,11 @@ export async function GET(req: NextRequest) {
       }),
       db.user.findMany({ select: { email: true, name: true } }),
       db.dataDomain.findMany({ orderBy: [{ position: 'asc' }, { name: 'asc' }], select: { id: true, name: true, color: true, parentId: true, parent: { select: { name: true } } } }),
+      db.dataElement.findMany({
+        where: { status: 'ACTIVE' },
+        select: { id: true, code: true, nameTh: true, subDomainId: true, subDomain: { select: { id: true, name: true, parentId: true } } },
+        orderBy: [{ position: 'asc' }, { nameTh: 'asc' }],
+      }),
     ])
     const templateMap = new Map(templates.map((t) => [t.key, t]))
     const datasetNameMap = new Map(datasets.map((d) => [d.id, d.name]))
@@ -140,35 +154,73 @@ export async function GET(req: NextRequest) {
       .map(([date, cell]) => ({ date, label: date.slice(5).replace('-', '/'), score: Math.round((cell.sum / cell.n) * 10) / 10, runs: cell.n }))
       .sort((a, b) => (a.date < b.date ? -1 : 1))
 
-    /* ------------------- คะแนนรายโดเมน ------------------- */
-    const domainById = new Map(domains.map((d) => [d.id, d]))
-    const domainAgg = new Map<string, { sum: number; n: number }>()
+    /* ------------------- คะแนนรายโดเมน (v0.19.0 — Element Rollup 4 ระดับ) ------------------- */
+    // ที่มาคะแนน element: กฎที่ผูก element (DqRule.dataElementId) × ผลรันล่าสุดราย (กฎ × ชุดข้อมูล)
+    // วิธีคำนวณเดียวกับ rollup หน้ารันระดับโดเมน (src/lib/elements.ts — ถ่วงน้ำหนักจำนวนแถว)
+    const elementRollupInputs: RollupRunInput[] = []
+    for (const r of allRules) {
+      if (!r.element) continue
+      for (const rd of r.datasets) {
+        const run = latestMap.get(`${r.id}|${rd.datasetId}`)
+        if (run) {
+          elementRollupInputs.push({ dataElementId: r.element.id, totalRows: run.totalRows, passRate: run.passRate, status: run.status })
+        }
+      }
+    }
+    const elementRollups = rollupByElement(elementRollupInputs)
+
+    const elementsBySub = new Map<string, typeof elements>()
+    for (const e of elements) {
+      const arr = elementsBySub.get(e.subDomainId) ?? []
+      arr.push(e)
+      elementsBySub.set(e.subDomainId, arr)
+    }
+    const subsByParent = new Map<string, typeof domains>()
+    for (const d of domains) {
+      if (d.parentId === null) continue
+      const arr = subsByParent.get(d.parentId) ?? []
+      arr.push(d)
+      subsByParent.set(d.parentId, arr)
+    }
+
+    const byDomain = domains
+      .filter((d) => d.parentId === null)
+      .map((top) => {
+        const subs = subsByParent.get(top.id) ?? []
+        let elementCount = 0
+        let elementsMeasured = 0
+        const subScores: number[] = []
+        for (const s of subs) {
+          const els = elementsBySub.get(s.id) ?? []
+          if (els.length === 0) continue // โดเมนย่อยไม่มี element — ไม่เข้าเฉลี่ย
+          for (const e of els) {
+            elementCount += 1
+            if (elementRollups.get(e.id)?.score != null) elementsMeasured += 1
+          }
+          subScores.push(els.reduce((sum, e) => sum + (elementRollups.get(e.id)?.score ?? 0), 0) / els.length)
+        }
+        const score = subScores.length > 0 ? subScores.reduce((a, b) => a + b, 0) / subScores.length : 0
+        return {
+          id: top.id,
+          name: top.name,
+          color: top.color,
+          parentName: null as string | null,
+          elementCount,
+          elementsMeasured,
+          score: Math.round(score * 10) / 10,
+        }
+      })
+      .filter((g) => g.elementCount > 0) // โดเมนหลักที่ยังไม่มี element — ยังไม่มีคะแนน element rollup ให้แสดง
+      .sort((a, b) => a.score - b.score) // แย่สุดก่อน
+
+    // ชุดข้อมูลที่ไม่สังกัดโดเมนใด — คะแนนยังคงมาจากชุดข้อมูล (เหมือนเดิม เพราะไม่มี element คลุม)
     const unassigned = { sum: 0, n: 0 }
     for (const d of datasets) {
-      const score = datasetScores.get(d.id) ?? 0
-      if (d.domainId) {
-        const cell = domainAgg.get(d.domainId) ?? { sum: 0, n: 0 }
-        cell.sum += score
-        cell.n += 1
-        domainAgg.set(d.domainId, cell)
-      } else {
-        unassigned.sum += score
+      if (!d.domainId) {
+        unassigned.sum += datasetScores.get(d.id) ?? 0
         unassigned.n += 1
       }
     }
-    const byDomain = [...domainAgg.entries()]
-      .map(([id, cell]) => {
-        const dm = domainById.get(id)
-        return {
-          id,
-          name: dm?.name ?? '(โดเมนถูกลบ)',
-          color: dm?.color ?? 'slate',
-          parentName: dm?.parent?.name ?? (dm?.parentId ? (domainById.get(dm.parentId)?.name ?? null) : null),
-          datasetCount: cell.n,
-          score: Math.round((cell.sum / cell.n) * 10) / 10,
-        }
-      })
-      .sort((a, b) => a.score - b.score)
 
     /* ------------------- Critical Issues ------------------- */
     const criticalAll = issuesRaw.filter((i) => i.severity === 'CRITICAL')
@@ -255,6 +307,7 @@ export async function GET(req: NextRequest) {
       },
       rules: { passed: rulesPassed, failed: rulesFailed, total: rulesPassed + rulesFailed },
       byDomain: {
+        method: 'ELEMENT_ROLLUP',
         groups: byDomain,
         unassigned: { datasetCount: unassigned.n, score: unassigned.n > 0 ? Math.round((unassigned.sum / unassigned.n) * 10) / 10 : null },
       },
