@@ -28,6 +28,7 @@ import {
   Banknote,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { EXCEPTION_ACTIONS, EXCEPTION_ACTION_KEYS } from '@/lib/mappings'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -143,6 +144,9 @@ interface ApiRule {
   filter: string | null
   severity: string
   threshold: number
+  /** การดำเนินการเมื่อกฎ fail (v0.22.0) — สรุปแสดงในหน้ารายละเอียด Mapping */
+  exceptionAction: string
+  exceptionActionNote: string
   enabled: boolean
   sentence: string
   /** Data Element ที่กฎผูกอยู่ (v0.18.0) — null = ยังไม่ผูก */
@@ -337,6 +341,9 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rbSeverity, setRbSeverity] = useState('MEDIUM')
   const [rbThreshold, setRbThreshold] = useState('95')
   const [rbFilter, setRbFilter] = useState('')
+  /* v0.22.0 — Exception Action เมื่อกฎ fail (แสดงสรุปในหน้ารายละเอียด Mapping) */
+  const [rbExceptionAction, setRbExceptionAction] = useState('')
+  const [rbExceptionActionNote, setRbExceptionActionNote] = useState('')
   const [rbParams, setRbParams] = useState<Record<string, string>>({})
   const [rbOperator, setRbOperator] = useState('somchai.owner@company.co.th')
   /* Data Element cascade (v0.18.0) — โดเมนหลัก → โดเมนย่อย → element */
@@ -707,6 +714,8 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         severity: rbSeverity,
         threshold: Number(rbThreshold) || 95,
         filter: rbFilter,
+        exceptionAction: rbExceptionAction || undefined,
+        exceptionActionNote: rbExceptionActionNote || undefined,
         dataElementId: rbElementId || undefined,
         operatorEmail: rbOperator,
       },
@@ -718,6 +727,8 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       setRbFilter('')
       setRbParams({})
       setRbElementId('')
+      setRbExceptionAction('')
+      setRbExceptionActionNote('')
       setRbStep(1) // กลับไปเริ่ม wizard ใหม่รอบถัดไป
       refetch()
     }
@@ -1458,6 +1469,38 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                       value={rbThreshold}
                       onChange={(e) => setRbThreshold(e.target.value)}
                       aria-label="ค่าผ่านขั้นต่ำเป็นเปอร์เซ็นต์"
+                    />
+                  </div>
+                </div>
+                {/* v0.22.0 — Exception Action เมื่อกฎ fail (สรุปแสดงในหน้ารายละเอียด Data Mapping) */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rb-exception-action">
+                      การดำเนินการเมื่อกฎไม่ผ่าน <span className="text-[10px] font-normal text-muted-foreground">— สรุปแสดงในรายละเอียด Mapping</span>
+                    </Label>
+                    <Select value={rbExceptionAction} onValueChange={setRbExceptionAction}>
+                      <SelectTrigger id="rb-exception-action">
+                        <SelectValue placeholder="ไม่ระบุ" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EXCEPTION_ACTION_KEYS.map((k) => (
+                          <SelectItem key={k} value={k}>
+                            {EXCEPTION_ACTIONS[k].th}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rb-exception-note">
+                      รายละเอียดการดำเนินการ <span className="text-[10px] font-normal text-muted-foreground">— ไม่บังคับ เช่น Reject record and create DQ incident</span>
+                    </Label>
+                    <Input
+                      id="rb-exception-note"
+                      value={rbExceptionActionNote}
+                      onChange={(e) => setRbExceptionActionNote(e.target.value)}
+                      placeholder={rbExceptionAction === 'OTHER' ? 'จำเป็นเมื่อเลือก "อื่น ๆ"' : 'เช่น Reject record and create DQ incident'}
+                      aria-label="รายละเอียดการดำเนินการเมื่อกฎไม่ผ่าน"
                     />
                   </div>
                 </div>

@@ -8,7 +8,6 @@ import { evaluateRule, DIMENSION_LABELS, type DimensionKey, type Row } from '../
 import { inferColumnType } from '../src/lib/asset'
 import { profileRows, PROFILE_MAX_ROWS } from '../src/lib/profiling'
 import { ELEMENT_CATALOG, nextElementCode, prettyColumnLabel, isElementDataType } from '../src/lib/elements'
-import { nextMappingCode } from '../src/lib/mappings'
 
 const db = new PrismaClient()
 
@@ -409,6 +408,8 @@ const RUN_BATCHES: Array<{ daysAgo: number; label: string }> = [
 
 async function main() {
   await db.dqRun.deleteMany()
+  await db.dataMapping.deleteMany() // v0.22.0 — ลบก่อน element (DataMapping → DataElement เป็น Restrict)
+  await db.dataElement.deleteMany()
   await db.dataAssetRecord.deleteMany()
   await db.dataAssetColumn.deleteMany()
   await db.dataAsset.deleteMany()
@@ -1044,6 +1045,8 @@ async function main() {
   //        กติกา: endpoint ต้องเป็น Data Element ในระบบและ ACTIVE เท่านั้น · ห้ามคู่ซ้ำทั้งทิศตรง/ทิศกลับ
   const mappingSeedActor = 'preecha.engineer@company.co.th'
   const mappingSeedApprover = 'somchai.owner@company.co.th'
+  // ตัวนับรหัส MAP-{PREFIX}-{seq} ต่อ prefix (v0.22.0)
+  const mappingCodeSeq = new Map<string, number>()
 
   async function ensureDomain(name: string, nameEn: string, description: string, color: string, parentId: string | null): Promise<string> {
     const found = await db.dataDomain.findFirst({ where: { name, parentId }, select: { id: true } })
@@ -1085,6 +1088,7 @@ async function main() {
     type: string,
     transformNote: string,
     note: string,
+    codePrefix: string,
   ): Promise<boolean> {
     const dup = await db.dataMapping.findFirst({
       where: {
@@ -1096,19 +1100,44 @@ async function main() {
       select: { id: true },
     })
     if (dup) return false
-    const last = await db.dataMapping.findFirst({ orderBy: { code: 'desc' }, select: { code: true } })
+    // v0.22.0 — รหัสรายใหม่ MAP-{DOMAIN}-{seq} นับต่อ prefix (เช่น MAP-CUST-001) ตามสเปกผู้ใช้
+    const seq = (mappingCodeSeq.get(codePrefix) ?? 0) + 1
+    mappingCodeSeq.set(codePrefix, seq)
+    const code = `MAP-${codePrefix}-${String(seq).padStart(3, '0')}`
     await db.dataMapping.create({
       data: {
-        code: nextMappingCode(last?.code),
+        code,
         sourceElementId: sourceId,
         targetElementId: targetId,
         mappingType: type,
         transformNote,
         note,
         status: 'ACTIVE',
+        version: '1.0',
         approvedBy: mappingSeedApprover,
         approvedAt: new Date(),
         createdBy: mappingSeedActor,
+      },
+    })
+    // Audit Trail รายรหัส — ให้หน้ารายละเอียด Mapping มีประวัติแสดงตั้งแต่แรก (v0.22.0)
+    const [srcEl, tgtEl] = await Promise.all([
+      db.dataElement.findUnique({ where: { id: sourceId }, select: { nameTh: true } }),
+      db.dataElement.findUnique({ where: { id: targetId }, select: { nameTh: true } }),
+    ])
+    await db.auditLog.create({
+      data: {
+        action: 'CREATE_DATA_MAPPING',
+        actor: mappingSeedActor,
+        target: code,
+        detail: `Seed เริ่มต้นระบบ: สร้าง Data Mapping ${code} (${srcEl?.nameTh} → ${tgtEl?.nameTh} · ${type}) — สถานะ DRAFT`,
+      },
+    })
+    await db.auditLog.create({
+      data: {
+        action: 'APPROVE_DATA_MAPPING',
+        actor: mappingSeedApprover,
+        target: code,
+        detail: `Seed เริ่มต้นระบบ: อนุมัติ Data Mapping ${code} — สถานะ ACTIVE เวอร์ชัน 1.0`,
       },
     })
     return true
@@ -1172,18 +1201,25 @@ async function main() {
       data: { status: 'ACTIVE', approvedBy: mappingSeedApprover, approvedAt: new Date() },
     })
   }
+  if (centralElement) {
+    // v0.22.0 — ตามสเปกตัวอย่าง Mapping Detail: Classification = Confidential (ข้อมูลส่วนบุคคลลูกค้า) + PII
+    await db.dataElement.update({
+      where: { id: centralElement.id },
+      data: { classification: 'CUSTOMER_PERSONAL', pii: true },
+    })
+  }
   const centralId = centralElement?.id
 
   let seededMappings = 0
   if (centralId) {
-    // 1) ต้นทาง CRM → element กลาง (DIRECT — ข้อมูลชนิดเดียวกัน)
-    if (await ensureMapping(crmCustomerNoId, centralId, 'DIRECT', '', 'แมปตรง 1:1 จากทะเบียนลูกค้าของระบบ CRM')) seededMappings++
+    // 1) ต้นทาง CRM → element กลาง (RENAME — ข้อมูลชนิดเดียวกัน เปลี่ยนชื่อ + TRIM ตามสเปก Mapping Detail v0.22.0)
+    if (await ensureMapping(crmCustomerNoId, centralId, 'RENAME', 'TRIM(customer_no)', 'แมปข้อมูลชนิดเดียวกัน: เปลี่ยนชื่อ customer_no → รหัสลูกค้า พร้อมตัดช่องว่างหัว-ท้าย (TRIM)', 'CUST')) seededMappings++
     // 2) element กลาง → คลังข้อมูล (DIRECT)
-    if (await ensureMapping(centralId, dwhCustomerId, 'DIRECT', '', 'โหลดเข้ามิติลูกค้าของคลังข้อมูลทุกคืน')) seededMappings++
+    if (await ensureMapping(centralId, dwhCustomerId, 'DIRECT', '', 'โหลดเข้ามิติลูกค้าของคลังข้อมูลทุกคืน', 'DATA')) seededMappings++
     // 3) วันที่เปิดทะเบียน (TRANSFORM — แปลงรูปแบบวันที่)
-    if (await ensureMapping(crmOpenDateId, dwhOpenDateId, 'TRANSFORM', 'แปลงรูปแบบวันที่ DD/MM/YYYY → YYYY-MM-DD (ISO 8601) ที่ขั้น ETL ก่อนโหลด', '')) seededMappings++
+    if (await ensureMapping(crmOpenDateId, dwhOpenDateId, 'TRANSFORM', 'แปลงรูปแบบวันที่ DD/MM/YYYY → YYYY-MM-DD (ISO 8601) ที่ขั้น ETL ก่อนโหลด', '', 'DATA')) seededMappings++
     // 4) ประเภทลูกค้า (LOOKUP — ผ่านตารางอ้างอิง)
-    if (await ensureMapping(crmCustTypeId, dwhCustTypeId, 'LOOKUP', 'ผ่านตารางอ้างอิง cust_type_crosswalk: รหัสภายใน (I/C) → รหัสมาตรฐาน (RETAIL/CORPORATE)', '')) seededMappings++
+    if (await ensureMapping(crmCustTypeId, dwhCustTypeId, 'LOOKUP', 'ผ่านตารางอ้างอิง cust_type_crosswalk: รหัสภายใน (I/C) → รหัสมาตรฐาน (RETAIL/CORPORATE)', '', 'DATA')) seededMappings++
   }
   if (seededMappings > 0) {
     await db.auditLog.create({
@@ -1202,6 +1238,144 @@ async function main() {
         detail: `Seed เริ่มต้นระบบ: อนุมัติ Data Mapping ตัวอย่าง ${seededMappings} เส้นทาง — สถานะ ACTIVE ใช้งานได้`,
       },
     })
+  }
+
+  // (2.7) v0.22.0 — Mapping Detail enrichment: Data Asset กายภาพ CRM/EDW (Schema/Table + Physical Type)
+  // + การแมป element ↔ คอลัมน์จริง + กฎ DQ 4 ข้อตามสเปก (พร้อม Exception Action) ผูกกับ element กลาง "รหัสลูกค้า"
+  if (centralId) {
+    async function ensureAsset(
+      name: string,
+      description: string,
+      schemaName: string,
+      tableName: string,
+      domainIdVal: string,
+      cols: Array<{ name: string; dataType: string; physicalType: string }>,
+    ): Promise<string> {
+      const found = await db.dataAsset.findFirst({ where: { name }, select: { id: true } })
+      if (found) return found.id
+      const created = await db.dataAsset.create({
+        data: {
+          name,
+          description,
+          sourceType: 'DATABASE',
+          sourceInfo: JSON.stringify({ kind: 'reference', note: 'ระบบอ้างอิงตามสเปก Mapping Detail (v0.22.0)' }),
+          schemaName,
+          tableName,
+          domainId: domainIdVal,
+          rowCount: 0,
+          columnCount: cols.length,
+          status: 'ACTIVE',
+          importedBy: mappingSeedActor,
+          columns: { create: cols.map((c, i) => ({ name: c.name, dataType: c.dataType, physicalType: c.physicalType, position: i })) },
+        },
+      })
+      return created.id
+    }
+
+    const crmAssetId = await ensureAsset(
+      'CRM',
+      'ระบบ CRM — ทะเบียนลูกค้าต้นทาง (CUSTOMER.customer_master) ตามสเปก Mapping Detail',
+      'CUSTOMER',
+      'customer_master',
+      crmRootId,
+      [
+        { name: 'customer_no', dataType: 'TEXT', physicalType: 'VARCHAR(20)' },
+        { name: 'open_date', dataType: 'TEXT', physicalType: 'VARCHAR(10)' },
+        { name: 'cust_type_code', dataType: 'TEXT', physicalType: 'CHAR(1)' },
+      ],
+    )
+    const edwAssetId = await ensureAsset(
+      'EDW',
+      'คลังข้อมูลองค์กร — มิติลูกค้า (CORE.dim_customer) ตามสเปก Mapping Detail',
+      'CORE',
+      'dim_customer',
+      dwhRootId,
+      [
+        { name: 'customer_id', dataType: 'TEXT', physicalType: 'VARCHAR(20)' },
+        { name: 'open_date', dataType: 'DATE', physicalType: 'DATE' },
+        { name: 'cust_type', dataType: 'TEXT', physicalType: 'VARCHAR(20)' },
+      ],
+    )
+
+    // แมป element ↔ คอลัมน์จริง (ทำให้หน้ารายละเอียด Mapping ดึงข้อมูลกายภาพได้ — คำตอบข้อ 1 ผู้ใช้เลือก ก)
+    async function ensureColumnMapping(elementIdVal: string, assetIdVal: string, columnName: string, noteVal: string) {
+      const found = await db.dataElementColumnMapping.findFirst({
+        where: { elementId: elementIdVal, assetId: assetIdVal, columnName },
+        select: { id: true },
+      })
+      if (found) return
+      await db.dataElementColumnMapping.create({
+        data: { elementId: elementIdVal, assetId: assetIdVal, columnName, note: noteVal, mappedBy: mappingSeedActor },
+      })
+    }
+    await ensureColumnMapping(crmCustomerNoId, crmAssetId, 'customer_no', 'คอลัมน์ต้นทางของรหัสลูกค้ากลาง (VARCHAR(20))')
+    await ensureColumnMapping(crmOpenDateId, crmAssetId, 'open_date', 'วันที่เปิดทะเบียนรูปแบบ DD/MM/YYYY')
+    await ensureColumnMapping(crmCustTypeId, crmAssetId, 'cust_type_code', 'รหัสประเภทลูกค้าภายใน (I/C)')
+    await ensureColumnMapping(dwhCustomerId, edwAssetId, 'customer_id', 'คอลัมน์ปลายทางในมิติลูกค้า (VARCHAR(20))')
+    await ensureColumnMapping(dwhOpenDateId, edwAssetId, 'open_date', 'วันที่รูปแบบ ISO')
+    await ensureColumnMapping(dwhCustTypeId, edwAssetId, 'cust_type', 'รหัสมาตรฐาน (RETAIL/CORPORATE)')
+
+    // กฎ DQ 4 ข้อตามสเปกผู้ใช้ (Exception Action = ปฏิเสธรายการ + สร้าง DQ Incident) ผูกกับ "รหัสลูกค้า"
+    const custMasterDatasetId = datasetMap.get('ลูกค้าองค์กร — Master') ?? ''
+    const exceptionNote = 'Reject record and create DQ incident'
+    async function ensureSpecRule(
+      column: string,
+      condition: string,
+      parameters: string,
+      severity: string,
+      threshold: number,
+    ): Promise<boolean> {
+      const found = await db.dqRule.findFirst({
+        where: { column, condition, dataElementId: centralId },
+        select: { id: true },
+      })
+      if (found) return false
+      await db.dqRule.create({
+        data: {
+          column,
+          condition,
+          parameters,
+          severity,
+          threshold,
+          dataElementId: centralId,
+          exceptionAction: 'REJECT_AND_ISSUE',
+          exceptionActionNote: exceptionNote,
+          enabled: true,
+          datasets: custMasterDatasetId ? { create: [{ datasetId: custMasterDatasetId }] } : undefined,
+        },
+      })
+      return true
+    }
+    const specRules: Array<[string, string, string, string, number]> = [
+      ['customer_id', 'UNIQUE', '{}', 'HIGH', 100],
+      ['customer_id', 'REGEX', '{"pattern":"^.{0,20}$"}', 'HIGH', 100], // ความยาว ≤ 20
+      [
+        'customer_id',
+        'EXISTS_IN_DATASET',
+        JSON.stringify({ refDatasetId: custMasterDatasetId, refColumn: 'customer_id' }),
+        'HIGH',
+        100,
+      ],
+    ]
+    let specRuleCount = 0
+    for (const [column, condition, parameters, severity, threshold] of specRules) {
+      if (await ensureSpecRule(column, condition, parameters, severity, threshold)) specRuleCount++
+    }
+    // กฎ Not Null เดิม (customer_id) — เติม Exception Action ให้ครบสเปก
+    await db.dqRule.updateMany({
+      where: { column: 'customer_id', condition: 'NOT_NULL' },
+      data: { exceptionAction: 'REJECT_AND_ISSUE', exceptionActionNote: exceptionNote },
+    })
+    if (specRuleCount > 0) {
+      await db.auditLog.create({
+        data: {
+          action: 'CREATE_RULE',
+          actor: mappingSeedActor,
+          target: 'ลูกค้าองค์กร — Master',
+          detail: `Seed เริ่มต้นระบบ (v0.22.0): สร้างกฎคุณภาพตามสเปก Mapping Detail ${specRuleCount} ข้อ (Unique / ความยาว ≤ 20 / ต้องมีในทะเบียนควบคุม) ผูกกับ "รหัสลูกค้า" — Exception Action: ${exceptionNote}`,
+        },
+      })
+    }
   }
 
   // (3) ผูกกฎตัวอย่างกับ Data Element — ให้ flow "เลือกกฎตรวจตาม Data Element" พร้อมใช้ทันที

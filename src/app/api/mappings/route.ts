@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { resolveOperator } from '@/lib/operator'
-import { MAPPING_STATUSES, MAPPING_TEXT_MAX, MAPPING_TYPE_KEYS, isMappingType, nextMappingCode } from '@/lib/mappings'
+import { MAPPING_STATUSES, MAPPING_TEXT_MAX, MAPPING_TYPE_KEYS, isMappingType } from '@/lib/mappings'
 import {
   MAPPING_INCLUDE,
   findDuplicatePair,
+  generateMappingCode,
   loadDomainMap,
   mappingExpanded,
 } from '@/lib/mappings-server'
@@ -94,7 +95,8 @@ export async function POST(req: NextRequest) {
 
     const transformNote =
       mappingType === 'DIRECT' ? '' : String(body.transformNote ?? '').trim().slice(0, MAPPING_TEXT_MAX)
-    if (mappingType !== 'DIRECT' && !transformNote) {
+    // v0.22.0 — RENAME ไม่บังคับกฎการแปลง (แต่กรอกได้ เช่น TRIM) · TRANSFORM/DERIVED/AGGREGATE/LOOKUP บังคับ
+    if (!['DIRECT', 'RENAME'].includes(mappingType) && !transformNote) {
       return NextResponse.json(
         { error: 'ประเภทการแมปนี้ต้องระบุรายละเอียดการแปลง/สูตร/ตารางอ้างอิง (transformNote)' },
         { status: 400 },
@@ -133,10 +135,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const last = await db.dataMapping.findFirst({ orderBy: { code: 'desc' }, select: { code: true } })
+    // v0.22.0 — รหัสรายใหม่ = MAP-{DOMAIN}-{seq} (จากโดเมนหลักฝั่งปลายทาง) เช่น MAP-CUST-001 · รายเดิม MP-#### คงเดิม
+    const code = await generateMappingCode(targetElementId)
     const created = await db.dataMapping.create({
       data: {
-        code: nextMappingCode(last?.code),
+        code,
         sourceElementId,
         targetElementId,
         mappingType,

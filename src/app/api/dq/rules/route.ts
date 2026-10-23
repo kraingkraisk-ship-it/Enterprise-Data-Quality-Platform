@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { buildRuleSentence, isSeverityKey } from '@/lib/dq'
+import { EXCEPTION_ACTION_KEYS, isExceptionAction } from '@/lib/mappings'
 import { resolveOperator } from '@/lib/operator'
 
 /** โหลดแผนที่เงื่อนไขส่วนกลางทั้งหมด (key → template) — ใช้ทั้ง GET และ POST */
@@ -57,6 +58,8 @@ export async function GET() {
           filter: r.filter,
           severity: r.severity,
           threshold: r.threshold,
+          exceptionAction: r.exceptionAction,
+          exceptionActionNote: r.exceptionActionNote,
           enabled: r.enabled,
           createdAt: r.createdAt,
           // Data Element ที่กฎผูกอยู่ (v0.18.0) — null = กฎแบบเดิมยังไม่ผูก
@@ -200,6 +203,13 @@ export async function POST(req: NextRequest) {
     const thresholdRaw = Number(body.threshold ?? 95)
     // Data Element ที่กฎนี้ตรวจ (ไม่บังคับ — ช่วงเปลี่ยนผ่านรองรับกฎเดิมที่ยังไม่ผูก)
     const dataElementIdRaw = String(body.dataElementId ?? '').trim()
+    // v0.22.0 — Exception Action อยู่ที่กฎ (แสดงสรุปในหน้ารายละเอียด Mapping)
+    const exceptionActionRaw = String(body.exceptionAction ?? '').trim().toUpperCase()
+    if (exceptionActionRaw && !isExceptionAction(exceptionActionRaw)) {
+      return NextResponse.json({ error: `การดำเนินการเมื่อกฎ fail ไม่ถูกต้อง — ต้องเป็น: ${EXCEPTION_ACTION_KEYS.join(', ')}` }, { status: 400 })
+    }
+    const exceptionAction = exceptionActionRaw || ''
+    const exceptionActionNote = String(body.exceptionActionNote ?? '').trim().slice(0, 500)
     let dataElementId: string | null = null
     let elementPath = ''
     if (dataElementIdRaw) {
@@ -271,6 +281,8 @@ export async function POST(req: NextRequest) {
         threshold,
         filter: filter || null,
         dataElementId,
+        exceptionAction,
+        exceptionActionNote,
         enabled: true,
         datasets: {
           create: datasetIds.map((datasetId) => ({ datasetId })),

@@ -125,6 +125,8 @@ model DqRule {
   severity      String   @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
   threshold     Float    @default(95) // ค่าผ่านขั้นต่ำ (%) — ใช้เตือนบนแดชบอร์ดผู้บริหารเมื่อ passRate ล่าสุดต่ำกว่าค่านี้ (v0.17.0)
   dataElementId String? // Data Element ที่กฎนี้ตรวจ (v0.18.0) — null = กฎแบบเดิมผูกคอลัมน์โดยตรง (ช่วงเปลี่ยนผ่าน)
+  exceptionAction      String @default("") // การดำเนินการเมื่อกฎ fail: REJECT_RECORD | CREATE_ISSUE | REJECT_AND_ISSUE | OTHER (v0.22.0 — สรุปแสดงใน Mapping Detail)
+  exceptionActionNote  String @default("") // รายละเอียด/คำอธิบายการดำเนินการ เช่น "Reject record and create DQ incident" (v0.22.0)
   enabled       Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -340,6 +342,8 @@ model DataAsset {
   description String   @default("")
   sourceType  String // CSV | JSON | DATABASE
   sourceInfo  String   @default("{}") // JSON — รายละเอียดแหล่งที่มา (ชื่อไฟล์/ขนาด, การเชื่อมต่อแบบไม่มีรหัสผ่าน)
+  schemaName  String   @default("") // ชื่อ Schema กายภาพ เช่น CUSTOMER (v0.22.0 — แสดงใน Mapping Detail)
+  tableName   String   @default("") // ชื่อตารางกายภาพ เช่น customer_master (v0.22.0 — แสดงใน Mapping Detail)
   piiEnabled  Boolean  @default(true) // ปิดบัง PII ตามบทบาทเมื่อแสดงใน Inventory (PDPA-first)
   domainId    String? // โดเมนข้อมูลที่สังกัด (DataDomain.id) — รองรับโดเมนย่อยได้เพราะโดเมนย่อยเองก็คือ DataDomain 1 แถว
   rowCount    Int      @default(0)
@@ -476,6 +480,7 @@ model DataMapping {
   transformNote   String    @default("") // รายละเอียดการแปลง/สูตร/ตารางอ้างอิง (บังคับเมื่อ mappingType != DIRECT — ตรวจใน API)
   note            String    @default("") // หมายเหตุเพิ่มเติม
   status          String    @default("DRAFT") // DRAFT | ACTIVE | DEPRECATED — ACTIVE/DEPRECATED เปลี่ยนผ่าน workflow อนุมัติเท่านั้น
+  version         String    @default("1.0") // เวอร์ชันสเปก: อัตโนมัติ +0.1 ทุกครั้งที่อนุมัติเนื้อหาที่แก้ไข + ปรับมือได้ด้วยสิทธิ์ APPROVE_EXCEPTIONS (v0.22.0)
   pendingApproval Boolean   @default(false) // workflow อนุมัติ: รอผู้มีสิทธิ์อนุมัติตัดสินอยู่ (ล็อกแก้ไข/ลบขณะรอ)
   approvedBy      String? // email ผู้อนุมัติล่าสุด (workflow อนุมัติ — บันทึก Audit Trail ทุกครั้ง)
   approvedAt      DateTime? // เวลาที่อนุมัติล่าสุด
@@ -512,11 +517,12 @@ model DataElementColumnMapping {
 
 // คอลัมน์ของ Data Asset — metadata สำหรับแสดงใน Data Inventory
 model DataAssetColumn {
-  id       String @id @default(cuid())
-  assetId  String
-  name     String
-  dataType String // inferred: TEXT | INTEGER | NUMBER | BOOLEAN | DATE | DATETIME | EMPTY
-  position Int
+  id           String @id @default(cuid())
+  assetId      String
+  name         String
+  dataType     String // inferred: TEXT | INTEGER | NUMBER | BOOLEAN | DATE | DATETIME | EMPTY
+  physicalType String @default("") // ประเภทข้อมูลกายภาพตามระบบต้นทาง เช่น VARCHAR(20) (v0.22.0 — แสดงใน Mapping Detail)
+  position     Int
 
   asset DataAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 

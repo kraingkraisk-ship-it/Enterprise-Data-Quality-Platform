@@ -5,7 +5,7 @@ import { maskRowByRole, type Row } from '@/lib/dq'
 
 /**
  * GET    /api/assets/[id] — รายละเอียด asset (คอลัมน์ + แถวข้อมูลแบบแบ่งหน้า, ปิดบัง PII ตามบทบาท)
- * PATCH  /api/assets/[id] — เปลี่ยนชื่อ / คำอธิบาย / เปิด-ปิดการปิดบัง PII / ลบ (action)
+ * PATCH  /api/assets/[id] — เปลี่ยนชื่อ / คำอธิบาย / เปิด-ปิดการปิดบัง PII / โดเมน / ข้อมูลกายภาพ (v0.22.0) / ลบ (action)
  * สิทธิ์การเปลี่ยนแปลง: MANAGE_DATASETS (ตาม RBAC) — บันทึก Audit Trail ทุกครั้ง
  */
 
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         importedBy: asset.importedBy,
         createdAt: asset.createdAt,
       },
-      columns: asset.columns.map((c) => ({ name: c.name, dataType: c.dataType, position: c.position })),
+      columns: asset.columns.map((c) => ({ name: c.name, dataType: c.dataType, physicalType: c.physicalType, position: c.position })),
       rows: maskedRows,
       page,
       pageSize,
@@ -102,8 +102,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!op.ok) return NextResponse.json({ error: op.message }, { status: op.status })
 
     const action = String(body.action ?? 'RENAME').trim().toUpperCase()
-    if (!['RENAME', 'TOGGLE_PII', 'DELETE', 'SET_DOMAIN'].includes(action)) {
-      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (RENAME | TOGGLE_PII | DELETE | SET_DOMAIN)' }, { status: 400 })
+    if (!['RENAME', 'TOGGLE_PII', 'DELETE', 'SET_DOMAIN', 'SET_PHYSICAL'].includes(action)) {
+      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (RENAME | TOGGLE_PII | DELETE | SET_DOMAIN | SET_PHYSICAL)' }, { status: 400 })
     }
 
     const asset = await getAsset(id)
@@ -157,6 +157,44 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       })
       return NextResponse.json({
         message: rawDomainId ? `จัด "${asset.name}" เข้าโดเมนข้อมูลเรียบร้อย` : `นำ "${asset.name}" ออกจากโดเมนข้อมูลเรียบร้อย`,
+      })
+    }
+
+    if (action === 'SET_PHYSICAL') {
+      // v0.22.0 — ข้อมูลกายภาพของ asset: Schema/Table + Physical Type รายคอลัมน์
+      // (หน้ารายละเอียด Mapping ดึงค่าเหล่านี้ไปแสดงอัตโนมัติตามการแมป element ↔ คอลัมน์)
+      const schemaName = String(body.schemaName ?? asset.schemaName).trim().slice(0, 120)
+      const tableName = String(body.tableName ?? asset.tableName).trim().slice(0, 120)
+      const columnInputs = Array.isArray(body.columns) ? (body.columns as Array<Record<string, unknown>>) : []
+      if (columnInputs.length > 0) {
+        const existing = new Map(asset.columns.map((c) => [c.name, c]))
+        for (const input of columnInputs) {
+          const colName = String(input.name ?? '').trim()
+          if (!colName || !existing.has(colName)) {
+            return NextResponse.json({ error: `ไม่พบคอลัมน์ "${colName || '(ว่าง)'}" ใน asset นี้ — ระบุเฉพาะคอลัมน์ที่มีอยู่จริง` }, { status: 400 })
+          }
+        }
+        await db.$transaction(
+          columnInputs.map((input) =>
+            db.dataAssetColumn.update({
+              where: { assetId_name: { assetId: id, name: String(input.name).trim() } },
+              data: { physicalType: String(input.physicalType ?? '').trim().slice(0, 60) },
+            }),
+          ),
+        )
+      }
+      const updated = await db.dataAsset.update({ where: { id }, data: { schemaName, tableName } })
+      await db.auditLog.create({
+        data: {
+          action: 'SET_DATA_ASSET_PHYSICAL',
+          actor: op.ctx.email,
+          target: asset.name,
+          detail: `แก้ไขข้อมูลกายภาพของ Data Asset "${asset.name}" — Schema: "${asset.schemaName}" → "${schemaName}" · Table: "${asset.tableName}" → "${tableName}"${columnInputs.length > 0 ? ` · Physical Type ${columnInputs.length} คอลัมน์` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        },
+      })
+      return NextResponse.json({
+        asset: { id: updated.id, schemaName: updated.schemaName, tableName: updated.tableName },
+        message: `บันทึกข้อมูลกายภาพของ "${asset.name}" เรียบร้อย`,
       })
     }
 

@@ -1,8 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { resolveOperator } from '@/lib/operator'
-import { MAPPING_STATUSES, MAPPING_TEXT_MAX, MAPPING_TYPE_KEYS, isMappingType } from '@/lib/mappings'
-import { MAPPING_INCLUDE, findDuplicatePair, loadDomainMap, mappingExpanded } from '@/lib/mappings-server'
+import {
+  MAPPING_STATUSES,
+  MAPPING_TEXT_MAX,
+  MAPPING_TYPE_KEYS,
+  bumpMappingVersion,
+  isMappingType,
+  isValidMappingVersion,
+} from '@/lib/mappings'
+import {
+  MAPPING_INCLUDE,
+  buildEndpointDetail,
+  findDuplicatePair,
+  loadDomainMap,
+  mappingExpanded,
+} from '@/lib/mappings-server'
 
 /**
  * Data Mapping API — รายการเดียว (v0.21.0)
@@ -25,12 +38,40 @@ const WORKFLOW_ACTIONS = ['SUBMIT_APPROVAL', 'APPROVE', 'REJECT_APPROVAL', 'DEPR
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params
-    const [mapping, domainMap] = await Promise.all([
-      db.dataMapping.findUnique({ where: { id }, include: MAPPING_INCLUDE }),
-      loadDomainMap(),
-    ])
+    const mapping = await db.dataMapping.findUnique({ where: { id }, include: MAPPING_INCLUDE })
     if (!mapping) return NextResponse.json({ error: 'ไม่พบ Data Mapping นี้ในระบบ' }, { status: 404 })
-    return NextResponse.json({ mapping: mappingExpanded(mapping, domainMap) })
+
+    // v0.22.0 — รายละเอียดเต็มสำหรับ Mapping Detail Dialog: endpoint detail ทั้งสองฝั่ง
+    // (meta + ข้อมูลกายภาพจากการแมปคอลัมน์ + กฎ DQ ที่ผูก + ธรรมาภิบาล) + สรุป exception action + audit
+    const [domainMap, source, target, auditEntries] = await Promise.all([
+      loadDomainMap(),
+      buildEndpointDetail(mapping.sourceElementId),
+      buildEndpointDetail(mapping.targetElementId),
+      db.auditLog.findMany({
+        where: { target: mapping.code },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        select: { id: true, action: true, actor: true, target: true, detail: true, createdAt: true },
+      }),
+    ])
+
+    // สรุป Exception Action จากกฎที่ผูกกับ element ทั้งสองฝั่ง (v0.22.0 — action อยู่ที่กฎ)
+    const actionCounts = new Map<string, number>()
+    for (const side of [source, target]) {
+      for (const rule of side?.rules ?? []) {
+        if (rule.exceptionAction) {
+          actionCounts.set(rule.exceptionAction, (actionCounts.get(rule.exceptionAction) ?? 0) + 1)
+        }
+      }
+    }
+
+    return NextResponse.json({
+      mapping: mappingExpanded(mapping, domainMap),
+      source,
+      target,
+      exceptionActions: [...actionCounts.entries()].map(([key, count]) => ({ key, count })),
+      audit: auditEntries,
+    })
   } catch (e) {
     console.error('GET /api/mappings/[id]', e)
     return NextResponse.json({ error: 'ไม่สามารถโหลด Data Mapping ได้' }, { status: 500 })
@@ -52,8 +93,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const op = await resolveOperator(body.operatorEmail, permission)
     if (!op.ok) return NextResponse.json({ error: op.message }, { status: op.status })
 
-    if (!['UPDATE', 'DELETE', ...WORKFLOW_ACTIONS].includes(action)) {
-      return NextResponse.json({ error: `การดำเนินการไม่ถูกต้อง (UPDATE | DELETE | ${WORKFLOW_ACTIONS.join(' | ')})` }, { status: 400 })
+    if (!['UPDATE', 'DELETE', 'SET_VERSION', ...WORKFLOW_ACTIONS].includes(action)) {
+      return NextResponse.json({ error: `การดำเนินการไม่ถูกต้อง (UPDATE | DELETE | SET_VERSION | ${WORKFLOW_ACTIONS.join(' | ')})` }, { status: 400 })
     }
 
     const mapping = await db.dataMapping.findUnique({
@@ -88,19 +129,61 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       if (!mapping.pendingApproval) {
         return NextResponse.json({ error: 'mapping นี้ไม่ได้อยู่ในสถานะรออนุมัติ' }, { status: 409 })
       }
+      // v0.22.0 — เวอร์ชันอัตโนมัติ: ถ้าเนื้อหา (เส้นทาง/ประเภท/กฎการแปลง) ถูกแก้หลังการอนุมัติครั้งก่อน → +0.1
+      // ตรวจจาก Audit Trail (UPDATE_DATA_MAPPING หลัง approvedAt) เพื่อไม่นับการส่ง/ส่งกลับเป็นการแก้เนื้อหา
+      const editedSinceApproval = mapping.approvedAt
+        ? await db.auditLog.findFirst({
+            where: { target: mapping.code, action: 'UPDATE_DATA_MAPPING', createdAt: { gt: mapping.approvedAt } },
+            select: { id: true },
+          })
+        : null
+      const nextVersion = editedSinceApproval ? bumpMappingVersion(mapping.version) : mapping.version
       const updated = await db.dataMapping.update({
         where: { id },
-        data: { status: 'ACTIVE', pendingApproval: false, approvedBy: op.ctx.email, approvedAt: new Date() },
+        data: {
+          status: 'ACTIVE',
+          pendingApproval: false,
+          approvedBy: op.ctx.email,
+          approvedAt: new Date(),
+          version: nextVersion,
+        },
       })
       await db.auditLog.create({
         data: {
           action: 'APPROVE_DATA_MAPPING',
           actor: op.ctx.email,
           target: mapping.code,
-          detail: `อนุมัติ Data Mapping ${label} — สถานะเปลี่ยนเป็น ACTIVE ใช้งานได้ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+          detail: `อนุมัติ Data Mapping ${label} — สถานะเปลี่ยนเป็น ACTIVE ใช้งานได้${nextVersion !== mapping.version ? ` · เวอร์ชันอัตโนมัติ ${mapping.version} → ${nextVersion} (เนื้อหาถูกแก้หลังอนุมัติครั้งก่อน)` : ` · เวอร์ชัน ${mapping.version}`} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
-      return NextResponse.json({ mapping: { id: updated.id, status: updated.status }, message: `อนุมัติ ${mapping.code} แล้ว — ใช้งานได้ (ACTIVE)` })
+      return NextResponse.json({
+        mapping: { id: updated.id, status: updated.status, version: updated.version },
+        message: `อนุมัติ ${mapping.code} แล้ว — ใช้งานได้ (ACTIVE)${nextVersion !== mapping.version ? ` · เวอร์ชัน ${nextVersion}` : ''}`,
+      })
+    }
+
+    if (action === 'SET_VERSION') {
+      // v0.22.0 — ปรับเวอร์ชันด้วยมือ (สิทธิ์ผู้อนุมัติ APPROVE_EXCEPTIONS) พร้อม Audit Trail
+      if (mapping.pendingApproval) {
+        return NextResponse.json({ error: 'ปรับเวอร์ชันไม่ได้ขณะ "รออนุมัติ" — อนุมัติหรือส่งกลับก่อน' }, { status: 409 })
+      }
+      const version = String(body.version ?? '').trim()
+      if (!isValidMappingVersion(version)) {
+        return NextResponse.json({ error: 'รูปแบบเวอร์ชันไม่ถูกต้อง — ใช้ตัวเลขรูปแบบ X.Y เช่น 1.0, 1.5 หรือ 2.0' }, { status: 400 })
+      }
+      if (version === mapping.version) {
+        return NextResponse.json({ error: `เวอร์ชันเป็น ${version} อยู่แล้ว` }, { status: 409 })
+      }
+      await db.dataMapping.update({ where: { id }, data: { version } })
+      await db.auditLog.create({
+        data: {
+          action: 'SET_MAPPING_VERSION',
+          actor: op.ctx.email,
+          target: mapping.code,
+          detail: `ปรับเวอร์ชัน Data Mapping ${label} ด้วยมือ: ${mapping.version} → ${version} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        },
+      })
+      return NextResponse.json({ mapping: { id, version }, message: `ปรับเวอร์ชัน ${mapping.code} เป็น ${version} แล้ว` })
     }
 
     if (action === 'REJECT_APPROVAL') {
@@ -181,8 +264,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!isMappingType(newType)) {
       return NextResponse.json({ error: `ประเภทการแมปไม่ถูกต้อง — ต้องเป็น: ${MAPPING_TYPE_KEYS.join(', ')}` }, { status: 400 })
     }
+    // v0.22.0 — RENAME ไม่บังคับกฎการแปลง (แต่กรอกได้ เช่น TRIM) · เฉพาะ DIRECT เท่านั้นที่ล้างค่า
     const transformNote = newType === 'DIRECT' ? '' : newTransformNote
-    if (newType !== 'DIRECT' && !transformNote) {
+    if (!['DIRECT', 'RENAME'].includes(newType) && !transformNote) {
       return NextResponse.json({ error: 'ประเภทการแมปนี้ต้องระบุรายละเอียดการแปลง/สูตร/ตารางอ้างอิง (transformNote)' }, { status: 400 })
     }
     if (newSourceId === newTargetId) {
