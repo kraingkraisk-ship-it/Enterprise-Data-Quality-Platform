@@ -1124,3 +1124,23 @@ Stage Summary:
 - ไฟล์ใหม่: src/lib/mappings.ts, src/lib/mappings-server.ts, src/app/api/mappings/{route.ts,[id]/route.ts,lineage/route.ts}, src/components/data-mapping-console.tsx, src/components/data-mapping/{types,lineage-diagram,mapping-row,mapping-form}.tsx
 - แก้ไข: prisma/schema.prisma (DataMapping + relations Restrict), scripts/seed.ts (4 mappings), elements/[id]/route.ts (บล็อกลบ), data-domain-console.tsx (แท็บ 5), views.ts (data-mapping + v0.21.0), page.tsx
 - สถานะ sync: ตรวจแล้ว remote = local 100% (main + tag v0.21.0) worktree clean
+
+---
+
+## Task ID: 37
+**Agent**: Z.ai Code (main session)
+**Task**: รับ PAT ใหม่จากผู้ใช้ ("token push") — ตรวจสอบสถานะ push v0.21.0 + กู้คืนสภาพแวดล้อมหลัง sandbox reset
+
+Work Log:
+- ตรวจ git state พบสภาพล้ำหน้าสมมติฐานใน session summary: commit 26b3550 (v0.21.0) + annotated tag v0.21.0 มีอยู่แล้วทั้ง local และ remote — worklog Task 35 / 36-f / 36-g+36-result ครบ (implementation session ทำงานต่อจากจุด summary จน ship เสร็จสิ้น)
+- ls-remote ด้วย PAT ใหม่ยืนยัน: remote main = 26b3550 = local HEAD · refs/tags/v0.21.0^{} = 26b3550 · refs/tags/v0.20.0^{} = c8d1679 — remote = local 100% SHA-for-SHA (ไม่มี commit/tag ค้าง push)
+- worktree ฟ้อง M 157 ไฟล์ = mode change 100644→100755 ล้วน (0 insertions/deletions — ผลข้างเคียง sandbox reset) → git config core.filemode false แล้ว git status สะอาด
+- พบ local tag v0.19.0 หาย + v0.15.0 เพี้ยน (fetch แจ้ง would clobber) → git fetch --tags คืน v0.16.0/v0.17.0/v0.18.0/v0.18.1/v0.19.0 + force แก้ v0.15.0 ตาม remote (e412e14) — ปัจจุบัน tag ครบ v0.11.0..v0.21.0 ตรง remote ทุกตัว
+- พบฐานข้อมูลว่าง (API คืน count 0 ทุก entity — ผลจาก sandbox reset เช่นเดียวกับ Task 34-a) → รัน scripts/seed.ts ใหม่: 12 domains / 18 elements / 4 dataMappings (MP-0001..0004) / 2 assets / 11 rules / 168 runs / users ครบตาม seed
+- agent-browser ตรวจหลัง reseed: หน้า "การแมปข้อมูล" โหลด MP-0001..0004 ครบ 4 รายการ + การ์ดสถิติ / ชิปประเภท (Direct · 2) / ผู้อนุมัติ+เวลา แสดงถูกต้อง + console error 0 + page error 0
+- หมายเหตุความปลอดภัย: ผู้ใช้วาง PAT ใหม่ลงแชต — ระบบไม่บันทึก token ลง disk/.git/config (push ผ่าน URL one-time เท่านั้น) ควร revoke/rotate หลังใช้งาน
+
+Stage Summary:
+- ยืนยัน GitHub ครบถ้วนถึง v0.21.0 (main + tag) ด้วย PAT ใหม่ — ไม่ต้อง push code เพิ่ม (remote = local 100%)
+- สภาพแวดล้อมกู้คืนพร้อมใช้งานเต็มรูปแบบ: dev server HTTP 200 · ฐานข้อมูล seed ครบ · local tags ครบตรง remote · worktree clean
+- v0.21.0 Data Mapping ปิดงานสมบูรณ์ทั้ง local + GitHub — พร้อมรับ requirement ถัดไป (v0.22.0)
