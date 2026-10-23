@@ -937,3 +937,24 @@ Stage Summary:
 - **UX ใหม่**: หน้าคลังกฎตรวจสอบ = แถบ flow 3 ขั้น + 2 แท็บ + wizard 4 ขั้น deny-by-default ต่อขั้น — ลด cognitive load จากฟอร์มยาว 9 ส่วนเป็นทีละขั้นมีตรวจความครบ
 - **ไฟล์แก้**: src/components/core-features-console.tsx, src/lib/views.ts
 - **ไม่แก้**: โครงสร้าง API/schema/สิทธิ์ (ฝั่ง backend เหมือนเดิมทุกอย่าง — เป็นการจัด UI flow เท่านั้น)
+
+---
+Task ID: 32
+Agent: Z.ai Code (main session)
+Task: Push v0.18.1 ขึ้น GitHub (main + annotated tag) ด้วย GitHub PAT ใหม่ที่ผู้ใช้ให้มา
+
+Work Log:
+- รับ GitHub PAT ใหม่จากผู้ใช้ — ใช้แบบ one-time ผ่าน push URL เท่านั้น ไม่บันทึกลง disk / ไม่แตะ .git/config / ไม่เข้าไฟล์ใด ๆ (output ทุกครั้งผ่าน sed redact token ก่อนแสดง)
+- ตรวจก่อน push: remote main = `531235a` (Task 30, v0.18.0) · local นำ 1 commit = `ca0e28f` (v0.18.1) · working tree clean
+- สร้าง annotated tag `v0.18.1` ชี้ `ca0e28f` (สไตล์ข้อความเดียวกับ tag รุ่นก่อน ๆ)
+- `git push <url> main refs/tags/v0.18.1` → สำเร็จ: `531235a..ca0e28f main` + `* [new tag] v0.18.1`
+- ตรวจสอบ remote ด้วย `git ls-remote` เทียบ SHA ระดับ commit:
+  - `refs/heads/main` = `ca0e28f42f33454987f71f81680c6b13dac96179` ✓ ตรงกับ local
+  - `refs/tags/v0.18.1` = `3e501f9305854c6763a6ec98fe312832383e562e` ✓ · `^{}` peeled = `ca0e28f...` ✓ (tag ชี้ commit feat โดยตรง)
+- commit `docs(worklog)` รายการนี้แล้ว push ตามด้วย token เดียวกัน → remote = local 100%
+- แจ้งเตือนผู้ใช้: token ถูกวางลงแชต ควร revoke/rotate หลังใช้งาน (ระบบไม่จัดเก็บ token เลย)
+
+Stage Summary:
+- GitHub ครบถ้วนถึง v0.18.1: หน้าคลังกฎตรวจสอบจัดเป็นแถบ flow 3 ขั้น + Rule Builder wizard 4 ขั้น (deny-by-default ต่อขั้น, live preview, summary chips)
+- สถานะ sync: remote = local 100% (หลัง push commit เอกสารรายการนี้) — ไม่มี artifact ค้าง local เท่านั้น
+- Roadmap คงเหลือ: Phase 5 — Executive Dashboard byDomain อัปเกรดเป็น element rollup (ตามแผนล็อกแล้ว)
