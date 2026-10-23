@@ -6,6 +6,8 @@ import {
   Play,
   BrainCircuit,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   XCircle,
   Trash2,
@@ -277,6 +279,14 @@ function scoreColor(score: number | null): string {
   return 'text-rose-700'
 }
 
+/* Rule Builder wizard (v0.18.1) — ชื่อขั้นตอน 4 ขั้นของการสร้างกฎ */
+const RB_STEPS = [
+  { title: 'เป้าหมาย', desc: 'ชุดข้อมูล + Data Element' },
+  { title: 'คอลัมน์', desc: 'จากตัวอย่างข้อมูลจริง' },
+  { title: 'เงื่อนไข', desc: 'must + พารามิเตอร์' },
+  { title: 'ตั้งค่า', desc: 'รุนแรง · เกณฑ์ · บันทึก' },
+] as const
+
 const PERMISSIONS_BY_ACTION: Record<string, PermissionKey> = {
   MANAGE_RULES: 'MANAGE_RULES',
   RUN_VALIDATION: 'RUN_VALIDATION',
@@ -329,6 +339,8 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rbElDomain, setRbElDomain] = useState('')
   const [rbElSub, setRbElSub] = useState('')
   const [rbElementId, setRbElementId] = useState('')
+  /* Rule Builder wizard (v0.18.1) — ขั้นตอนปัจจุบัน 1–4 */
+  const [rbStep, setRbStep] = useState(1)
 
   // tab 2 — condition library
   const [cnName, setCnName] = useState('')
@@ -564,6 +576,18 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     [rbPreview, rbPreviewDataset],
   )
 
+  /* -------- Rule Builder wizard — ความถูกต้องรายขั้น + การเดินหน้า/ย้อนกลับ (v0.18.1) --------
+     ขั้น 1 ต้องเลือกชุดข้อมูล ≥ 1 · ขั้น 2 ต้องเลือกคอลัมน์ · ขั้น 3 ต้องเลือกเงื่อนไข
+     ไปขั้นถัดไปได้เฉพาะเมื่อทุกขั้นก่อนหน้าถูกต้อง (deny-by-default ต่อขั้นตอน) */
+  const rbStepValid = useMemo<boolean[]>(
+    () => [rbDatasets.length > 0, rbColumn.trim() !== '', rbCondition !== '', true],
+    [rbDatasets.length, rbColumn, rbCondition],
+  )
+  const rbCanGoTo = useCallback(
+    (step: number) => step <= 1 || rbStepValid.slice(0, step - 1).every(Boolean),
+    [rbStepValid],
+  )
+
   const cnSentencePreview = useMemo(
     () =>
       buildRuleSentence({
@@ -688,6 +712,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       setRbFilter('')
       setRbParams({})
       setRbElementId('')
+      setRbStep(1) // กลับไปเริ่ม wizard ใหม่รอบถัดไป
       refetch()
     }
   }
@@ -892,6 +917,59 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       }}
       className="w-full"
     >
+      {/* แถบแนะนำลำดับการใช้งาน 3 ขั้น (โหมด library) — อธิบายภาพรวมก่อนเจอฟอร์ม เพื่อลดความสับสน */}
+      {mode === 'library' && (
+        <Card className="border-emerald-200 bg-emerald-50/50">
+          <CardContent className="grid gap-2 p-3 sm:grid-cols-3 sm:gap-3">
+            <div className={`flex items-start gap-2.5 rounded-lg p-2 ${libraryTab === 'conditions' ? 'bg-white shadow-sm' : ''}`}>
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white" aria-hidden="true">
+                1
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-emerald-900">เตรียมเงื่อนไข (must) — ข้ามได้</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-emerald-800/80">
+                  ระบบมีเงื่อนไขมาตรฐานให้ใช้ทันที หรือสร้างเพิ่มในแท็บ “คลังเงื่อนไข”
+                </p>
+                <Button variant="ghost" size="sm" className="mt-1 h-6 gap-1 px-2 text-[11px] text-emerald-800 hover:text-emerald-900" onClick={() => setLibraryTab('conditions')}>
+                  ไปคลังเงื่อนไข
+                  <ChevronRight className="size-3" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+            <div className={`flex items-start gap-2.5 rounded-lg p-2 ${libraryTab === 'rules' ? 'bg-white shadow-sm' : ''}`}>
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white" aria-hidden="true">
+                2
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-emerald-900">สร้างกฎ 4 ขั้นตอน</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-emerald-800/80">
+                  เลือกเป้าหมาย → คอลัมน์ → เงื่อนไข → ตั้งค่า แล้วบันทึก (ระบบนำทางทีละขั้น)
+                </p>
+                <Button variant="ghost" size="sm" className="mt-1 h-6 gap-1 px-2 text-[11px] text-emerald-800 hover:text-emerald-900" onClick={() => setLibraryTab('rules')}>
+                  เริ่มสร้างกฎ
+                  <ChevronRight className="size-3" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+            <div className="flex items-start gap-2.5 rounded-lg p-2">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white" aria-hidden="true">
+                3
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-emerald-900">รันตรวจและดูผล</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-emerald-800/80">
+                  รันตามชุดข้อมูลหรือตามโดเมน (Data Element) พร้อมคะแนน rollup — อยู่หน้า “ผลการตรวจสอบ”
+                </p>
+                <Button variant="ghost" size="sm" className="mt-1 h-6 gap-1 px-2 text-[11px] text-emerald-800 hover:text-emerald-900" onClick={() => onViewChange('validation-results')}>
+                  ไปผลการตรวจสอบ
+                  <ChevronRight className="size-3" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* แท็บภายในหน้าคลังกฎ (โหมด library เท่านั้น) */}
       {mode === 'library' && (
         <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-slate-100 p-1 sm:w-fit">
@@ -916,10 +994,58 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                 สร้างกฎคุณภาพข้อมูลแบบไม่ต้องเขียนโค้ด
               </CardTitle>
               <CardDescription>
-                เลือกชุดข้อมูลได้หลายชุด (กฎใช้ร่วมกันได้) · ดูตัวอย่างข้อมูลก่อนเลือกคอลัมน์ · เงื่อนไขจากคลังส่วนกลาง
+                สร้างทีละขั้นตอน 4 ขั้น — ขั้นก่อนหน้าครบก่อนจึงไปขั้นถัดไปได้ · กฎ 1 ข้อ ใช้ร่วมหลายชุดข้อมูลได้
               </CardDescription>
+              {/* stepper — นำทาง 4 ขั้นของการสร้างกฎ (คลิกย้อนได้ ไปหน้าได้เมื่อขั้นก่อนครบ) */}
+              <ol className="grid grid-cols-4 gap-1 pt-2" aria-label="ขั้นตอนการสร้างกฎ 4 ขั้น">
+                {RB_STEPS.map((s, i) => {
+                  const n = i + 1
+                  const active = rbStep === n
+                  const done = !active && n < rbStep && rbStepValid[i]
+                  const reachable = rbCanGoTo(n)
+                  return (
+                    <li key={s.title} aria-current={active ? 'step' : undefined}>
+                      <button
+                        type="button"
+                        onClick={() => reachable && setRbStep(n)}
+                        disabled={!reachable}
+                        aria-label={`ขั้นที่ ${n} ${s.title} — ${s.desc}${active ? ' (ขั้นปัจจุบัน)' : ''}`}
+                        className={`w-full rounded-lg border px-2 py-1.5 text-left transition-colors ${
+                          active
+                            ? 'border-emerald-300 bg-emerald-50'
+                            : reachable
+                              ? 'border-border bg-white hover:bg-slate-50'
+                              : 'border-dashed bg-slate-50/60 opacity-70'
+                        }`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            className={`flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                              active
+                                ? 'bg-emerald-600 text-white'
+                                : done
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-slate-200 text-slate-500'
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {done ? <Check className="size-3" /> : n}
+                          </span>
+                          <span className={`truncate text-[11px] font-semibold ${active ? 'text-emerald-900' : 'text-slate-700'}`}>
+                            {s.title}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 hidden truncate text-[10px] text-muted-foreground sm:block">{s.desc}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ol>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* ขั้นที่ 1 — เป้าหมาย: ชุดข้อมูล + Data Element */}
+              {rbStep === 1 && (
+              <div className="space-y-4">
               {/* 1) ชุดข้อมูล — เลือกได้หลายชุด */}
               <div className="space-y-1.5">
                 <Label>ชุดข้อมูล (For) — เลือกได้มากกว่า 1 ชุด</Label>
@@ -1015,7 +1141,12 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   </div>
                 )}
               </div>
+              </div>
+              )}
 
+              {/* ขั้นที่ 2 — คอลัมน์จากตัวอย่างข้อมูลจริง */}
+              {rbStep === 2 && (
+              <div className="space-y-4">
               {/* 2) ตัวอย่างข้อมูล + เลือกคอลัมน์จากข้อมูลจริง */}
               <div className="space-y-2 rounded-lg border bg-slate-50/50 p-3">
                 <div className="flex items-center gap-2">
@@ -1114,10 +1245,14 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     )}
                 </div>
               </div>
+              </div>
+              )}
 
+              {/* ขั้นที่ 3 — เงื่อนไข (must) + พารามิเตอร์ */}
+              {rbStep === 3 && (
+              <div className="space-y-4">
               {/* 3) เงื่อนไขจากคลังส่วนกลาง */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
+              <div className="space-y-1.5">
                   <Label htmlFor="rb-condition" className="gap-1">
                     เงื่อนไข (must) — จากคลังส่วนกลาง
                   </Label>
@@ -1152,37 +1287,9 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                       )}
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="rb-severity">ระดับความรุนแรง</Label>
-                  <Select value={rbSeverity} onValueChange={setRbSeverity}>
-                    <SelectTrigger id="rb-severity">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SEVERITY_KEYS.map((k) => (
-                        <SelectItem key={k} value={k}>
-                          {SEVERITY_LABELS[k].th} ({k})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="rb-threshold">
-                    ค่าผ่านขั้นต่ำ (%) <span className="text-[10px] font-normal text-muted-foreground">— แดชบอร์ดผู้บริหารจะเตือนเมื่อผ่านล่าสุดต่ำกว่าค่านี้</span>
-                  </Label>
-                  <Input
-                    id="rb-threshold"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    value={rbThreshold}
-                    onChange={(e) => setRbThreshold(e.target.value)}
-                    aria-label="ค่าผ่านขั้นต่ำเป็นเปอร์เซ็นต์"
-                  />
-                </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    ต้องการเงื่อนไขเฉพาะขององค์กร? สร้างได้ในแท็บ “คลังเงื่อนไข (must)” แล้วกลับมาเลือกที่นี่
+                  </p>
               </div>
 
               {rbTemplate && (
@@ -1295,7 +1402,44 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   })}
                 </div>
               )}
+              </div>
+              )}
 
+              {/* ขั้นที่ 4 — ตั้งค่าและบันทึก */}
+              {rbStep === 4 && (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rb-severity">ระดับความรุนแรง</Label>
+                    <Select value={rbSeverity} onValueChange={setRbSeverity}>
+                      <SelectTrigger id="rb-severity">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SEVERITY_KEYS.map((k) => (
+                          <SelectItem key={k} value={k}>
+                            {SEVERITY_LABELS[k].th} ({k})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rb-threshold">
+                      ค่าผ่านขั้นต่ำ (%) <span className="text-[10px] font-normal text-muted-foreground">— แดชบอร์ดผู้บริหารจะเตือนเมื่อผ่านล่าสุดต่ำกว่าค่านี้</span>
+                    </Label>
+                    <Input
+                      id="rb-threshold"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={rbThreshold}
+                      onChange={(e) => setRbThreshold(e.target.value)}
+                      aria-label="ค่าผ่านขั้นต่ำเป็นเปอร์เซ็นต์"
+                    />
+                  </div>
+                </div>
               <div className="space-y-1.5">
                 <Label htmlFor="rb-filter">ตัวกรอง (when — ไม่บังคับ)</Label>
                 <Input
@@ -1312,20 +1456,110 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                 </Label>
                 <OperatorSelect id="rb-operator" value={rbOperator} onChange={setRbOperator} permission={PERMISSIONS_BY_ACTION.MANAGE_RULES} />
               </div>
+              </div>
+              )}
 
               {/* live sentence preview */}
               <div className="rounded-lg bg-slate-900 p-3.5 font-mono text-[12.5px] leading-relaxed break-words text-emerald-300" aria-live="polite">
                 {previewSentence}
               </div>
 
-              <Button
-                className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={handleCreateRule}
-                disabled={rbDatasets.length === 0 || !rbColumn || !rbCondition || busy !== null}
-              >
-                <Sparkles className="size-4" aria-hidden="true" />
-                {busy === 'create-rule' ? 'กำลังบันทึก…' : `บันทึกกฎใหม่${rbDatasets.length > 1 ? ` (ใช้ร่วม ${rbDatasets.length} ชุดข้อมูล)` : ''}`}
-              </Button>
+              {/* สรุปสิ่งที่เลือกไว้ — คลิกกลับไปแก้ขั้นนั้นได้ */}
+              {rbStep >= 2 && (
+                <div
+                  className="flex flex-wrap items-center gap-1.5 rounded-md border bg-slate-50/60 px-2.5 py-1.5"
+                  role="status"
+                  aria-label="สรุปสิ่งที่เลือกไว้ในขั้นตอนก่อนหน้า"
+                >
+                  <span className="text-[11px] font-medium text-slate-600">เลือกไว้:</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-[11px]"
+                    onClick={() => setRbStep(1)}
+                    title="คลิกเพื่อกลับไปแก้ขั้นที่ 1"
+                  >
+                    ชุดข้อมูล {rbDatasets.length} ชุด
+                  </Button>
+                  {rbSelectedElement && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 gap-1 px-2 text-[11px]"
+                      onClick={() => setRbStep(1)}
+                      title={`Data Element: ${rbSelectedElement.nameTh}`}
+                    >
+                      <Box className="size-3" aria-hidden="true" />
+                      {rbSelectedElement.code}
+                    </Button>
+                  )}
+                  {rbStep >= 3 && rbColumn && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 font-mono text-[11px]"
+                      onClick={() => setRbStep(2)}
+                      title="คลิกเพื่อกลับไปแก้ขั้นที่ 2"
+                    >
+                      คอลัมน์: {rbColumn}
+                    </Button>
+                  )}
+                  {rbStep >= 4 && rbCondition && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => setRbStep(3)}
+                      title="คลิกเพื่อกลับไปแก้ขั้นที่ 3"
+                    >
+                      เงื่อนไข: {rbTemplate?.name ?? rbCondition}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* นำทางขั้นตอน — ย้อนกลับ / ถัดไป / บันทึก (เฉพาะขั้นสุดท้าย) */}
+              <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setRbStep((s) => Math.max(1, s - 1))}
+                  disabled={rbStep === 1 || busy !== null}
+                  className="gap-1.5"
+                >
+                  <ChevronLeft className="size-4" aria-hidden="true" />
+                  ย้อนกลับ
+                </Button>
+                <div className="flex items-center justify-end gap-2">
+                  <span className="text-xs text-muted-foreground" aria-live="polite">
+                    ขั้นที่ {rbStep}/4
+                  </span>
+                  {rbStep < 4 ? (
+                    <Button
+                      type="button"
+                      className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                      onClick={() => setRbStep((s) => Math.min(4, s + 1))}
+                      disabled={!rbStepValid[rbStep - 1] || busy !== null}
+                    >
+                      ถัดไป
+                      <ChevronRight className="size-4" aria-hidden="true" />
+                    </Button>
+                  ) : (
+                    <Button
+                      className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+                      onClick={handleCreateRule}
+                      disabled={rbDatasets.length === 0 || !rbColumn || !rbCondition || busy !== null}
+                    >
+                      <Sparkles className="size-4" aria-hidden="true" />
+                      {busy === 'create-rule' ? 'กำลังบันทึก…' : `บันทึกกฎใหม่${rbDatasets.length > 1 ? ` (ใช้ร่วม ${rbDatasets.length} ชุดข้อมูล)` : ''}`}
+                    </Button>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -1451,6 +1685,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-xs font-semibold text-emerald-800">ขั้นที่ 1 — ตั้งชื่อและประโยค “must …”</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="cn-name">ชื่อเงื่อนไข (ไทย)</Label>
@@ -1474,7 +1709,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
 
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="cn-dimension">ขั้นที่ 1 — มิติคุณภาพข้อมูล: 9 มิติตาม DAMA-DMBOK</Label>
+                  <Label htmlFor="cn-dimension">ขั้นที่ 2 — มิติคุณภาพข้อมูล: 9 มิติตาม DAMA-DMBOK</Label>
                   <p className="text-[11px] text-muted-foreground">
                     เลือกมิติที่เงื่อนไขนี้ช่วยรับประกัน — ระบบจะแนะนำเอนจินที่เหมาะกับมิตินั้นให้อัตโนมัติ
                   </p>
@@ -1490,7 +1725,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   <DimensionHint value={cnDimension} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>ขั้นที่ 2 — เอนจินประเมินผล (จัดกลุ่มตามมิติ — ครบทั้ง 9 มิติ)</Label>
+                  <Label>ขั้นที่ 3 — เอนจินประเมินผล (จัดกลุ่มตามมิติ — ครบทั้ง 9 มิติ)</Label>
                   <p className="text-[11px] text-muted-foreground">
                     เอนจินของมิติที่เลือกถูกไฮไลต์เป็น “มิติที่เลือก” — เลือกเอนจินที่ตรงกับวิธีตรวจสอบของเงื่อนไขนี้
                   </p>
@@ -1502,7 +1737,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
               {/* parameter definitions */}
               <div className="space-y-2 rounded-lg border bg-slate-50/60 p-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium text-slate-700">พารามิเตอร์ที่ผู้ใช้กรอกตอนสร้างกฎ (using)</p>
+                  <p className="text-xs font-medium text-slate-700">ขั้นที่ 4 — พารามิเตอร์ที่ผู้ใช้กรอกตอนสร้างกฎ (using)</p>
                   <Button
                     type="button"
                     variant="outline"

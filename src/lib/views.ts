@@ -24,7 +24,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.18.0'
+export const APP_VERSION = 'v0.18.1'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -88,7 +88,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'rule-library',
     th: 'คลังกฎตรวจสอบ',
     en: 'DQ Rule Library',
-    desc: 'ศูนย์รวมกฎตรวจสอบทั้งหมด: กฎที่ใช้งาน · สร้างกฎแบบ no-code · คลังเงื่อนไข (must) ส่วนกลาง',
+    desc: 'สร้างกฎแบบทีละขั้น 4 ขั้น (เป้าหมาย → คอลัมน์ → เงื่อนไข → ตั้งค่า) · จัดการกฎที่มี · คลังเงื่อนไข (must) ส่วนกลาง',
     icon: Library,
   },
   profiling: {

@@ -908,3 +908,32 @@ Stage Summary:
 - GitHub ครบถ้วนถึง v0.18.0: โครงสร้าง 4 ระดับ Data Domain > Sub > Element > Meta Data + Rule-Element binding + Domain Run Rollup
 - สถานะ sync: remote = local 100% (หลัง push commit เอกสารรายการนี้)
 - ไม่มี artifact ใดค้างบน local เท่านั้น — รอบถัดไปเริ่มจาก v0.18.0 ที่ push แล้ว
+
+---
+
+## Task ID: 31
+**Agent**: Z.ai Code (main orchestrator)
+**Task**: จัดรูปแบบการใช้งานหน้า "คลังกฎตรวจสอบ" ให้เป็นขั้นตอน (v0.18.1) — ตอบความกังวลของผู้ใช้ว่า "หลายเมนูในหน้าเดียวผู้ใช้อาจไม่เข้าใจ"
+(Reorganize the DQ Rule Library into a guided step flow — v0.18.1)
+
+Work Log:
+- วิเคราะห์ UX เดิม: ฟอร์มสร้างกฎยาว 9 ส่วนในการ์ดเดียว (ชุดข้อมูล → Element → ตัวอย่าง → คอลัมน์ → เงื่อนไข → รุนแรง/เกณฑ์ → พารามิเตอร์ → when → ผู้ดำเนินการ) ไม่มีตัวบอกลำดับ + ความสัมพันธ์ กฎ↔เงื่อนไข ไม่ถูกอธิบาย + ไม่มีภาพ flow รวม
+- เลือกทางแก้แบบ "ขั้นตอน (wizard)" แทน "แยกเมนูใหม่" — เพราะกลุ่มเมนู Data Quality มี 6 เมนูแล้ว และเงื่อนไขกับกฎผูกกันแน่นจนควรอยู่หน้าเดียวกัน
+- `core-features-console.tsx`:
+  - เพิ่ม `RB_STEPS` (เป้าหมาย/คอลัมน์/เงื่อนไข/ตั้งค่า) + state `rbStep` (1–4)
+  - derived `rbStepValid` + `rbCanGoTo` — deny-by-default ต่อขั้น (ไปขั้นถัดไปได้เมื่อขั้นก่อนครบ: ขั้น 1 ต้องมีชุดข้อมูล · ขั้น 2 ต้องมีคอลัมน์ · ขั้น 3 ต้องมีเงื่อนไข)
+  - stepper header แบบ `<ol>` 4 ช่อง (aria-current="step", ขั้นที่ทำแล้วแสดง ✓, คลิกย้อนได้, ขั้นที่ยังไปไม่ได้ disabled เส้นประ)
+  - จัดฟอร์มเดิมเป็น 4 step panels: ขั้น 1 = ชุดข้อมูล+Data Element cascade · ขั้น 2 = ตัวอย่างข้อมูล sandbox+คอลัมน์ · ขั้น 3 = เงื่อนไข (must)+พารามิเตอร์ using (+hint ชี้ไปคลังเงื่อนไข) · ขั้น 4 = รุนแรง/เกณฑ์/when/ผู้ดำเนินการ
+  - live sentence preview แสดงทุกขั้น + summary chips "เลือกไว้: ชุดข้อมูล/EL-code/คอลัมน์/เงื่อนไข" คลิกกลับไปแก้ขั้นนั้นได้
+  - nav footer: ย้อนกลับ / ถัดไป (disabled ตาม validity) / บันทึกกฎใหม่ (เฉพาะขั้น 4) · บันทึกสำเร็จ → reset กลับขั้น 1
+  - แถบแนะนำ 3 ขั้นตอนบนหัวหน้า (library mode): ① เตรียมเงื่อนไข (ข้ามได้) → ② สร้างกฎ 4 ขั้น → ③ รันตรวจ/ดูผล — ปุ่มนำทาง: สลับแท็บเงื่อนไข/กฎ + ไปหน้าผลการตรวจสอบ (validation-results) · highlight ขั้นที่ active
+  - ฟอร์มสร้างเงื่อนไขใส่เลขขั้นที่ 1–4 ครบ (ชื่อ+ประโยค → มิติ → เอนจิน → พารามิเตอร์)
+- `views.ts`: APP_VERSION v0.18.1 + desc หน้า rule-library บอกลำดับ 4 ขั้น
+- ตรวจ: `bun run lint` ผ่าน · dev.log ไม่มี error
+- E2E (agent-browser): เดิน wizard ครบ — เลือกชุดข้อมูล "ลูกค้าองค์กร — Master" → ถัดไปเปิด → ขั้น 2 เห็นตัวอย่างข้อมูลจริง เลือกคอลัมน์ email → ขั้น 3 เลือก "รูปแบบอีเมลถูกต้อง" (chips ย้อนกลับแสดง) → ขั้น 4 บันทึกกฎใหม่ → `POST /api/dq/rules 201` กฎข้อที่ 12 โผล่ในลิสต์ถูกต้อง (column=email, MEDIUM, เกณฑ์ 95) + wizard reset ขั้น 1 · ปุ่มแถบแนะนำนำทางถูกทั้ง 3 ปุ่ม · mobile 375px NO-OVERFLOW · ไม่มี console error
+
+Stage Summary:
+- **เวอร์ชัน**: v0.18.1 (local commit — รอ token ผู้ใช้สำหรับ push รอบถัดไป รวมกับ docs commit ของ Task 27/30 ถ้ามีค้าง)
+- **UX ใหม่**: หน้าคลังกฎตรวจสอบ = แถบ flow 3 ขั้น + 2 แท็บ + wizard 4 ขั้น deny-by-default ต่อขั้น — ลด cognitive load จากฟอร์มยาว 9 ส่วนเป็นทีละขั้นมีตรวจความครบ
+- **ไฟล์แก้**: src/components/core-features-console.tsx, src/lib/views.ts
+- **ไม่แก้**: โครงสร้าง API/schema/สิทธิ์ (ฝั่ง backend เหมือนเดิมทุกอย่าง — เป็นการจัด UI flow เท่านั้น)
