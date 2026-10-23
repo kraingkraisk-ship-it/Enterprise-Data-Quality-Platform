@@ -958,3 +958,31 @@ Stage Summary:
 - GitHub ครบถ้วนถึง v0.18.1: หน้าคลังกฎตรวจสอบจัดเป็นแถบ flow 3 ขั้น + Rule Builder wizard 4 ขั้น (deny-by-default ต่อขั้น, live preview, summary chips)
 - สถานะ sync: remote = local 100% (หลัง push commit เอกสารรายการนี้) — ไม่มี artifact ค้าง local เท่านั้น
 - Roadmap คงเหลือ: Phase 5 — Executive Dashboard byDomain อัปเกรดเป็น element rollup (ตามแผนล็อกแล้ว)
+
+---
+Task ID: 33
+Agent: Z.ai Code (main session)
+Task: Push v0.18.1 (Task 31 ค้าง) + Implement & Push v0.19.0 — Phase 5: Executive Dashboard byDomain อัปเกรดเป็น Element Rollup
+
+Work Log:
+- ใช้ GitHub PAT ที่ผู้ใช้ให้ในรอบนี้ แบบ one-time URL (redact token ใน output ทุกครั้ง ไม่บันทึกลง disk / ไม่แตะ .git/config)
+- Push ค้างจากเดิม: `ca0e28f` (v0.18.1) + สร้าง annotated tag `v0.18.1` ชี้ commit เดียวกัน → push สำเร็จ `531235a..ca0e28f main` + `[new tag] v0.18.1` · ls-remote ยืนยัน SHA ตรงทุกรายการ (main = ca0e28f, tag^{} = ca0e28f)
+- ตรวจ security: `rg "github_pat_…"` ทั้ง repo = ไม่พบ token บน disk · `git config --local` ไม่มี token · origin URL ไม่ถูกแตะ
+- **Phase 5 (v0.19.0)** — byDomain ของแดชบอร์ดผู้บริหารเปลี่ยนจาก "เฉลี่ยคะแนนชุดข้อมูลผ่าน Dataset.domainId" เป็น "Element Rollup 4 ระดับ":
+  - ตรวจพบว่า /api/dq/run ไม่ได้ snapshot dataElementId ลง DqRun (เฉพาะ run-domain) → ใช้ที่มาคะแนนจาก **DqRule.dataElementId (การผูกกฎ–element ปัจจุบัน) × ผลรันล่าสุดราย (กฎ×ชุดข้อมูล)** จึงครอบทั้งรันเดี่ยวและรันระดับโดเมน
+  - ใช้ `rollupByElement()` จาก src/lib/elements.ts — วิธีคำนวณเดียวกับหน้ารันระดับโดเมน (ถ่วงน้ำหนักจำนวนแถว)
+  - โดเมนย่อย = เฉลี่ยคะแนน element ทั้งหมดใต้โดเมนย่อย (element ยังไม่ถูกวัด นับ 0 ตามนิยามผู้บริหาร "ไม่เคยรัน = 0" · โดเมนย่อยที่ไม่มี element ไม่เข้าเฉลี่ย) · โดเมนหลัก = เฉลี่ยคะแนนโดเมนย่อย · เรียงแย่สุดก่อน · โดเมนหลักที่ไม่มี element เลยยังไม่แสดง
+  - unassigned (ชุดข้อมูลนอกโดเมน) คงวิธีคะแนนชุดข้อมูลเดิม เพราะไม่มี element คลุม
+  - UI: widget "คะแนนแยกตาม Data Domain" เพิ่ม badge "Element Rollup" + แถวแสดง "N element · วัดแล้ว N" + คำอธิบายวิธีคำนวณใต้ widget · รายงานผู้บริหาร (executive-reports) เปลี่ยนคอลัมน์ "ชุดข้อมูล" เป็น "Element (วัดแล้ว/ทั้งหมด)"
+  - API เพิ่ม field `byDomain.method = 'ELEMENT_ROLLUP'` และอัปเดตคอมเมนต์นิยามคะแนนครบ
+  - views.ts: APP_VERSION v0.19.0 + desc หน้าแดชบอร์ดผู้บริหารระบุ Element Rollup
+- ตรวจ: `bun run lint` ผ่าน · dev.log ไม่มี error
+- E2E: curl API ตรวจสอบคะแนนตรงตามที่คำนวณด้วยมือ (ลูกค้า 5 element วัด 3 = 55.0 · การเงิน 6/1 = 9.5 · การปฏิบัติตามกฎเกณฑ์ 1/0 = 0.0 · unassigned 2 ชุด = 50.0) + agent-browser: แดชบอร์ด/รายงานแสดงข้อมูลตรงกัน 100%, badge+footer แสดง, mobile 375px NO-OVERFLOW (ทั้งสองหน้า), ไม่มี console error, footer ถูกเนื้อหายาวดันลงล่างถูกต้อง
+- commit `332b625` + tag `v0.19.0` → push สำเร็จ `f25ea02..332b625 main` + `[new tag] v0.19.0` · ls-remote ยืนยัน SHA ตรง (main = 332b625, tag^{} = 332b625)
+- commit docs(worklog) รายการนี้ แล้ว push ด้วย token เดียวกัน → remote = local 100%
+- แจ้งเตือนผู้ใช้: token ถูกวางลงแชต ควร revoke/rotate หลังใช้งาน
+
+Stage Summary:
+- GitHub ครบถ้วนถึง v0.19.0: Phase 5 จบตามแผนล็อก — byDomain = Element Rollup 4 ระดับ (Element→Sub→Domain) ทั้งแดชบอร์ดและรายงาน PDF
+- Roadmap 4 ระดับ (Phase 1–5) ครบทั้งหมดแล้ว: schema/DataElement · UI master-detail · Rule-Element binding · Domain Run Rollup · Executive Dashboard rollup
+- สถานะ sync: remote = local 100% — ไม่มี artifact ค้าง local เท่านั้น
