@@ -1144,3 +1144,23 @@ Stage Summary:
 - ยืนยัน GitHub ครบถ้วนถึง v0.21.0 (main + tag) ด้วย PAT ใหม่ — ไม่ต้อง push code เพิ่ม (remote = local 100%)
 - สภาพแวดล้อมกู้คืนพร้อมใช้งานเต็มรูปแบบ: dev server HTTP 200 · ฐานข้อมูล seed ครบ · local tags ครบตรง remote · worktree clean
 - v0.21.0 Data Mapping ปิดงานสมบูรณ์ทั้ง local + GitHub — พร้อมรับ requirement ถัดไป (v0.22.0)
+
+---
+
+## Task ID: 38
+**Agent**: Z.ai Code (main session)
+**Task**: v0.22.0 — ออกแบบ "Mapping Detail View" (คลิกดูรายละเอียดการแมปแบบสเปกเอกสารเต็ม) — วางแผน/ออกแบบก่อน ยังไม่ implement (ผู้ใช้สั่งชัดเจน)
+
+Work Log:
+- ผู้ใช้เสนอ requirement ใหม่: ใน Data Mapping ให้คลิกเข้าไปดูรายละเอียดได้ พร้อมตัวอย่างสเปกเอกสาร 17 field (Mapping ID MAP-CUST-001 / Domain / Subdomain / Business Term / CDE / Source System-Schema-Table-Column-Type / Target System-Schema-Table-Column-Type / Mapping Type Direct/Rename / Transformation Rule TRIM(customer_no) / DQ Rules 4 ข้อ / Exception Action / Owner / Steward / Classification / Status Approved / Version 1.0) — และสั่งว่า "ยังไม่ต้องรีบทำ วางแผนและออกแบบก่อน ถ้ามีข้อสงสัยถามได้"
+- ตรวจสถานะ repo: main = e0f0a71 (v0.21.0 + worklog Task 37) sync 100% — งานถัดไปคือ v0.22.0
+- ศึกษา schema ครบทุก model ที่เกี่ยวข้อง: DataMapping (code MP-####, element↔element, 5 ประเภท, workflow), DataElement (isCde/ownerId/stewardId/classification/dataType/formatPattern), DataElementColumnMapping (element ↔ DataAssetColumn), DataAsset (name/sourceInfo ไม่มี schema/table), DataAssetColumn (name/dataType แบบอนุมาณ ไม่มี physical type), DqRule (ผูก dataElementId ได้ + severity/threshold แต่ไม่มี exception action), DataDomain tree (2 ระดับ)
+- ตรวจ seed v0.21.0: ตัวอย่างจำลองด้วยโดเมน CRM > customer_master > element customer_no และ DWH > dim_customer > customer_id — path ตรงตัวอย่าง แต่ seed ใช้ชื่อ "DWH" (ตัวอย่างผู้ใช้ใหม่ใช้ "EDW") และ element กลุ่มนี้ยังไม่ผูก DataAsset/คอลัมน์จริง
+- ทำ Gap analysis 17 field: มีแล้ว/ดึงได้ 13 field (ID, Domain, Subdomain, Business Term, CDE, Source System/Table/Column, Target เช่นเดียวกัน, Mapping Type, Transformation Rule=transformNote, DQ Rules จากการผูกกฎกับ element, Owner/Steward, Classification, Status=ACTIVE แสดงเป็น "อนุมัติ") — ต้องเพิ่มใหม่ 4 field: Schema (CUSTOMER/CORE), Physical Data Type (VARCHAR(20)), Exception Action, Version + ประเด็นรูปแบบรหัส MP-#### vs MAP-CUST-001
+- ออกแบบโครงหน้ารายละเอียด: Dialog (pattern เดียวกับ element detail) จัดกลุ่ม 7 ส่วนตามลำดับตัวอย่าง: ภาพรวมการแมป → ต้นทาง (กายภาพ) → ปลายทาง (กายภาพ) → ประเภท+กฎการแปลง → DQ Rules (พร้อมผลรันล่าสุด) → Exception Action → ธรรมาภิบาล+สถานะ/เวอร์ชัน พร้อมปุ่ม workflow + Audit Trail — จุดคลิก: ตารางหน้า "การแมปข้อมูล" + แถว Source/Target ในแท็บ 5 ของ element
+- ยื่นคำถามชี้ขาด 7 ข้อให้ผู้ใช้ตอบก่อนเขียนโค้ด (ตามวิธีทำงานที่ผู้ใช้กำหนดเสมอ: ถามก่อนทำ): (1) แหล่งข้อมูลกายภาพ ดึงอัตโนมัติจากการแมปคอลัมน์/กรอกมือ/ผสม (2) รูปแบบรหัส MP-#### vs MAP-{DOMAIN}-{seq} (3) เพิ่มประเภท RENAME หรือคง 5 ประเภท (4) DQ Rules แสดงจาก element ทั้งสองฝั่ง หรือผูกกับ mapping โดยตรง (5) Exception Action ใส่ที่กฎหรือที่ mapping (6) Version อัตโนมัติหรือกรอกมือ (7) ยืนยันจุดคลิก+Dialog 7 ส่วน
+
+Stage Summary:
+- ยังไม่มีการแก้โค้ด/schema ใด ๆ — สถานะ repo คงอยู่ที่ v0.22.0-dev (main = e0f0a71 = remote)
+- ข้อสรุปการออกแบบ: หน้ารายละเอียดส่วนใหญ่เป็น "มุมมองรวบรวม" จากข้อมูลที่ระบบมีอยู่แล้ว 13/17 field — งานหลักคือ Dialog aggregation + เติม 4 field ใหม่ (Schema/Physical Type/Exception Action/Version) + เสริม seed ให้ตัวอย่างครบสเปก (asset CRM CUSTOMER.customer_master + EDW CORE.dim_customer + คอลัมน์ VARCHAR(20) + กฎ 4 ข้อ + action)
+- รอคำตอบ 7 คำถามจากผู้ใช้ แล้วจึง implement เป็น v0.22.0
