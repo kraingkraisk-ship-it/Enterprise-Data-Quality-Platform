@@ -808,3 +808,23 @@ Stage Summary:
 - สิทธิ์: เมนูแสดงทุกคนแต่ API บังคับ VIEW_EXEC_DASHBOARD (6 บทบาท) — BUSINESS_USER/ENGINEER เจอ gate 403 พร้อมคำอธิบาย
 - คำนวณจาก DqRun (วิธีเดียวกับ Scorecard) — แนวโน้มเป็นค่าจริงจากเอนจินประเมินผล ไม่ใช่ข้อมูลจำลอง
 - Push pending ทั้ง v0.16.0 + v0.17.0: รอ token จากผู้ใช้ (push main + 2 tags ครั้งเดียวได้)
+
+---
+Task ID: 26
+Agent: Z.ai Code (main session)
+Task: Push v0.16.0 + v0.17.0 ขึ้น GitHub (main + 2 annotated tags) ด้วย GitHub PAT ที่ผู้ใช้ให้มา — ปิดงานค้างจาก Task 25
+
+Work Log:
+- รับ GitHub PAT ใหม่จากผู้ใช้ (fine-grained) — ใช้แบบ one-time ผ่าน push URL เท่านั้น ไม่บันทึกลง disk / ไม่แตะ .git/config / ไม่เข้าไฟล์ใด ๆ ทั้งสิ้น
+- `git push <url> main refs/tags/v0.16.0 refs/tags/v0.17.0` → สำเร็จ: `afa50ba..68f3c80 main`, `* [new tag] v0.16.0`, `* [new tag] v0.17.0`
+- ตรวจสอบ remote ด้วย `git ls-remote` เทียบ SHA ระดับ commit ทั้ง 3 จุด:
+  - `refs/heads/main` = `68f3c80facfd0d32096b2fa64ef0635af0034d2e` ✓ ตรงกับ local main
+  - `refs/tags/v0.16.0^{}` = `62ebb2b088bde7352ffe558dd95fda0b2f29a0a9` ✓ ตรงกับ local
+  - `refs/tags/v0.17.0^{}` = `eef209938b4de94e02da8cdb8345eb8797bbfef1` ✓ ตรงกับ local
+- commit `docs(worklog)` รายการนี้ แล้ว push ตามด้วย token เดียวกัน เพื่อให้ remote = local 100%
+- แจ้งเตือนผู้ใช้เรื่องความปลอดภัย: token ถูกวางลงในแชต ควร revoke/rotate หลังใช้งานเสร็จ (ระบบไม่มีการจัดเก็บ token ไว้เลย)
+
+Stage Summary:
+- GitHub ตอนนี้มีครบ: main ถึง `68f3c80` + tag `v0.16.0` (Dataset ในโดเมน) + tag `v0.17.0` (Executive Dashboard/Reports + threshold + SLA)
+- สถานะ sync: remote = local 100% (sync เต็มรูปแบบหลัง push commit เอกสารรายการนี้)
+- งานค้าง "รอ token" จาก Task 25 ปิดสมบูรณ์ — ไม่มี artifact ใดค้างบน local เท่านั้น
