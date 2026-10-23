@@ -90,6 +90,7 @@ import { DATA_CLASSIFICATIONS, UNCLASSIFIED } from '@/lib/regulation'
 import { buildElementPath } from '@/lib/mappings'
 import MappingForm from '@/components/data-mapping/mapping-form'
 import { LineageDiagram } from '@/components/data-mapping/lineage-diagram'
+import { MappingDetailDialog } from '@/components/data-mapping/mapping-detail-dialog'
 import { MappingSideRow } from '@/components/data-mapping/mapping-row'
 import type { ExpandedMapping, LineageResponse } from '@/components/data-mapping/types'
 
@@ -452,6 +453,9 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [detailMappingsLoading, setDetailMappingsLoading] = useState(false)
   const [detailLineage, setDetailLineage] = useState<LineageResponse | null>(null)
   const [mapAddOpen, setMapAddOpen] = useState(false)
+  /* v0.22.0 — Mapping Detail Dialog (แท็บ 5): id ของ mapping ที่กำลังดูรายละเอียด */
+  const [mappingDetailId, setMappingDetailId] = useState<string | null>(null)
+  const [mappingDetailOpen, setMappingDetailOpen] = useState(false)
 
   /* ---------- ฟอร์ม element (สร้าง/แก้ไข) ---------- */
   const [elFormOpen, setElFormOpen] = useState(false)
@@ -2169,6 +2173,10 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                     operatorEmail={operatorEmail}
                                     approverEmail={approverEmail}
                                     onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
+                                    onOpenDetail={(id) => {
+                                      setMappingDetailId(id)
+                                      setMappingDetailOpen(true)
+                                    }}
                                   />
                                 ))}
                             </ul>
@@ -2195,6 +2203,10 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                     operatorEmail={operatorEmail}
                                     approverEmail={approverEmail}
                                     onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
+                                    onOpenDetail={(id) => {
+                                      setMappingDetailId(id)
+                                      setMappingDetailOpen(true)
+                                    }}
                                   />
                                 ))}
                             </ul>
@@ -2204,6 +2216,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                     )}
 
                     {/* Dialog เพิ่มการแมป (ฟอร์มใช้ร่วมกับหน้า Data Mapping) */}
+                    <MappingDetailDialog
+                      mappingId={mappingDetailId}
+                      open={mappingDetailOpen}
+                      onOpenChange={setMappingDetailOpen}
+                      operatorEmail={operatorEmail}
+                      approverEmail={approverEmail}
+                      onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
+                    />
                     <Dialog open={mapAddOpen} onOpenChange={setMapAddOpen}>
                       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
                         <DialogHeader>

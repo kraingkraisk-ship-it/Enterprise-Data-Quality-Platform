@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react'
-import { Archive, CheckCircle2, Clock3, Loader2, Send, Trash2, XCircle } from 'lucide-react'
+import { Archive, CheckCircle2, Clock3, Info, Loader2, Send, Trash2, XCircle } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -281,10 +281,12 @@ interface MappingSideRowProps {
   operatorEmail: string
   approverEmail: string
   onChanged: () => void | Promise<void>
+  /** v0.22.0 — เรียกเมื่อกด "ดูรายละเอียด" (parent เปิด MappingDetailDialog) — ไม่ส่ง = ไม่แสดงปุ่ม */
+  onOpenDetail?: (mappingId: string) => void
 }
 
 /** แถว mapping ในแท็บ "การแมปข้อมูล" — แสดง element อีกฝั่ง (ต้นทางที่ไหลเข้า / ปลายทางที่ไหลออก) */
-export function MappingSideRow({ mapping, elementId, operatorEmail, approverEmail, onChanged }: MappingSideRowProps) {
+export function MappingSideRow({ mapping, elementId, operatorEmail, approverEmail, onChanged, onOpenDetail }: MappingSideRowProps) {
   const incoming = mapping.target.id === elementId
   const other = incoming ? mapping.source : mapping.target
   const hint = mapping.transformNote || mapping.note
@@ -297,8 +299,23 @@ export function MappingSideRow({ mapping, elementId, operatorEmail, approverEmai
         <span className="font-mono text-[10px] text-muted-foreground">{mapping.code}</span>
         <span className="text-sm font-medium">{other.nameTh || other.nameEn}</span>
         <span className="font-mono text-[10px] text-muted-foreground">{other.code}</span>
+        <Badge variant="outline" className="font-mono text-[9px]" title="เวอร์ชันสเปกการแมป">
+          v{mapping.version}
+        </Badge>
         <MappingTypeBadge type={mapping.mappingType} />
         <MappingStatusBadge mapping={mapping} />
+        {onOpenDetail && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-[11px] text-emerald-800 hover:bg-emerald-50"
+            onClick={() => onOpenDetail(mapping.id)}
+            title={`ดูรายละเอียดสเปกฉบับเต็มของ ${mapping.code}`}
+            aria-label={`ดูรายละเอียด mapping ${mapping.code}`}
+          >
+            <Info className="size-3" aria-hidden="true" /> ดูรายละเอียด
+          </Button>
+        )}
       </div>
       <p className="mt-0.5 break-all font-mono text-[10px] text-muted-foreground">{other.path}</p>
       {hint && <p className="mt-1 text-[11px] text-foreground/80">{mapping.transformNote ? `การแปลง: ${mapping.transformNote}` : `หมายเหตุ: ${mapping.note}`}</p>}

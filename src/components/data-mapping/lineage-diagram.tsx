@@ -16,6 +16,7 @@ import type { LineageEdge, MappingElementSummary } from './types'
 /* สีเส้นตามประเภทการแมป — ตระกูล emerald + เทากลาง + อำพัน (ห้ามน้ำเงิน/indigo) */
 const TYPE_STROKE: Record<MappingTypeKey, string> = {
   DIRECT: '#059669', // emerald-600
+  RENAME: '#E11D48', // rose-600 (v0.22.0 — Direct/Rename)
   TRANSFORM: '#D97706', // amber-600
   DERIVED: '#0F766E', // teal-700
   AGGREGATE: '#475569', // slate-600

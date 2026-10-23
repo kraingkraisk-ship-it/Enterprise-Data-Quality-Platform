@@ -11,7 +11,7 @@
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Network, Plus, RefreshCw, Search, Waypoints } from 'lucide-react'
+import { Info, Loader2, Network, Plus, RefreshCw, Search, Waypoints } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -30,6 +30,7 @@ import { useToast } from '@/hooks/use-toast'
 import { ROLES, type RoleKey } from '@/lib/rbac'
 import { MAPPING_STATUSES, MAPPING_TYPES, MAPPING_TYPE_KEYS, type MappingStatus } from '@/lib/mappings'
 import { LineageDiagram } from '@/components/data-mapping/lineage-diagram'
+import { MappingDetailDialog } from '@/components/data-mapping/mapping-detail-dialog'
 import {
   MAPPING_STATUS_META,
   MAPPING_TYPE_OPTIONS,
@@ -58,6 +59,9 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
   const [elements, setElements] = useState<PickerElement[]>([])
   const [operatorEmail, setOperatorEmail] = useState('preecha.engineer@company.co.th')
   const [approverEmail, setApproverEmail] = useState('')
+  /* v0.22.0 — Mapping Detail Dialog (หน้ารวม): id ของ mapping ที่กำลังดูรายละเอียด */
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   /* ---------- ตัวกรอง ---------- */
   const [search, setSearch] = useState('')
@@ -411,7 +415,12 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
             <TableBody>
               {filtered.map((m) => (
                 <TableRow key={m.id}>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{m.code}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {m.code}
+                    <span className="ml-1 font-sans text-[9px] text-muted-foreground" title="เวอร์ชันสเปกการแมป">
+                      v{m.version}
+                    </span>
+                  </TableCell>
                   <TableCell className="max-w-[24rem]">
                     <p className="truncate text-xs font-medium" title={`${m.source.path} → ${m.target.path}`}>
                       <span className="font-mono text-[11px]">{m.source.code}</span> {m.source.nameTh || m.source.nameEn}
@@ -441,6 +450,19 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 gap-1 border-emerald-300 px-2 text-[11px] text-emerald-800 hover:bg-emerald-50"
+                        onClick={() => {
+                          setDetailId(m.id)
+                          setDetailOpen(true)
+                        }}
+                        title={`ดูรายละเอียดสเปกฉบับเต็มของ ${m.code}`}
+                        aria-label={`ดูรายละเอียด mapping ${m.code}`}
+                      >
+                        <Info className="size-3" aria-hidden="true" /> ดูรายละเอียด
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -553,6 +575,16 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
           />
         </DialogContent>
       </Dialog>
+
+      {/* v0.22.0 — Mapping Detail Dialog (คลิก "ดูรายละเอียด" จากตาราง) */}
+      <MappingDetailDialog
+        mappingId={detailId}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        operatorEmail={operatorEmail}
+        approverEmail={approverEmail}
+        onChanged={loadMappings}
+      />
     </div>
   )
 }

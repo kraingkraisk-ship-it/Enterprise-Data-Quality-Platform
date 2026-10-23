@@ -253,10 +253,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const endpointsChanged = newSourceId !== mapping.sourceElementId || newTargetId !== mapping.targetElementId
     const contentChanged = endpointsChanged || newType !== mapping.mappingType || newTransformNote !== mapping.transformNote
 
-    // เนื้อหาที่ผ่านการอนุมัติ (เส้นทาง/ประเภท/รายละเอียดการแปลง) แก้ได้เฉพาะตอนยังเป็นร่าง — ACTIVE ต้องลบแล้วสร้างใหม่ผ่านอนุมัติ
-    if (contentChanged && mapping.status !== 'DRAFT') {
+    // เนื้อหาที่ผ่านการอนุมัติ (เส้นทาง/ประเภท/รายละเอียดการแปลง) แก้ได้เมื่อไม่มีผลใช้งานจริง:
+    // DRAFT (ยังไม่อนุมัติ) หรือ DEPRECATED (เลิกใช้แล้ว — แก้แล้วส่งขออนุมัติใหม่ = เวอร์ชัน +0.1 อัตโนมัติ v0.22.0)
+    // ขณะ ACTIVE ห้ามแก้เนื้อหาโดยตรง (ต้องเลิกใช้ก่อน — กันสเปกที่ใช้งานอยู่เปลี่ยนโดยไม่ผ่านอนุมัติ)
+    if (contentChanged && !['DRAFT', 'DEPRECATED'].includes(mapping.status)) {
       return NextResponse.json(
-        { error: 'เส้นทาง/ประเภท/รายละเอียดการแปลง ผ่านการอนุมัติแล้ว — แก้ได้เฉพาะตอนสถานะ DRAFT (เลิกใช้แล้วสร้าง mapping ใหม่แทน)' },
+        { error: 'เส้นทาง/ประเภท/รายละเอียดการแปลง กำลังใช้งานอยู่ (ACTIVE) — ต้องเลิกใช้ก่อนแล้วแก้ไข แล้วส่งขออนุมัติใหม่ (เวอร์ชันจะเพิ่มอัตโนมัติ)' },
         { status: 400 },
       )
     }

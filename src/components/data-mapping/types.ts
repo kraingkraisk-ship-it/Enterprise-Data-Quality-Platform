@@ -33,6 +33,8 @@ export interface ExpandedMapping {
   transformNote: string
   note: string
   status: 'DRAFT' | 'ACTIVE' | 'DEPRECATED'
+  /** เวอร์ชันสเปก (v0.22.0) — อัตโนมัติ +0.1 เมื่ออนุมัติเนื้อหาที่แก้ · ปรับมือได้ด้วยสิทธิ์อนุมัติ */
+  version: string
   pendingApproval: boolean
   approvedBy: string | null
   approvedAt: string | null
@@ -91,4 +93,90 @@ export interface OperatorUser {
   email: string
   name: string
   role: string
+}
+
+/* ---------------------------------------------------------------------------
+ * Mapping Detail (v0.22.0) — รายละเอียดเต็มจาก GET /api/mappings/[id]
+ * ตรงกับ MappingEndpointDetail ใน src/lib/mappings-server.ts
+ * --------------------------------------------------------------------------- */
+
+export interface MappingPerson {
+  email: string
+  name: string
+  roleTh: string | null
+}
+
+/** ข้อมูลกายภาพ 1 รายการที่ผูกกับ element (จากการแมป element ↔ คอลัมน์ใน Data Asset) */
+export interface MappingPhysicalEndpoint {
+  assetId: string
+  assetName: string
+  assetStatus: string
+  schemaName: string
+  tableName: string
+  columnName: string
+  physicalType: string
+  dataType: string
+  note: string
+  mappedBy: string
+}
+
+/** กฎ DQ 1 ข้อที่ผูกกับ element (พร้อม exception action + ผลรันล่าสุด) */
+export interface MappingRuleItem {
+  id: string
+  column: string
+  condition: string
+  conditionName: string
+  dimension: string
+  severity: string
+  parameters: string
+  exceptionAction: string
+  exceptionActionNote: string
+  lastRun: { status: string; passRate: number; createdAt: string } | null
+}
+
+/** รายละเอียด endpoint หนึ่งฝั่งของ mapping (meta + กายภาพ + กฎ + ธรรมาภิบาล) */
+export interface MappingEndpointDetail {
+  id: string
+  code: string
+  nameTh: string
+  nameEn: string
+  path: string
+  parentDomainId: string | null
+  parentDomainName: string
+  subDomainId: string
+  subDomainName: string
+  status: string
+  dataType: string
+  formatPattern: string
+  maxLength: number | null
+  valueDomain: string
+  unit: string
+  isCde: boolean
+  isFinancial: boolean
+  pii: boolean
+  classification: string
+  owner: MappingPerson | null
+  steward: MappingPerson | null
+  custodian: MappingPerson | null
+  physical: MappingPhysicalEndpoint[]
+  rules: MappingRuleItem[]
+}
+
+/** รายการ Audit Trail 1 แถว */
+export interface MappingAuditEntry {
+  id: string
+  action: string
+  actor: string
+  target: string
+  detail: string
+  createdAt: string
+}
+
+/** Response เต็มของ GET /api/mappings/[id] (v0.22.0) */
+export interface MappingDetailResponse {
+  mapping: ExpandedMapping
+  source: MappingEndpointDetail | null
+  target: MappingEndpointDetail | null
+  exceptionActions: Array<{ key: string; count: number }>
+  audit: MappingAuditEntry[]
 }
