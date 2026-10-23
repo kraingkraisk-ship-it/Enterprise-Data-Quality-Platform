@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { buildRuleSentence } from '@/lib/dq'
 import { resolveOperator } from '@/lib/operator'
 
-type Body = { action?: string; operatorEmail?: string; threshold?: number }
+type Body = { action?: string; operatorEmail?: string; threshold?: number; dataElementId?: string | null }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -19,8 +19,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     const action = String(body.action ?? '').trim().toUpperCase()
-    if (!['TOGGLE_ENABLED', 'DELETE', 'SET_THRESHOLD'].includes(action)) {
-      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (TOGGLE_ENABLED | DELETE | SET_THRESHOLD)' }, { status: 400 })
+    if (!['TOGGLE_ENABLED', 'DELETE', 'SET_THRESHOLD', 'SET_ELEMENT'].includes(action)) {
+      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (TOGGLE_ENABLED | DELETE | SET_THRESHOLD | SET_ELEMENT)' }, { status: 400 })
     }
 
     const rule = await db.dqRule.findUnique({
@@ -62,6 +62,32 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         },
       })
       return NextResponse.json({ rule: updated, message: `ตั้งค่าผ่านขั้นต่ำ ${threshold}% เรียบร้อย` })
+    }
+
+    if (action === 'SET_ELEMENT') {
+      // ผูก/ปลดกฎกับ Data Element (v0.18.0) — dataElementId = null/ว่าง = ปลดการผูก
+      const rawId = String(body.dataElementId ?? '').trim()
+      let elementPath = '(ไม่ผูก Data Element)'
+      if (rawId) {
+        const el = await db.dataElement.findUnique({
+          where: { id: rawId },
+          select: { id: true, code: true, nameTh: true, subDomain: { select: { name: true, parent: { select: { name: true } } } } },
+        })
+        if (!el) {
+          return NextResponse.json({ error: 'ไม่พบ Data Element ที่ระบุในระบบ' }, { status: 404 })
+        }
+        elementPath = el.subDomain.parent ? `${el.subDomain.parent.name} / ${el.subDomain.name} / ${el.nameTh}` : el.nameTh
+      }
+      const updated = await db.dqRule.update({ where: { id }, data: { dataElementId: rawId || null } })
+      await db.auditLog.create({
+        data: {
+          action: 'SET_RULE_ELEMENT',
+          actor: op.ctx.email,
+          target: targetLabel,
+          detail: `ผูกกฎ "${rule.column}" กับ Data Element: ${elementPath} (เดิม ${rule.dataElementId ? 'ผูกอยู่แล้ว' : 'ไม่ผูก'}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        },
+      })
+      return NextResponse.json({ rule: updated, message: rawId ? `ผูกกฎกับ Data Element "${elementPath}" เรียบร้อย` : 'ปลดการผูกกฎกับ Data Element เรียบร้อย' })
     }
 
     // DELETE

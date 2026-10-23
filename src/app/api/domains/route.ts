@@ -12,7 +12,7 @@ import { DOMAIN_DESC_MAX, DOMAIN_NAME_MAX, isValidDomainColor } from '@/lib/doma
  */
 export async function GET() {
   try {
-    const [domains, groups, columnGroups, datasetGroups] = await Promise.all([
+    const [domains, groups, columnGroups, datasetGroups, elementGroups] = await Promise.all([
       db.dataDomain.findMany({
         orderBy: [{ position: 'asc' }, { name: 'asc' }],
         select: {
@@ -29,6 +29,7 @@ export async function GET() {
       db.dataAsset.groupBy({ by: ['domainId'], _count: { _all: true } }),
       db.dataDomainColumnAssignment.groupBy({ by: ['domainId'], _count: { _all: true } }),
       db.dataset.groupBy({ by: ['domainId'], _count: { _all: true } }),
+      db.dataElement.groupBy({ by: ['subDomainId'], _count: { _all: true } }),
     ])
 
     const countByDomain = new Map<string, number>()
@@ -43,6 +44,10 @@ export async function GET() {
     for (const g of datasetGroups) {
       if (g.domainId) datasetsByDomain.set(g.domainId, g._count._all)
     }
+    const elementsByDomain = new Map<string, number>()
+    for (const g of elementGroups) {
+      elementsByDomain.set(g.subDomainId, g._count._all)
+    }
 
     return NextResponse.json({
       domains: domains.map((d) => ({
@@ -50,6 +55,7 @@ export async function GET() {
         assetCount: countByDomain.get(d.id) ?? 0,
         columnCount: columnsByDomain.get(d.id) ?? 0,
         datasetCount: datasetsByDomain.get(d.id) ?? 0,
+        elementCount: elementsByDomain.get(d.id) ?? 0,
       })),
       count: domains.length,
     })

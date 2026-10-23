@@ -117,28 +117,33 @@ model RuleDataset {
 
 // กฎตรวจสอบคุณภาพข้อมูล — สร้างจาก Rule Builder แบบ no-code และใช้ร่วมกับหลายชุดข้อมูลได้
 model DqRule {
-  id         String   @id @default(cuid())
-  column     String
-  condition  String // รหัสเงื่อนไขจากคลังเงื่อนไขส่วนกลาง (ConditionTemplate.key)
-  parameters String   @default("{}") // JSON — พารามิเตอร์ของเงื่อนไข
-  filter     String? // ตัวกรองไม่บังคับ (จองไว้)
-  severity   String   @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
-  threshold  Float    @default(95) // ค่าผ่านขั้นต่ำ (%) — ใช้เตือนบนแดชบอร์ดผู้บริหารเมื่อ passRate ล่าสุดต่ำกว่าค่านี้ (v0.17.0)
-  enabled    Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id            String   @id @default(cuid())
+  column        String
+  condition     String // รหัสเงื่อนไขจากคลังเงื่อนไขส่วนกลาง (ConditionTemplate.key)
+  parameters    String   @default("{}") // JSON — พารามิเตอร์ของเงื่อนไข
+  filter        String? // ตัวกรองไม่บังคับ (จองไว้)
+  severity      String   @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
+  threshold     Float    @default(95) // ค่าผ่านขั้นต่ำ (%) — ใช้เตือนบนแดชบอร์ดผู้บริหารเมื่อ passRate ล่าสุดต่ำกว่าค่านี้ (v0.17.0)
+  dataElementId String? // Data Element ที่กฎนี้ตรวจ (v0.18.0) — null = กฎแบบเดิมผูกคอลัมน์โดยตรง (ช่วงเปลี่ยนผ่าน)
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   datasets   RuleDataset[]
   runs       DqRun[]
   exceptions DqException[]
+  element    DataElement? @relation(fields: [dataElementId], references: [id], onDelete: SetNull)
+
+  @@index([dataElementId])
 }
 
 // ผลการรันตรวจสอบรายกฎ (ประวัติย้อนหลัง) — batchId ว่าง = รอบก่อนระบบ batch (v0.12.0)
 model DqRun {
-  id         String   @id @default(cuid())
-  ruleId     String
-  datasetId  String
-  batchId    String   @default("") // id ของ DqValidationBatch (เก็บเป็น string — แถวเก่าก่อน v0.12.0 = "")
+  id            String   @id @default(cuid())
+  ruleId        String
+  datasetId     String
+  batchId       String   @default("") // id ของ DqValidationBatch (เก็บเป็น string — แถวเก่าก่อน v0.12.0 = "")
+  dataElementId String   @default("") // Data Element ที่กฎนี้ผูกตอนรัน (v0.18.0) — ว่าง = กฎแบบเดิมไม่ผูก element (snapshot ณ เวลารัน)
   status     String // PASSED | FAILED
   totalRows  Int
   failedRows Int
@@ -152,6 +157,7 @@ model DqRun {
 
   @@index([datasetId, createdAt])
   @@index([batchId])
+  @@index([dataElementId])
 }
 
 // รอบการตรวจสอบ 1 รอบ (กดรัน 1 ครั้ง = 1 batch ครอบผลทุกกฎ) — ใช้ drill-down ในหน้า Validation Results
@@ -166,12 +172,14 @@ model DqValidationBatch {
   skippedRules Int      @default(0)
   overallScore Float?
   note         String   @default("")
+  groupRunId   String   @default("") // รหัสกลุ่มรอบรันระดับโดเมน (v0.18.0) — batch ทุกใบที่เกิดจากรอบรันโดเมนเดียวกันใช้ค่าเดียวกัน ว่าง = รันแบบต่อชุดข้อมูล
   createdAt    DateTime @default(now())
 
   dataset  Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
   failures DqFailureRecord[]
 
   @@index([datasetId, createdAt])
+  @@index([groupRunId])
 }
 
 // แถวข้อมูลที่ล้มเหลวรายแถว (snapshot ตอนรัน — mask ตอนอ่านตามบทบาท ตามหลัก PDPA)
@@ -345,6 +353,7 @@ model DataAsset {
   columns DataAssetColumn[]
   records DataAssetRecord[]
   columnDomainAssignments DataDomainColumnAssignment[]
+  elementMappings DataElementColumnMapping[]
 
   @@index([status])
   @@index([domainId])
@@ -374,6 +383,7 @@ model DataDomain {
   assets   DataAsset[]
   datasets Dataset[] // ชุดข้อมูลในโมดูล DQ ที่สังกัดโดเมนนี้ (v0.16.0)
   columnAssignments DataDomainColumnAssignment[]
+  elements DataElement[] // Data Element ที่แขวนใต้โดเมนนี้ (เฉพาะโดเมนย่อย — v0.18.0)
 
   @@index([parentId])
   @@index([position])
@@ -398,6 +408,63 @@ model DataDomainColumnAssignment {
 
   @@unique([assetId, columnName])
   @@index([domainId])
+}
+
+// ---------------------------------------------------------------------------
+// Data Element (v0.18.0) — องค์ประกอบข้อมูลเชิงตรรกะ ใต้โดเมนย่อยเสมอ (บังคับใน API)
+// ตามแนวคิด ISO/IEC 11179: Naming & Definition / Representation / Value Domain /
+// Administrative attributes — เป็นจุดผูก DQ Rule แทนการผูกคอลัมน์ดิบโดยตรง
+// ---------------------------------------------------------------------------
+
+model DataElement {
+  id             String   @id @default(cuid())
+  code           String   @unique // รหัสระบบ EL-0001 … (สร้างอัตโนมัติ)
+  subDomainId    String // ต้องเป็นโดเมนย่อย (parentId != null) — ตรวจใน API (deny-by-default)
+  nameTh         String // ชื่อ (ไม่ซ้ำในโดเมนย่อยเดียวกัน — ตรวจใน API)
+  nameEn         String   @default("") // ชื่อภาษาอังกฤษ
+  definition     String   @default("") // นิยามทางธุรกิจ (ISO 11179: Definition)
+  examples       String   @default("") // ตัวอย่างค่า
+  dataType       String   @default("TEXT") // TEXT | INTEGER | NUMBER | BOOLEAN | DATE | DATETIME
+  formatPattern  String   @default("") // รูปแบบ/พาเทิร์น เช่น regex หรือ DD/MM/YYYY
+  valueDomain    String   @default("") // ค่าอนุญาต/ช่วงค่า (ISO 11179: Value Domain)
+  maxLength      Int? // ความยาวสูงสุด (null = ไม่ระบุ)
+  unit           String   @default("") // หน่วย เช่น THB, %
+  ownerId        String? // email เจ้าของข้อมูล (ISO 11179: Steward / Responsible)
+  pii            Boolean  @default(false) // เป็นข้อมูลส่วนบุคคล (PDPA)
+  classification String   @default("UNCLASSIFIED") // การจำแนกข้อมูล (DataClassificationDef.id หรือ UNCLASSIFIED)
+  status         String   @default("ACTIVE") // DRAFT | ACTIVE | DEPRECATED (ISO 11179: registration status)
+  position       Int      @default(0) // ลำดับการแสดงผล
+  customFields   String   @default("{}") // JSON object — field เสริมตามองค์กรกำหนด
+  createdBy      String // email ผู้สร้าง
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  subDomain      DataDomain                 @relation(fields: [subDomainId], references: [id], onDelete: Cascade)
+  columnMappings DataElementColumnMapping[]
+  rules          DqRule[]
+  // หมายเหตุ: DqRun.dataElementId เป็น snapshot แบบ string (ไม่ใช่ FK) เพื่อคงประวัติแม้ลบ element — คิวรีด้วย where dataElementId
+
+  @@unique([subDomainId, nameTh])
+  @@index([subDomainId, status])
+}
+
+// การแมป Data Element ↔ คอลัมน์จริงในคลังข้อมูล (Data Asset)
+// 1 element แมปได้หลายคอลัมน์ข้ามหลาย asset (เชิงตรรกะ) — ใช้แสดง "ที่มา" และแนะนำคอลัมน์ตอนสร้างกฎ
+model DataElementColumnMapping {
+  id         String   @id @default(cuid())
+  elementId  String
+  assetId    String
+  columnName String // ต้องเป็นคอลัมน์ที่มีจริงใน DataAssetColumn (ตรวจใน API — deny-by-default)
+  note       String   @default("")
+  mappedBy   String // email ผู้แมป
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  element DataElement @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  asset   DataAsset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([elementId, assetId, columnName])
+  @@index([assetId, columnName])
 }
 
 // คอลัมน์ของ Data Asset — metadata สำหรับแสดงใน Data Inventory

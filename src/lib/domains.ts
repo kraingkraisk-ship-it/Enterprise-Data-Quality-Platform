@@ -70,6 +70,8 @@ export interface DomainItem {
   columnCount: number
   /** จำนวนชุดข้อมูล DQ (Dataset) ที่สังกัดโดเมนนี้โดยตรง (v0.16.0) */
   datasetCount: number
+  /** จำนวน Data Element ที่แขวนใต้โดเมนนี้ (เฉพาะโดเมนย่อย — v0.18.0) */
+  elementCount?: number
   createdAt: string
 }
 

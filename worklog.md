@@ -848,3 +848,43 @@ Stage Summary:
 - แผนออกแบบครบถ้วนนำเสนอผู้ใช้แล้ว (โครงสร้าง 4 ระดับ + rule↔element + flow + migration + RBAC/audit + 5 phases)
 - สถานะ: รอคำตอบ 7 คำถามจากผู้ใช้ก่อนเริ่มพัฒนา — โค้ด/schema ยังไม่ถูกแตะ (v0.17.0 ยังเป็นเวอร์ชันปัจจุบัน)
 - หมายเหตุ: commit นี้เป็นเอกสารการวางแผนเท่านั้น จะถูก push พร้อมรอบถัดไป
+
+---
+Task ID: 28
+Agent: Z.ai Code (main session)
+Task: v0.18.0 Phase 1 — Schema DataElement 4 ระดับ + migration แปลงข้อมูลเดิม + API ครบวงจร (ตามคำตอบผู้ใช้ 1ก/2ใต้ย่อย/3 ISO 11179/4แปลงเลย/5rollup/6ขยายเดิม/7ไม่เพิ่มสิทธิ์)
+
+Work Log:
+- Schema: DataElement (code EL-#### อัตโนมัติ, subDomainId บังคับใต้โดเมนย่อย, meta ตาม ISO/IEC 11179: definition/examples/formatPattern/valueDomain/maxLength/unit/ownerId/pii/classification/status DRAFT-ACTIVE-DEPRECATED/customFields JSON) + DataElementColumnMapping (element↔asset.columnName, unique กันซ้ำ) + DqRule.dataElementId (nullable, SetNull) + DqRun.dataElementId (snapshot string ไม่ใช่ FK — คงประวัติแม้ลบ element) + DqValidationBatch.groupRunId (จัดกลุ่มรอบรันโดเมน) — db:push สำเร็จ
+- Migration แปลงข้อมูลเดิมตามที่ผู้ใช้ตัดสินใจ ("แปลงเป็น Data Element เลย"): scripts/migrate-elements.ts แปลง DataDomainColumnAssignment → element + mapping (ข้ามที่ชี้โดเมนหลักตรง ๆ, meta สมบูรณ์จากคลัง ELEMENT_CATALOG, idempotent) — ผลจริง: สร้าง 12 element + 12 mapping, ข้าม 0
+- src/lib/elements.ts: constants/labels + ElementItem types + ELEMENT_CATALOG (ISO 11179 ครบ 11 รายการ) + nextElementCode + rollupByElement (ถ่วงน้ำหนักแถว) + aggregateRollups — ใช้ร่วม seed/API/migration
+- seed.ts: สร้าง element จากคลัง + fallback จาก assignment ที่ยังไม่แมป + ผูกกฎตัวอย่าง 4 ข้อ (customer_id→รหัสลูกค้า, email→อีเมล, phone→เบอร์โทรศัพท์, currency→สกุลเงิน) + audit
+- APIs ใหม่ (ทั้งหมด deny-by-default + Audit Trail + MANAGE_DATASETS/RUN_VALIDATION ตาม RBAC เดิม — ไม่เพิ่มสิทธิ์ใหม่):
+  - /api/elements GET (flat + counts + subDomain info) + POST (บังคับใต้โดเมนย่อย, กันชื่อซ้ำรายโดเมนย่อย, EL-#### อัตโนมัติ)
+  - /api/elements/[id] GET (meta ครบ + mappings + rules ผูก) + PATCH UPDATE/DELETE (ลบไม่ได้ถ้ามีกฎผูก 409, ห้ามย้ายโดเมนย่อย)
+  - /api/elements/[id]/mappings GET + PUT replace-all ใน transaction (ตรวจคอลัมน์มีจริงใน asset ปฏิเสธแปลกปลอม, MAP_ELEMENT_COLUMNS)
+  - /api/dq/rules GET คืน dataElement{path} · POST รับ dataElementId (ตรวจมีจริง) · [id] PATCH เพิ่ม SET_ELEMENT (ผูก/ปลด, SET_RULE_ELEMENT)
+  - /api/dq/run-domain POST (โดเมนหลักเท่านั้น → element ACTIVE → กฎที่ผูก → รันราย dataset + batch แบบ groupRunId เดียวกัน + DqRun.dataElementId + failure snapshot + สัญญาณ RULE_VIOLATION กันซ้ำ) และ GET (ผลรอบล่าสุด rebuild rollup) — คะแนน rollup element(ถ่วงแถว)→sub→domain
+  - /api/domains GET เพิ่ม elementCount · [id] DELETE guard เพิ่ม elements
+- เตือนผู้ใช้: บั๊ก Prisma Client เก่าหลัง db:push (db.dataElement undefined) — แก้ด้วยการรีสตาร์ท dev server
+
+Stage Summary:
+- ฐานข้อมูลจริงแปลงเสร็จ: 12 Data Element มี meta ISO/IEC 11179 ครบ + แมปคอลัมน์จริง 12 รายการ
+- ผูกกฎจริง 4 ข้อผ่าน API SET_ELEMENT + รันจริง POST /api/dq/run-domain: โดเมน "ลูกค้า" → 4 ผลรัน 5 element → รหัสลูกค้า 100 / อีเมล 85 / เบอร์โทรศัพท์ 90 → rollup โดเมน 91.7 (ถ่วงแถว) ถูกต้อง
+- กติกาใหม่ครบ: element ใต้โดเมนย่อยเท่านั้น · ลบ element ต้องไม่มีกฎผูก · ลบโดเมนต้องไม่มี element
+
+---
+Task ID: 29
+Agent: Z.ai Code (main session)
+Task: v0.18.0 Phase 2-4 — UI ครบวงจร: หน้า Data Domain 4 ระดับ + Rule Builder ผูก element + รันตามโดเมน + rollup (subagent ไม่ถูกใช้ — งานผูกกับ API shape ที่เพิ่งเขียนแน่นเกินส่งต่อ บันทึกการตัดสินใจ)
+
+Work Log:
+- data-domain-console.tsx เขียนใหม่ (1,850 บรรทัด): ต้นไม้โดเมนคลิกเลือกได้ (highlight + elementCount badge + deletable เช็ค element) · แท็บ 3 ใบ: Data Element (ใหม่) / จัดหมวดคอลัมน์ (v0.15.0 คงเดิม) / ชุดข้อมูล DQ (v0.16.0 คงเดิม) · ลิสต์ element รายโดเมนย่อย (โดเมนหลัก = อ่านอย่างเดียวรวมทุกย่อย) · Dialog รายละเอียด Meta Data ครบ (นิยาม/ตัวอย่าง/ประเภท/รูปแบบ/value domain/ความยาว/owner/classification/PII/custom) + mapping editor (เลือก asset → checkbox คอลัมน์ → PUT replace-all) + กฎที่ผูก + ปุ่มแก้ไข/ลบ · ฟอร์มสร้าง/แก้ไข element (ทุกฟิลด์ meta + Switch PII + Select status/classification/owner) · DialogTitle ครบทุกสถานะ (แก้ accessibility warning ของ Radix)
+- core-features-console.tsx (Rule Builder): กล่อง "Data Element (What)" cascade 3 ชั้น โดเมนหลัก→ย่อย→element (ไม่บังคับ) + chip meta เมื่อเลือก (รหัส/ประเภท/รูปแบบ/ค่าอนุญาต/สถานะแมป) + POST dataElementId + รายการกฎแสดง badge element (title=path เต็ม)
+- คลังกฎโหมด library: rules API ใหม่คืน dataElement — badge แสดงอัตโนมัติทั้ง 2 โหมด
+- dq/domain-run.tsx ใหม่: เลือกโดเมนหลัก → โหลด element+กฎที่ผูก+ผลรอบล่าสุด (GET run-domain) → ต้นไม้เลือกกฎราย element (checkbox, เลือกทั้งหมด) → รัน (POST ruleIds) → ผลลัพธ์: การ์ดคะแนน rollup โดเมน+เกรด, แท่งคะแนนราย sub (เรียงแย่สุดก่อน), ตารางคะแนนราย element (ยังไม่ได้ประเมิน แสดงชัด), รายละเอียดรายกฎ — ฝังเป็นแท็บ 2 ของหน้า Validation Results ("รันตามชุดข้อมูล" | "รันตามโดเมน (Data Element)")
+- views.ts: APP_VERSION v0.18.0 + คำอธิบายหน้า Data Domain ใหม่ · lib/domains.ts: DomainItem.elementCount?
+
+Stage Summary:
+- agent-browser E2E ผ่านทั้งหมด: หน้า 4 ระดับ (ต้นไม้ 8 โดเมน + 12 element, dialog ISO meta, mapping editor, ลบกันถูก) · Rule Builder (badge 4 กฎ + cascade) · รันโดเมนจริงบนหน้าเว็บ → 91.7/100 เกรด ดี + ตาราง element ถูกทุกค่า (100/85/90/ยังไม่ประเมิน) · console error = 0 (แก้ DialogTitle แล้ว) · mobile 390px NO-OVERFLOW · lint สะอาด
+- v0.18.0 ครบโจทย์ผู้ใช้ทุกข้อ: 4 ระดับ + Meta Data ดูรายละเอียด + กฎตรวจตาม element + flow นำเข้า→คลัง→แบ่ง→เลือกโดเมน→เลือกกฎราย element + rollup แสดงในผลรัน

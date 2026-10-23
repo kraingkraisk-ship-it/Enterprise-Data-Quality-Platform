@@ -21,6 +21,7 @@ import {
   Scale,
   Lightbulb,
   BookOpen,
+  Box,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -48,6 +49,7 @@ import { useToast } from '@/hooks/use-toast'
 import { DIMENSION_ICONS, DimensionBadge, DimensionHint, DimensionPicker } from '@/components/dimension-picker'
 import { EngineBadge, EngineHint, EnginePicker } from '@/components/engine-picker'
 import BatchHistory from '@/components/dq/batch-history'
+import DomainRunPanel from '@/components/dq/domain-run'
 import {
   buildRuleSentence,
   CONDITIONS,
@@ -59,8 +61,27 @@ import {
   type TemplateParamDef,
 } from '@/lib/dq'
 import { ROLE_LIST, type PermissionKey, type RoleKey } from '@/lib/rbac'
+import type { DomainItem } from '@/lib/domains'
+import { ELEMENT_DATA_TYPE_LABELS, type ElementDataType } from '@/lib/elements'
 import { isCoreView, type ViewKey } from '@/lib/views'
 import DqDashboard from '@/components/dq-dashboard'
+
+/** Data Element แบบย่อสำหรับ Rule Builder (จาก /api/elements) */
+interface ElementRowLite {
+  id: string
+  code: string
+  subDomainId: string
+  parentDomainId: string | null
+  subDomainName: string
+  nameTh: string
+  nameEn: string
+  dataType: string
+  formatPattern: string
+  valueDomain: string
+  pii: boolean
+  ruleCount: number
+  mappingCount: number
+}
 
 /* ------------------------------- types ---------------------------------- */
 
@@ -116,6 +137,8 @@ interface ApiRule {
   threshold: number
   enabled: boolean
   sentence: string
+  /** Data Element ที่กฎผูกอยู่ (v0.18.0) — null = ยังไม่ผูก */
+  dataElement: { id: string; code: string; nameTh: string; path: string } | null
   lastRun: { status: string; passRate: number; totalRows: number; failedRows: number; at: string } | null
 }
 
@@ -300,6 +323,12 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rbFilter, setRbFilter] = useState('')
   const [rbParams, setRbParams] = useState<Record<string, string>>({})
   const [rbOperator, setRbOperator] = useState('somchai.owner@company.co.th')
+  /* Data Element cascade (v0.18.0) — โดเมนหลัก → โดเมนย่อย → element */
+  const [rbDomains, setRbDomains] = useState<DomainItem[]>([])
+  const [rbElements, setRbElements] = useState<ElementRowLite[]>([])
+  const [rbElDomain, setRbElDomain] = useState('')
+  const [rbElSub, setRbElSub] = useState('')
+  const [rbElementId, setRbElementId] = useState('')
 
   // tab 2 — condition library
   const [cnName, setCnName] = useState('')
@@ -337,6 +366,27 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         setDatasets(d.datasets ?? [])
       } catch {
         /* network error — คงค่าว่างไว้ */
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Data Element สำหรับ Rule Builder (v0.18.0) — โหลดครั้งเดียวพอ (เปลี่ยนน้อยมาก)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const [dom, els] = await Promise.all([
+          fetch('/api/domains').then((r) => r.json()),
+          fetch('/api/elements').then((r) => r.json()),
+        ])
+        if (!alive) return
+        setRbDomains(dom.domains ?? [])
+        setRbElements(els.elements ?? [])
+      } catch {
+        /* คงค่าว่างไว้ */
       }
     })()
     return () => {
@@ -410,6 +460,14 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       setRbPreviewDataset(rbDatasets[0])
     }
   }, [rbDatasets, rbPreviewDataset])
+
+  /* ---------------- Data Element cascade (v0.18.0) ---------------- */
+  const rbElSubOptions = useMemo(() => rbDomains.filter((d) => d.parentId === (rbElDomain || null)), [rbDomains, rbElDomain])
+  const rbElementOptions = useMemo(
+    () => rbElements.filter((e) => rbElSub && e.subDomainId === rbElSub),
+    [rbElements, rbElSub],
+  )
+  const rbSelectedElement = useMemo(() => rbElements.find((e) => e.id === rbElementId) ?? null, [rbElements, rbElementId])
 
   /* ------------------------------ derived -------------------------------- */
 
@@ -619,6 +677,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         severity: rbSeverity,
         threshold: Number(rbThreshold) || 95,
         filter: rbFilter,
+        dataElementId: rbElementId || undefined,
         operatorEmail: rbOperator,
       },
       'create-rule',
@@ -628,6 +687,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       setRbColumn('')
       setRbFilter('')
       setRbParams({})
+      setRbElementId('')
       refetch()
     }
   }
@@ -868,6 +928,91 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   <p className="text-xs text-emerald-700" role="status">
                     กฎนี้จะถูกใช้ตรวจทั้ง {rbDatasetNames.length} ชุดข้อมูล: {rbDatasetNames.join(', ')}
                   </p>
+                )}
+              </div>
+
+              {/* 1b) Data Element (What) — v0.18.0: ผูกกฎกับองค์ประกอบข้อมูล */}
+              <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                <div className="flex items-center gap-2">
+                  <Box className="size-4 text-emerald-700" aria-hidden="true" />
+                  <p className="text-xs font-medium text-emerald-900">
+                    Data Element (What) — เลือกได้ตามโครงสร้าง Domain → Sub Domain → Element
+                  </p>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  ไม่บังคับ — แต่กฎที่ผูก element จะรันได้ในโหมด “รันตรวจระดับโดเมน” และมีคะแนน rollup ระดับ element (จัดการ element ได้ในหน้า Data Domain)
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Select
+                    value={rbElDomain}
+                    onValueChange={(v) => {
+                      setRbElDomain(v)
+                      setRbElSub('')
+                      setRbElementId('')
+                    }}
+                  >
+                    <SelectTrigger aria-label="เลือกโดเมนหลักของ element" className="h-8 text-xs">
+                      <SelectValue placeholder="โดเมนหลัก" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {rbDomains.filter((d) => !d.parentId).map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={rbElSub}
+                    onValueChange={(v) => {
+                      setRbElSub(v)
+                      setRbElementId('')
+                    }}
+                    disabled={!rbElDomain}
+                  >
+                    <SelectTrigger aria-label="เลือกโดเมนย่อยของ element" className="h-8 text-xs">
+                      <SelectValue placeholder={rbElDomain ? 'โดเมนย่อย' : 'เลือกโดเมนหลักก่อน'} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {rbElSubOptions.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={rbElementId} onValueChange={setRbElementId} disabled={!rbElSub}>
+                    <SelectTrigger aria-label="เลือก Data Element" className="h-8 text-xs">
+                      <SelectValue placeholder={rbElSub ? 'Data Element' : 'เลือกโดเมนย่อยก่อน'} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {rbElementOptions.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">ยังไม่มี element ในโดเมนย่อยนี้</div>
+                      )}
+                      {rbElementOptions.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.nameTh}
+                          {e.pii ? ' · PII' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {rbSelectedElement && (
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-white px-2.5 py-1.5 text-[11px]">
+                    <span className="font-mono text-muted-foreground">{rbSelectedElement.code}</span>
+                    <span className="font-medium">{rbSelectedElement.nameTh}</span>
+                    <Badge variant="outline" className="text-[9.5px]">
+                      {ELEMENT_DATA_TYPE_LABELS[rbSelectedElement.dataType as ElementDataType]?.th ?? rbSelectedElement.dataType}
+                    </Badge>
+                    {rbSelectedElement.formatPattern && <span className="text-muted-foreground">รูปแบบ: {rbSelectedElement.formatPattern}</span>}
+                    {rbSelectedElement.valueDomain && <span className="text-muted-foreground">ค่าอนุญาต: {rbSelectedElement.valueDomain}</span>}
+                    {rbSelectedElement.mappingCount > 0 ? (
+                      <span className="text-emerald-700">แมปคอลัมน์จริง {rbSelectedElement.mappingCount} รายการ</span>
+                    ) : (
+                      <span className="text-amber-700">ยังไม่แมปคอลัมน์จริง (แมปได้ในหน้า Data Domain)</span>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -1217,6 +1362,16 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                       >
                         {rule.conditionName}
                       </Badge>
+                      {rule.dataElement && (
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-200 bg-emerald-50 text-[11px] text-emerald-800"
+                          title={`Data Element: ${rule.dataElement.path}`}
+                        >
+                          <Box className="mr-0.5 size-3" aria-hidden="true" />
+                          {rule.dataElement.nameTh}
+                        </Badge>
+                      )}
                       <Badge variant="outline" className={`border text-[11px] ${SEVERITY_BADGE[rule.severity] ?? ''}`}>
                         {SEVERITY_LABELS[rule.severity as keyof typeof SEVERITY_LABELS]?.th ?? rule.severity}
                       </Badge>
@@ -1562,6 +1717,18 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
 
       {/* ========================= TAB 3: RUN + SIGNALS ========================= */}
       <TabsContent value="run" className="mt-4">
+        <Tabs defaultValue="dataset-mode">
+          <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-slate-100 p-1 sm:w-fit">
+            <TabsTrigger value="dataset-mode" className="gap-1.5 data-[state=active]:bg-white">
+              <Play className="size-3.5" aria-hidden="true" />
+              รันตามชุดข้อมูล
+            </TabsTrigger>
+            <TabsTrigger value="domain-mode" className="gap-1.5 data-[state=active]:bg-white">
+              <Box className="size-3.5" aria-hidden="true" />
+              รันตามโดเมน (Data Element)
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="dataset-mode" className="mt-4">
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
@@ -1853,6 +2020,11 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
             </CardContent>
           </Card>
         </div>
+          </TabsContent>
+          <TabsContent value="domain-mode" className="mt-4">
+            <DomainRunPanel runOperator={runOperator} />
+          </TabsContent>
+        </Tabs>
       </TabsContent>
 
       {/* ===================== TAB 4: DASHBOARD — 5 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Regulation / Risk / Data Classification) ===================== */}

@@ -17,6 +17,7 @@ export async function GET() {
         include: {
           datasets: { include: { dataset: { select: { id: true, name: true, piiEnabled: true } } }, orderBy: { datasetId: 'asc' } },
           runs: { orderBy: { createdAt: 'desc' }, take: 1 },
+          element: { select: { id: true, code: true, nameTh: true, subDomain: { select: { name: true, parent: { select: { name: true } } } } } },
         },
       }),
       loadTemplateMap(),
@@ -58,6 +59,15 @@ export async function GET() {
           threshold: r.threshold,
           enabled: r.enabled,
           createdAt: r.createdAt,
+          // Data Element ที่กฎผูกอยู่ (v0.18.0) — null = กฎแบบเดิมยังไม่ผูก
+          dataElement: r.element
+            ? {
+                id: r.element.id,
+                code: r.element.code,
+                nameTh: r.element.nameTh,
+                path: r.element.subDomain.parent ? `${r.element.subDomain.parent.name} / ${r.element.subDomain.name} / ${r.element.nameTh}` : r.element.nameTh,
+              }
+            : null,
           sentence: buildRuleSentence({
             datasetNames,
             column: r.column,
@@ -188,6 +198,21 @@ export async function POST(req: NextRequest) {
     const filter = String(body.filter ?? '').trim()
     const parameters = typeof body.parameters === 'string' ? body.parameters : JSON.stringify(body.parameters ?? {})
     const thresholdRaw = Number(body.threshold ?? 95)
+    // Data Element ที่กฎนี้ตรวจ (ไม่บังคับ — ช่วงเปลี่ยนผ่านรองรับกฎเดิมที่ยังไม่ผูก)
+    const dataElementIdRaw = String(body.dataElementId ?? '').trim()
+    let dataElementId: string | null = null
+    let elementPath = ''
+    if (dataElementIdRaw) {
+      const el = await db.dataElement.findUnique({
+        where: { id: dataElementIdRaw },
+        select: { id: true, code: true, nameTh: true, subDomain: { select: { name: true, parent: { select: { name: true } } } } },
+      })
+      if (!el) {
+        return NextResponse.json({ error: 'ไม่พบ Data Element ที่ระบุในระบบ' }, { status: 404 })
+      }
+      dataElementId = el.id
+      elementPath = el.subDomain.parent ? `${el.subDomain.parent.name} / ${el.subDomain.name} / ${el.nameTh}` : el.nameTh
+    }
 
     if (datasetIds.length === 0) return NextResponse.json({ error: 'กรุณาเลือกชุดข้อมูลอย่างน้อย 1 ชุด' }, { status: 400 })
     if (!COLUMN_RE.test(column)) {
@@ -245,6 +270,7 @@ export async function POST(req: NextRequest) {
         severity,
         threshold,
         filter: filter || null,
+        dataElementId,
         enabled: true,
         datasets: {
           create: datasetIds.map((datasetId) => ({ datasetId })),
@@ -273,7 +299,7 @@ export async function POST(req: NextRequest) {
         action: 'CREATE_RULE',
         actor: op.ctx.email,
         target: datasetNames.join(', '),
-        detail: `สร้างกฎใหม่ (ใช้ร่วม ${datasetNames.length} ชุดข้อมูล): ${buildRuleSentence({
+        detail: `สร้างกฎใหม่ (ใช้ร่วม ${datasetNames.length} ชุดข้อมูล)${elementPath ? ` ผูกกับ Data Element "${elementPath}"` : ''}: ${buildRuleSentence({
           datasetNames,
           column,
           condition,

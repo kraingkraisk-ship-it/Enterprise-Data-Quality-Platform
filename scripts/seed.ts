@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client'
 import { evaluateRule, DIMENSION_LABELS, type DimensionKey, type Row } from '../src/lib/dq'
 import { inferColumnType } from '../src/lib/asset'
 import { profileRows, PROFILE_MAX_ROWS } from '../src/lib/profiling'
+import { ELEMENT_CATALOG, nextElementCode, prettyColumnLabel, isElementDataType } from '../src/lib/elements'
 
 const db = new PrismaClient()
 
@@ -925,6 +926,107 @@ async function main() {
     })
   }
 
+  // ---------- Data Element (v0.18.0) — โครงสร้าง 4 ระดับ Domain > Sub > Element > Meta (ISO/IEC 11179) ----------
+  // (1) สร้าง element จากคลัง meta มาตรฐาน + แมปคอลัมน์จริงของทุก asset ที่มีคอลัมน์นั้น
+  const allAssets = await db.dataAsset.findMany({ select: { id: true, name: true, columns: { select: { name: true } } } })
+  const elementCreatedBy = 'preecha.engineer@company.co.th'
+  let seededElements = 0
+  for (const entry of ELEMENT_CATALOG) {
+    const subId = subDomainId.get(entry.subDomain)
+    if (!subId) continue
+    const el = await db.dataElement.upsert({
+      where: { subDomainId_nameTh: { subDomainId: subId, nameTh: entry.nameTh } },
+      create: {
+        code: await nextElementCode(db),
+        subDomainId: subId,
+        nameTh: entry.nameTh,
+        nameEn: entry.nameEn,
+        definition: entry.definition,
+        examples: entry.examples,
+        dataType: entry.dataType,
+        formatPattern: entry.formatPattern ?? '',
+        valueDomain: entry.valueDomain ?? '',
+        maxLength: entry.maxLength ?? null,
+        unit: entry.unit ?? '',
+        pii: entry.pii,
+        createdBy: elementCreatedBy,
+      },
+      update: {},
+    })
+    seededElements += 1
+    for (const asset of allAssets) {
+      if (!asset.columns.some((c) => c.name === entry.columnName)) continue
+      await db.dataElementColumnMapping.upsert({
+        where: { elementId_assetId_columnName: { elementId: el.id, assetId: asset.id, columnName: entry.columnName } },
+        create: { elementId: el.id, assetId: asset.id, columnName: entry.columnName, mappedBy: elementCreatedBy },
+        update: {},
+      })
+    }
+  }
+
+  // (2) fallback: คอลัมน์ที่ถูกจัดหมวดไว้แต่ยังไม่มี element (เช่น "source") — สร้างแบบพื้นฐาน เช่นเดียวกับสคริปต์ migration
+  const fallbackAssignments = await db.dataDomainColumnAssignment.findMany({
+    include: {
+      asset: { select: { id: true, name: true, columns: { select: { name: true, dataType: true } } } },
+      domain: { select: { id: true, name: true, parentId: true } },
+    },
+  })
+  const mappedKeys = new Set((await db.dataElementColumnMapping.findMany({ select: { assetId: true, columnName: true } })).map((m) => `${m.assetId}|${m.columnName}`))
+  for (const a of fallbackAssignments) {
+    if (a.domain.parentId === null) continue // element ต้องอยู่ใต้โดเมนย่อยเท่านั้น
+    if (mappedKeys.has(`${a.assetId}|${a.columnName}`)) continue
+    const col = a.asset.columns.find((c) => c.name === a.columnName)
+    if (!col) continue
+    const inferred = col.dataType.toUpperCase()
+    const el = await db.dataElement.create({
+      data: {
+        code: await nextElementCode(db),
+        subDomainId: a.domainId,
+        nameTh: prettyColumnLabel(a.columnName),
+        nameEn: a.columnName,
+        dataType: isElementDataType(inferred) ? inferred : 'TEXT',
+        createdBy: elementCreatedBy,
+      },
+    })
+    seededElements += 1
+    await db.dataElementColumnMapping.create({
+      data: { elementId: el.id, assetId: a.assetId, columnName: a.columnName, mappedBy: elementCreatedBy, note: 'สร้างอัตโนมัติจากการจัดหมวดรายคอลัมน์' },
+    })
+  }
+  await db.auditLog.create({
+    data: {
+      action: 'CREATE_DATA_ELEMENT',
+      actor: elementCreatedBy,
+      target: `${seededElements} elements`,
+      detail: `Seed เริ่มต้นระบบ: สร้าง Data Element ${seededElements} รายการภายใต้โดเมนย่อย (โครงสร้าง 4 ระดับ + Meta Data ตาม ISO/IEC 11179)`,
+    },
+  })
+
+  // (3) ผูกกฎตัวอย่างกับ Data Element — ให้ flow "เลือกกฎตรวจตาม Data Element" พร้อมใช้ทันที
+  const RULE_ELEMENT_BIND: Array<{ column: string; elementNameTh: string }> = [
+    { column: 'customer_id', elementNameTh: 'รหัสลูกค้า' },
+    { column: 'email', elementNameTh: 'อีเมล' },
+    { column: 'phone', elementNameTh: 'เบอร์โทรศัพท์' },
+    { column: 'currency', elementNameTh: 'สกุลเงิน' },
+  ]
+  let boundRules = 0
+  for (const b of RULE_ELEMENT_BIND) {
+    const el = await db.dataElement.findFirst({ where: { nameTh: b.elementNameTh }, select: { id: true, nameTh: true } })
+    if (!el) continue
+    const res = await db.dqRule.updateMany({ where: { column: b.column, dataElementId: null }, data: { dataElementId: el.id } })
+    boundRules += res.count
+  }
+  if (boundRules > 0) {
+    await db.auditLog.create({
+      data: {
+        action: 'BIND_RULE_ELEMENT',
+        actor: elementCreatedBy,
+        target: `${boundRules} rules`,
+        detail: `Seed เริ่มต้นระบบ: ผูกกฎตรวจสอบ ${boundRules} ข้อกับ Data Element ที่เกี่ยวข้อง (รหัสลูกค้า/อีเมล/เบอร์โทรศัพท์/สกุลเงิน)`,
+      },
+    })
+  }
+
   // ---------- Data Profiling + DQ Issues ตัวอย่าง (v0.13.0) ----------
   // โปรไฟล์ตัวอย่าง 2 ชุดข้อมูล (ทำงานเฉพาะเมื่อยังไม่มีข้อมูล — กันซ้ำเมื่อรัน seed ซ้ำ)
   if ((await db.dqProfileRun.count()) === 0) {
@@ -1085,6 +1187,8 @@ async function main() {
     dataAssets: await db.dataAsset.count(),
     dataDomains: await db.dataDomain.count(),
     domainColumnAssignments: await db.dataDomainColumnAssignment.count(),
+    dataElements: await db.dataElement.count(),
+    dataElementMappings: await db.dataElementColumnMapping.count(),
     dataAssetRecords: await db.dataAssetRecord.count(),
   })
 }
