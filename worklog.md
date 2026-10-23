@@ -828,3 +828,23 @@ Stage Summary:
 - GitHub ตอนนี้มีครบ: main ถึง `68f3c80` + tag `v0.16.0` (Dataset ในโดเมน) + tag `v0.17.0` (Executive Dashboard/Reports + threshold + SLA)
 - สถานะ sync: remote = local 100% (sync เต็มรูปแบบหลัง push commit เอกสารรายการนี้)
 - งานค้าง "รอ token" จาก Task 25 ปิดสมบูรณ์ — ไม่มี artifact ใดค้างบน local เท่านั้น
+
+---
+Task ID: 27
+Agent: Z.ai Code (main session)
+Task: ออกแบบโครงสร้างใหม่ "Data Domain > Sub Data Domain > Data Element > Meta Data" + การผูก DQ Rule กับ Data Element (เฉพาะออกแบบ — ยังไม่ implement ตามคำสั่งผู้ใช้)
+
+Work Log:
+- สำรวจฐานปัจจุบัน v0.17.0: DataDomain (2 ระดับ, parentId) · DataDomainColumnAssignment (column→domain, v0.15.0) · Dataset.domainId + สร้าง Dataset ในโดเมน (v0.16.0) · DqRule {column, condition, parameters, severity, threshold} + RuleDataset M2M · รันตรวจต่อ dataset → DqRun/DqValidationBatch/DqFailureRecord
+- ร่างโครงสร้าง 4 ระดับ + นิยาม Data Element 2 ทางเลือก (A: element เชิงตรรกะ map หลายคอลัมน์ข้ามชุดข้อมูล — แนะนำ / B: 1 element = 1 คอลัมน์)
+- ร่าง Meta Data: กลุ่มนิยาม (รหัส/ชื่อ TH-EN/นิยามธุรกิจ/ตัวอย่าง) · โครงสร้าง (dataType/format/ช่วงค่า/ค่าอนุญาต) · ธรรมาภิบาล (เจ้าของ/PII/การจำแนก/สถานะ lifecycle) · ที่มา (จาก mapping อัตโนมัติ) + custom fields
+- ร่างการผูกกฎ: DqRule.dataElementId (nullable ช่วงเปลี่ยนผ่าน) · Rule Builder เลือก Domain→Sub→Element · บังคับ mapping ≥1 คอลัมน์ก่อนรัน · DqRun.dataElementId เพื่อ rollup คะแนนระดับ element→sub→domain
+- ร่าง flow รันระดับโดเมน: เลือกโดเมน → ตาราง element×กฎ (เลือกได้) → รัน → batch ต่อ dataset + groupRunId ร่วม → สรุประดับ element/sub/domain
+- ระบุแผน migration: v0.15.0 column assignments → สร้าง element + mapping อัตโนมัติ (เสนอให้ผู้ใช้เลือก migrate หรือคงไว้คู่ขนาน) · Executive Dashboard byDomain ยังทำงานจาก Dataset.domainId เดิมได้ทันที
+- จัดทำ 7 คำถามเปิดให้ผู้ใช้ตัดสินใจก่อนเริ่ม Phase 1 (นิยาม element / ระดับแขวน / ชุด metadata / migration v0.15.0 / semantics การรัน / เมนู / สิทธิ์)
+- นำเสนอแผน 5 Phase ในแชต — รอการอนุมัติ ยังไม่แก้โค้ด/schema ใด ๆ
+
+Stage Summary:
+- แผนออกแบบครบถ้วนนำเสนอผู้ใช้แล้ว (โครงสร้าง 4 ระดับ + rule↔element + flow + migration + RBAC/audit + 5 phases)
+- สถานะ: รอคำตอบ 7 คำถามจากผู้ใช้ก่อนเริ่มพัฒนา — โค้ด/schema ยังไม่ถูกแตะ (v0.17.0 ยังเป็นเวอร์ชันปัจจุบัน)
+- หมายเหตุ: commit นี้เป็นเอกสารการวางแผนเท่านั้น จะถูก push พร้อมรอบถัดไป
