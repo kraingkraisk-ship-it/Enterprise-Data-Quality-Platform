@@ -1576,3 +1576,17 @@ Work Log:
 Stage Summary:
 - v0.28.0 สมบูรณ์: ศูนย์ ML มองเห็น 4 ตัว ML ในหน้าเดียว (①④③②) + สุขภาพ ML + แนวโน้มข้ามรอบ 8 batch + ปรับเกณฑ์ค่าคงที่ 10 ค่าจากการใช้งานจริง — ทุกค่ามีผลกระทบเรียลไทม์จากค่าดิบของ batch ล่าสุด บันทึกแล้วประเมินใหม่ทันทีเห็นผลจริง มี RBAC (REVIEW_SIGNALS) + Audit Trail + คืนค่าเริ่มต้นได้ · เกณฑ์ปรับได้เฉพาะ ML — ไม่แตะ LIKELIHOOD_BANDS/RISK_BANDS และไม่แตะการตัดสินผ่าน/ไม่ผ่านเดิม
 - ไฟล์ใหม่: prisma/schema.prisma (+DqMlSettings), src/lib/ml-settings.ts, src/lib/ml-settings-server.ts, src/app/api/dq/ml/settings/route.ts, src/app/api/dq/ml/center/route.ts, src/components/dq/ml-center.tsx · รีเฟรม: ml.ts, forecast.ts · แก้: ml-engine.ts, forecast-engine.ts, sampling-engine.ts (anti-drift 0.6), dq-dashboard.tsx, views.ts, page.tsx
+- สถานะ git: commit b276c7d + tag v0.28.0 อยู่ที่เครื่องเท่านั้น — **push ยังไม่ได้**: PAT ที่ผู้ใช้ส่งมาก่อนหน้ายืนยันซ้ำก่อน push = HTTP 401 "Bad credentials" (หมดอายุ/ถูก revoke — บทเรียนมาตรฐาน: ต้องเช็ก API /user เสมอก่อน push) — รอ PAT ใหม่จากผู้ใช้ (โครงสร้าง/โค้ด/E2E สมบูรณ์ 100% แล้ว)
+
+---
+Task ID: 48-result
+Agent: Z.ai Code (main session)
+Task: push v0.28.0 — ปิดวงจร ศูนย์ ML บน GitHub (สถานะ: รอ PAT ใหม่)
+
+Work Log:
+- ตรวจสถานะก่อน push: local HEAD = b276c7d (v0.28.0) + tag v0.28.0 ที่ commit เดียวกัน, origin/main ยัง c89e3df (v0.27.0), unpushed 1 commit
+- PAT เดิมยืนยันด้วย API /user = **HTTP 401 "Bad credentials"** (หมดอายุ/ถูก revoke — token เดิมเคย 200 ในช่วง Task 47-result) → ไม่พยายาม push ด้วย token ไม่ผ่านการยืนยัน (วินัยเดิมจาก Task 43–46)
+
+Stage Summary:
+- v0.28.0 (ศูนย์ ML — แดชบอร์ดสรุป ML ศูนย์กลาง + ปรับเกณฑ์ค่าคงที่จากการใช้งานจริง) สมบูรณ์ 100% ที่เครื่อง: โค้ด + lint + E2E API + E2E agent-browser ผ่านครบ
+- push รอ PAT ใหม่จากผู้ใช้ — เมื่อได้ token: ยืนยัน GET /user = 200 → push main + refs/tags/v0.28.0 → ls-remote ยืนยัน → fetch --update-head-ok ซิงก์ tracking ref (แนวเดียวกับ Task 46-result/47-result)
