@@ -1618,3 +1618,20 @@ Stage Summary:
 - ขอบเขตที่ไม่แตะ: engines/APIs/ค่าคงที่/DqMlSettings/พฤติกรรมคำนวณทั้งหมด — เป็นการจัดวาง UI ล้วน (ไฟล์แก้ 3 ไฟล์)
 - ไฟล์แก้: src/components/dq-dashboard.tsx (type+SECTIONS+บล็อกหมวด) · src/components/dq/ml-center.tsx (footnote 6 จุด) · src/lib/views.ts (APP_VERSION)
 - Commit ที่เครื่อง: 7ea022c · Tag: v0.29.0 (local) · Push: พยายามแล้ว — PAT ปัจจุบัน 401 (API /user และ /repos ทั้ง Bearer+token formats) git push ต้อง prompt password = token ไม่ถูกต้อง → รอ PAT ใหม่จากผู้ใช้ แล้ว push main + tag v0.29.0
+
+---
+Task ID: 49-result
+Agent: Z.ai Code (main orchestrator)
+Task: push v0.29.0 ด้วย PAT ใหม่จากผู้ใช้ (ต่อเนื่อง Task 49 — push ค้างเพราะ PAT เดิม 401)
+
+Work Log:
+- ผู้ใช้ส่ง PAT ใหม่ → ตรวจ API /user = HTTP 200 และ /repos/kraingkraisk-ship-it/Enterprise-Data-Quality-Platform = HTTP 200 สิทธิ์ครบ
+- ยืนยัน state ที่เครื่องก่อน push: tag v0.29.0 มีอยู่ · commit รอ push 2 รายการ (7ea022c v0.29.0 feat + 8b33510 worklog) · tree สะอาด · ตรงกับ worklog Task 49 ทุกจุด
+- git push (inline URL x-access-token ไม่เก็บ PAT ลง .git/config) main v0.29.0 → สำเร็จ: main a17899a..8b33510 · tag v0.29.0 [new tag]
+- ยืนยันบน GitHub API หลัง push: remote tag v0.29.0 → sha 7ea022c (ตรง local) · remote main head = 8b33510 (ตรง local)
+- git fetch --update-head-ok ซิงก์ tracking → status ไม่มี ahead/behind = unpushed 0
+
+Stage Summary:
+- v0.29.0 (แยก ML ออกจากหมวด Risk — หมวดใหม่ "ML · สัญญาณอัจฉริยะ" แผง ①④③② + ลิงก์ไขว้ Risk↔ML + ศูนย์ ML footnote ใหม่) ปิดวงจร 100% บน remote — main + tag ครบ
+- ไทม์ไลน์รวม: v0.25.0 (①④) → v0.26.0 (②) → v0.27.0 (③) → v0.28.0 (ศูนย์ ML) → v0.29.0 (แยกหมวด ML ในแดชบอร์ด) · ⑤ LLM ตัดตามมติเดิม
+- PAT ใหม่ใช้งานได้ ยังไม่ถูกเก็บในไฟล์ config ใด ๆ (inline push เท่านั้น)
