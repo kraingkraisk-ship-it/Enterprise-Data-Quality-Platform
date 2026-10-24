@@ -9,7 +9,11 @@ import {
 } from '@/lib/dq'
 import { buildRuleVerdict, fixHintFor, gradeOf, type GradeBand } from '@/lib/dama'
 import {
+  CLASSIFICATION_KEYS,
   DATA_CLASSIFICATIONS,
+  FRAMEWORKS,
+  UNCLASSIFIED,
+  classificationLabel,
   impactsOf,
   likelihoodOf,
   riskBandOf,
@@ -331,6 +335,198 @@ export async function GET(req: NextRequest) {
       .filter((p) => p.classification === 'UNCLASSIFIED')
       .map((p) => ({ id: p.id, name: p.name, sourceType: p.sourceType, score: p.score }))
 
+    // ---------- มาตรฐานข้อมูล (Regulation — v0.23.0) ----------
+    // คะแนน = ค่าที่วัดได้จากกฎ DQ ล่าสุด ("ข้อมูลเดิมไม่มีกฎ = 0" ให้ frontend ใช้เป็นจุดเทียบ)
+    // คะแนนส่วนย่อย (domain) = เฉลี่ยคะแนนมิติใน domain นั้น (ข้ามมิติที่ยังไม่มีผลตรวจ)
+    // คะแนนกรอบ = Σ(คะแนนส่วนย่อย × น้ำหนัก) / Σ(น้ำหนัก) เฉพาะส่วนย่อยที่วัดได้
+    const globalScoreByDimension = new Map<DimensionKey, number | null>(dimensions.map((d) => [d.dimension, d.score]))
+    const dimensionOfRule = new Map<string, DimensionKey>()
+    for (const rule of rulesEnabled) {
+      dimensionOfRule.set(rule.id, dimensionOf(rule.condition, engineOf(rule.condition)))
+    }
+
+    function avgOf(nums: number[]): number | null {
+      return nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : null
+    }
+
+    function dimensionScoresForDataset(p: (typeof perDataset)[number], dims: DimensionKey[]): number[] {
+      const out: number[] = []
+      for (const dim of dims) {
+        const s = p.dimensionScores.find((x) => x.dimension === dim)?.score
+        if (typeof s === 'number') out.push(s)
+      }
+      return out
+    }
+
+    function gradeView(score: number | null) {
+      const g = gradeOf(score)
+      return g ? { band: g.band, label: g.label, badgeClass: g.badgeClass, textClass: g.textClass } : null
+    }
+
+    const regulationFrameworks = FRAMEWORKS.map((fw) => {
+      const fwDimSet = new Set<DimensionKey>()
+      for (const dom of fw.domains) for (const dim of dom.dimensions) fwDimSet.add(dim)
+
+      const domains = fw.domains.map((dom) => {
+        const globalScores = dom.dimensions
+          .map((dim) => globalScoreByDimension.get(dim))
+          .filter((s): s is number => typeof s === 'number')
+        const rulesCount = [...dimensionOfRule.entries()].filter(([, dim]) => dom.dimensions.includes(dim)).length
+        const perDatasetView = perDataset.map((p) => {
+          const byDim = rulesByDatasetByDimension.get(p.id)
+          const dsRulesCount = byDim ? dom.dimensions.reduce((s, dim) => s + (byDim.get(dim) ?? 0), 0) : 0
+          return { datasetId: p.id, score: avgOf(dimensionScoresForDataset(p, dom.dimensions)), rulesCount: dsRulesCount }
+        })
+        return {
+          id: dom.id,
+          th: dom.th,
+          en: dom.en,
+          detail: dom.detail,
+          category: dom.category ?? null,
+          weight: dom.weight,
+          dimensions: [...dom.dimensions],
+          score: avgOf(globalScores),
+          rulesCount,
+          perDataset: perDatasetView,
+        }
+      })
+
+      let wSum = 0
+      let wTotal = 0
+      for (const dom of domains) {
+        if (dom.score !== null) {
+          wSum += dom.score * dom.weight
+          wTotal += dom.weight
+        }
+      }
+
+      const fwDatasets = perDataset.map((p) => {
+        let sum = 0
+        let w = 0
+        for (const dom of fw.domains) {
+          if (dom.dimensions.length === 0) continue
+          const dsScore = avgOf(dimensionScoresForDataset(p, dom.dimensions))
+          if (dsScore === null) continue
+          sum += dsScore * dom.weight
+          w += dom.weight
+        }
+        const score = w > 0 ? sum / w : null
+        const byDim = rulesByDatasetByDimension.get(p.id)
+        const rulesCount = byDim ? [...fwDimSet].reduce((s, dim) => s + (byDim.get(dim) ?? 0), 0) : 0
+        return { datasetId: p.id, name: p.name, rulesCount, score, lastRunAt: p.lastRunAt, grade: gradeView(score) }
+      })
+
+      return {
+        id: fw.id,
+        no: fw.no,
+        groupTh: fw.groupTh,
+        name: fw.name,
+        fullName: fw.fullName,
+        description: fw.description,
+        totalDomains: fw.domains.length,
+        measuredDomains: fw.domains.filter((d) => d.dimensions.length > 0).length,
+        weightedScore: wTotal > 0 ? wSum / wTotal : null,
+        domains,
+        datasets: fwDatasets,
+      }
+    })
+
+    // ---------- ความเสี่ยง Inherent vs Residual (v0.23.0) ----------
+    // Inherent = สมมติยังไม่มีกฎ DQ รองรับ → โอกาสเกิดระดับ 5 (สูงมาก) × น้ำหนักความรุนแรงของกฎ
+    // Residual = ความเสี่ยงคงเหลือจากผลตรวจจริงล่าสุด — ใช้ latestRuns ทั้ง PASSED และ FAILED
+    //           (PASSED → อัตราล้มเหลว 0 → โอกาสเกิดระดับ 1)
+    interface InherentPair {
+      ruleId: string
+      datasetId: string
+      dimension: DimensionKey
+      severity: string
+      failRate: number
+      classification: string
+    }
+
+    const severityWOf = (severity: string) => SEVERITY_WEIGHT[severity] ?? 3
+
+    const inherentPairs: InherentPair[] = latestRuns.map((r) => ({
+      ruleId: r.ruleId,
+      datasetId: r.datasetId,
+      dimension: r.dimension,
+      severity: r.severity,
+      failRate: r.totalRows > 0 ? r.failedRows / r.totalRows : 0,
+      classification: classificationByDataset.get(r.datasetId) ?? UNCLASSIFIED,
+    }))
+
+    const inherentPairsByRule = new Map<string, InherentPair[]>()
+    for (const p of inherentPairs) {
+      const arr = inherentPairsByRule.get(p.ruleId) ?? []
+      arr.push(p)
+      inherentPairsByRule.set(p.ruleId, arr)
+    }
+
+    // กฎ enabled ที่ผูกชุดข้อมูล (unique ruleId) — แยกวัดแล้ว (มี latest run) / ยังไม่วัด
+    const enabledLinkedRuleIds = new Set<string>()
+    for (const rule of rulesEnabled) {
+      if (rule.datasets.length > 0) enabledLinkedRuleIds.add(rule.id)
+    }
+    const measuredRuleIds = new Set(inherentPairsByRule.keys())
+    const unmeasuredRules = [...enabledLinkedRuleIds].filter((id) => !measuredRuleIds.has(id)).length
+
+    function inherentStatsOf(ruleIds: Iterable<string>) {
+      let inherentSum = 0
+      let residualSum = 0
+      let n = 0
+      for (const ruleId of ruleIds) {
+        const pairs = inherentPairsByRule.get(ruleId)
+        if (!pairs || pairs.length === 0) continue
+        const sevW = severityWOf(pairs[0].severity)
+        inherentSum += 5 * sevW
+        // กฎที่ใช้กับหลายชุดข้อมูล — เฉลี่ยความเสี่ยงคงเหลือของคู่ที่อยู่ในขอบเขตนั้นก่อน (1 กฎ = 1 คะแนน)
+        const residual = avgOf(pairs.map((p) => likelihoodOf(p.failRate).level * sevW)) ?? 0
+        residualSum += residual
+        n++
+      }
+      const inherentAvg = n > 0 ? inherentSum / n : 0
+      const residualAvg = n > 0 ? residualSum / n : 0
+      return {
+        inherentAvg,
+        residualAvg,
+        reductionPct: inherentAvg > 0 ? Math.max(0, (1 - residualAvg / inherentAvg) * 100) : 0,
+      }
+    }
+
+    const overallInherent = inherentStatsOf(measuredRuleIds)
+
+    const inherentByDimension = dimensionKeys.map((k) => {
+      const ruleIds = new Set(inherentPairs.filter((p) => p.dimension === k).map((p) => p.ruleId))
+      const rulesCount = [...dimensionOfRule.entries()].filter(([, dim]) => dim === k).length
+      return { dimension: k, th: DIMENSION_LABELS[k].th, en: DIMENSION_LABELS[k].en, ...inherentStatsOf(ruleIds), rulesCount }
+    })
+
+    const inherentByFramework = FRAMEWORKS.map((fw) => {
+      const dimSet = new Set<DimensionKey>()
+      for (const dom of fw.domains) for (const dim of dom.dimensions) dimSet.add(dim)
+      const ruleIds = new Set(inherentPairs.filter((p) => dimSet.has(p.dimension)).map((p) => p.ruleId))
+      const rulesCount = [...dimensionOfRule.entries()].filter(([, dim]) => dimSet.has(dim)).length
+      return { frameworkId: fw.id, name: fw.name, no: fw.no, ...inherentStatsOf(ruleIds), rulesCount }
+    })
+
+    // ผ่านการจำแนกประเภทของชุดข้อมูลที่กฎผูก (กฎหนึ่งอาจปรากฏหลายประเภท — นับ unique ต่อประเภท)
+    const classificationRuleIds = new Map<string, Set<string>>()
+    for (const p of inherentPairs) {
+      const s = classificationRuleIds.get(p.classification) ?? new Set<string>()
+      s.add(p.ruleId)
+      classificationRuleIds.set(p.classification, s)
+    }
+    const inherentByClassification = CLASSIFICATION_KEYS.filter((id) => (classificationRuleIds.get(id)?.size ?? 0) > 0).map((id) => {
+      const ruleIds = classificationRuleIds.get(id)!
+      const datasetIdsOfClass = new Set(datasets.filter((d) => (d.classification ?? UNCLASSIFIED) === id).map((d) => d.id))
+      let rulesCount = 0
+      for (const rule of rulesEnabled) {
+        if (rule.datasets.some((link) => datasetIdsOfClass.has(link.datasetId))) rulesCount++
+      }
+      const label = classificationLabel(id)
+      return { id, th: label.th, en: label.en, no: label.no, ...inherentStatsOf(ruleIds), rulesCount }
+    })
+
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       filterDatasetId: datasetFilter || null,
@@ -359,10 +555,23 @@ export async function GET(req: NextRequest) {
       },
       perDataset,
       latestRuns: latestRuns.slice(0, 60),
+      regulation: {
+        frameworks: regulationFrameworks,
+      },
       risks: {
         items: riskItems,
         counts: riskCounts,
         byDimension: riskByDimension,
+        inherent: {
+          measuredRules: measuredRuleIds.size,
+          unmeasuredRules,
+          inherentAvg: overallInherent.inherentAvg,
+          residualAvg: overallInherent.residualAvg,
+          reductionPct: overallInherent.reductionPct,
+          byDimension: inherentByDimension,
+          byFramework: inherentByFramework,
+          byClassification: inherentByClassification,
+        },
       },
       classification: {
         categories: classificationCategories,

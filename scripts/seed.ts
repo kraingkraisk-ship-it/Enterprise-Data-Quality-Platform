@@ -406,6 +406,23 @@ const RUN_BATCHES: Array<{ daysAgo: number; label: string }> = [
   { daysAgo: 0, label: 'รอบตรวจล่าสุด' },
 ]
 
+// v0.23.0 — เล่าเรื่อง "คุณภาพข้อมูลดีขึ้นตามเวลา": กำหนดอัตราผ่านตอนต้นเรื่อง (startRate) ของแต่ละกฎ
+// ให้แย่กว่าผลประเมินจริงของข้อมูลปัจจุบัน (final) แล้วค่อย ๆ ดีขึ้นเชิงเส้นตรงจนถึงรอบล่าสุด
+// (รอบล่าสุด progress = 1 ได้ผลลัพธ์เท่าการประเมินจริงทุกอย่าง — สัญญาณ/Exception/analytics ปัจจุบันไม่เปลี่ยน)
+const RUN_START_RATES: Record<string, number> = {
+  'email|EMAIL': 0.68,
+  'credit_limit|RANGE': 0.72,
+  'phone|CUSTOM_TH_PHONE': 0.78,
+  'txn_id|UNIQUE': 0.85,
+  'customer_id|NOT_NULL': 0.9,
+}
+
+function startRateOf(rule: { column: string; condition: string }, finalPassRate: number): number {
+  const suggested = RUN_START_RATES[`${rule.column}|${rule.condition}`] ?? Math.max(0.05, finalPassRate - 0.12)
+  // กัน start ที่ดีกว่าปัจจุบัน (เรื่องราวต้องดีขึ้นเสมอ) และไม่ติดลบ
+  return Math.max(0.05, Math.min(suggested, Math.max(0.05, finalPassRate - 0.05)))
+}
+
 async function main() {
   await db.dqRun.deleteMany()
   await db.dataMapping.deleteMany() // v0.22.0 — ลบก่อน element (DataMapping → DataElement เป็น Restrict)
@@ -523,8 +540,10 @@ async function main() {
     },
   })
 
-  // ---------- ประวัติผลการรันตรวจ 3 รอบ (6 วันก่อน / 2 วันก่อน / ล่าสุด) ----------
+  // ---------- ประวัติผลการรันตรวจ 14 รอบ (210 วันก่อน → ล่าสุด) ----------
   // ใช้เอนจินประเมินผลจริงของระบบ (lib/dq.ts) — แดชบอร์ดจึงมีข้อมูลสถิติและความเสี่ยงตั้งแต่เปิดหน้าแรก
+  // v0.23.0: ปรับผลรอบก่อนหน้าให้ "แย่กว่าปัจจุบัน" แล้วดีขึ้นตามเวลา (progress เชิงเส้นตรง)
+  // เพื่อเล่าเรื่องการปรับปรุงคุณภาพข้อมูลหลังตั้งกฎ DQ — รอบล่าสุดได้ผลเท่าการประเมินจริงทุกอย่าง
   const seededRules = await db.dqRule.findMany({ include: { datasets: true } })
   const seededTemplates = await db.conditionTemplate.findMany()
   const tplMap = new Map(seededTemplates.map((t) => [t.key, t]))
@@ -559,9 +578,11 @@ async function main() {
   const datasetNameById2 = new Map([...datasetMap.entries()])
   let latestRunSignals = 0
 
-  for (const batch of RUN_BATCHES) {
+  for (const [batchIndex, batch] of RUN_BATCHES.entries()) {
     const batchAt = new Date(Date.now() - batch.daysAgo * 86_400_000)
     const isLatest = batch.daysAgo === 0
+    // v0.23.0 — ความคืบหน้าของเรื่องราว 0→1 (รอบล่าสุด = 1 = ผลประเมินจริงของข้อมูลปัจจุบัน)
+    const progress = RUN_BATCHES.length > 1 ? batchIndex / (RUN_BATCHES.length - 1) : 1
 
     for (const rule of seededRules) {
       const tpl = tplMap.get(rule.condition)
@@ -590,8 +611,14 @@ async function main() {
           rows,
           evalContext,
         )
-        const status = evaluation.failedRows === 0 ? 'PASSED' : 'FAILED'
-        const passRate = evaluation.totalRows > 0 ? (evaluation.totalRows - evaluation.failedRows) / evaluation.totalRows : 1
+        // v0.23.0 — ปรับผลรอบตามเรื่องราว "ดีขึ้นตามเวลา": rate = startRate + (ผลจริง − startRate) × progress
+        // รอบล่าสุด progress = 1 → failedRows/passRate ตรงกับการประเมินจริงทุกอย่าง
+        const finalPassRate = evaluation.totalRows > 0 ? (evaluation.totalRows - evaluation.failedRows) / evaluation.totalRows : 1
+        const startRate = startRateOf(rule, finalPassRate)
+        const rate = Math.min(1, Math.max(0, startRate + (finalPassRate - startRate) * progress))
+        const failedRows = evaluation.totalRows - Math.round(evaluation.totalRows * rate)
+        const status = failedRows === 0 ? 'PASSED' : 'FAILED'
+        const passRate = evaluation.totalRows > 0 ? (evaluation.totalRows - failedRows) / evaluation.totalRows : 1
 
         await db.dqRun.create({
           data: {
@@ -599,7 +626,7 @@ async function main() {
             datasetId: link.datasetId,
             status,
             totalRows: evaluation.totalRows,
-            failedRows: evaluation.failedRows,
+            failedRows,
             passRate,
             dimension,
             createdAt: batchAt,
@@ -615,7 +642,7 @@ async function main() {
               kind: 'RULE_VIOLATION',
               dimension,
               title: `กฎล้มเหลว: ${rule.column} — ${tpl?.name ?? rule.condition}`,
-              detail: `รอบตรวจล่าสุด (${batchAt.toLocaleDateString('th-TH')}) ล้มเหลว ${evaluation.failedRows} จาก ${evaluation.totalRows} แถว ตามมาตราที่ ${Object.keys(DIMENSION_LABELS).indexOf(dimension) + 1} ${DIMENSION_LABELS[dimension].th} — โปรดทบทวนและดำเนินการโดยมนุษย์ (ระบบไม่แก้ไขข้อมูลต้นทาง)`,
+              detail: `รอบตรวจล่าสุด (${batchAt.toLocaleDateString('th-TH')}) ล้มเหลว ${failedRows} จาก ${evaluation.totalRows} แถว ตามมาตราที่ ${Object.keys(DIMENSION_LABELS).indexOf(dimension) + 1} ${DIMENSION_LABELS[dimension].th} — โปรดทบทวนและดำเนินการโดยมนุษย์ (ระบบไม่แก้ไขข้อมูลต้นทาง)`,
               severity: rule.severity,
               status: 'PENDING_REVIEW',
             },
@@ -631,7 +658,7 @@ async function main() {
       action: 'RUN_VALIDATION',
       actor: 'system@seed',
       target: `${RUN_BATCHES.length} batches`,
-      detail: `Seed เริ่มต้นระบบ: บันทึกประวัติผลการตรวจ ${RUN_BATCHES.length} รอบ (6 วันก่อน / 2 วันก่อน / ล่าสุด) ด้วยเอนจินประเมินผลจริง ตามมาตรา DAMA-DMBOK 9 มิติ + สัญญาณกฎล้มเหลวรอบล่าสุด ${latestRunSignals} รายการ`,
+      detail: `Seed เริ่มต้นระบบ: บันทึกประวัติผลการตรวจ ${RUN_BATCHES.length} รอบ (ย้อนหลัง 210 วัน → ล่าสุด) ด้วยเอนจินประเมินผลจริง ตามมาตรา DAMA-DMBOK 9 มิติ — ประวัติเล่าเรื่องการปรับปรุงคุณภาพข้อมูลตามเวลาหลังตั้งกฎ DQ (อัตราผ่านรอบแรกต่ำกว่าปัจจุบัน แล้วดีขึ้นต่อเนื่องจนรอบล่าสุดได้ผลเท่าการประเมินจริง) + สัญญาณกฎล้มเหลวรอบล่าสุด ${latestRunSignals} รายการ`,
     },
   })
 

@@ -33,6 +33,8 @@ export interface FrameworkDomain {
   detail: string
   /** มิติ DQ ของระบบที่แมปกับส่วนย่อยนี้ — ใช้คำนวณคะแนน/จำนวนกฎจากระบบจริง (ว่าง = ยังไม่มีเกณฑ์ตรวจในระบบ) */
   dimensions: DimensionKey[]
+  /** น้ำหนักของส่วนย่อยต่อคะแนนรวมของกรอบ (คะแนนกรอบ = Σ(score_i×w_i)/Σ(w_i) เฉพาะส่วนย่อยที่วัดได้) */
+  weight: number
   /** หมวดหมู่เฉพาะของกรอบ (เช่น inherent/system ของ ISO 25012) — แสดงเป็นป้ายกำกับ */
   category?: string
 }
@@ -70,6 +72,7 @@ export const FRAMEWORKS: Framework[] = [
       en: DIMENSION_LABELS[k].en,
       detail: DAMA_STANDARDS[k].statement,
       dimensions: [k],
+      weight: 1.0,
     })),
   },
   {
@@ -82,21 +85,21 @@ export const FRAMEWORKS: Framework[] = [
     description:
       'แบบจำลองคุณภาพข้อมูล 15 คุณลักษณะ แบ่งเป็นคุณลักษณะโดยธรรมชาติของข้อมูล (Inherent) ขึ้นกับระบบ (System Dependent) และทั้งสอง — ระบบแมปคุณลักษณะที่ตรวจได้เข้ากับมิติ DQ ของระบบ',
     domains: [
-      { id: '25012-ACC', category: INHERENT, th: 'ความถูกต้อง', en: 'Accuracy', detail: 'ข้อมูลแสดงความจริงของสิ่งที่อ้างอิงได้ถูกต้อง', dimensions: ['ACCURACY'] },
-      { id: '25012-CMP', category: INHERENT, th: 'ความสมบูรณ์', en: 'Completeness', detail: 'ข้อมูลมีครบตามที่คาดหวังไว้ ทั้งความลึกและความกว้าง', dimensions: ['COMPLETENESS'] },
-      { id: '25012-CON', category: INHERENT, th: 'ความสอดคล้อง', en: 'Consistency', detail: 'ข้อมูลไม่ขัดแย้งกันเองและสอดคล้องกันข้ามระบบ', dimensions: ['CONSISTENCY'] },
-      { id: '25012-CRD', category: INHERENT, th: 'ความน่าเชื่อถือ', en: 'Credibility', detail: 'ข้อมูลถือว่าเป็นความจริง เชื่อถือได้ น่าใช้อ้างอิง', dimensions: ['ACCURACY'] },
-      { id: '25012-CUR', category: INHERENT, th: 'ความเป็นปัจจุบัน', en: 'Currentness', detail: 'ข้อมูลเป็นเวอร์ชันล่าสุดตามหน้าต่างเวลาที่กำหนด', dimensions: ['CURRENTNESS'] },
-      { id: '25012-ACC2', category: BOTH, th: 'ความสามารถเข้าถึงได้', en: 'Accessibility', detail: 'ผู้ใช้ที่ได้รับอนุญาตเข้าถึงข้อมูลได้ง่ายและปลอดภัย — ระบบบังคับด้วย RBAC รายชุดข้อมูล', dimensions: [] },
-      { id: '25012-CPL', category: BOTH, th: 'ความสอดคล้องกฎเกณฑ์', en: 'Compliance', detail: 'ข้อมูลเป็นไปตามมาตรฐาน กฎหมาย และข้อบังคับที่เกี่ยวข้อง (เช่น PDPA)', dimensions: ['VALIDITY'] },
-      { id: '25012-CFD', category: BOTH, th: 'ความลับ', en: 'Confidentiality', detail: 'ข้อมูลจำกัดการเข้าถึงเฉพาะผู้มีสิทธิ์ — ระบบปิดบัง PII ตามบทบาทโดยค่าเริ่มต้น', dimensions: [] },
-      { id: '25012-EFF', category: BOTH, th: 'ประสิทธิภาพ', en: 'Efficiency', detail: 'ปริมาณข้อมูลที่คาดหวังต่อทรัพยากรที่ใช้ — ตรวจด้วยสัญญาณปริมาณข้อมูลผิดปกติ', dimensions: [] },
-      { id: '25012-PRC', category: BOTH, th: 'ความละเอียดแม่นยำ', en: 'Precision', detail: 'ข้อมูลมีความละเอียดตรงตามรูปแบบ/หน่วยที่กำหนด', dimensions: ['VALIDITY'] },
-      { id: '25012-TRC', category: BOTH, th: 'ความสามารถตามรอย', en: 'Traceability', detail: 'สืบค้นที่มาและประวัติข้อมูลได้ — ระบบบันทึก Audit Trail ทุกการดำเนินการ', dimensions: [] },
-      { id: '25012-UND', category: BOTH, th: 'ความเข้าใจได้', en: 'Understandability', detail: 'ข้อมูลถูกนิยามชัดเจน อ่านแล้วเข้าใจตรงกันทุกหน่วยงาน', dimensions: ['CONSISTENCY'] },
-      { id: '25012-AVA', category: SYSTEM, th: 'ความพร้อมใช้', en: 'Availability', detail: 'ข้อมูลพร้อมใช้ตามระดับที่กำหนด — ตรวจด้วยเกณฑ์ทันตาม SLA', dimensions: ['TIMELINESS'] },
-      { id: '25012-PRT', category: SYSTEM, th: 'ความสามารถพกพา', en: 'Portability', detail: 'ข้อมูลใช้ได้กับหลายระบบ/แพลตฟอร์มด้วยรูปแบบเดียวกัน', dimensions: [] },
-      { id: '25012-REC', category: SYSTEM, th: 'ความสามารถกู้คืน', en: 'Recoverability', detail: 'กู้คืนข้อมูลกลับสู่สถานะถูกต้องหลังเกิดเหตุขัดข้องได้', dimensions: [] },
+      { id: '25012-ACC', category: INHERENT, th: 'ความถูกต้อง', en: 'Accuracy', detail: 'ข้อมูลแสดงความจริงของสิ่งที่อ้างอิงได้ถูกต้อง', dimensions: ['ACCURACY'], weight: 1.5 },
+      { id: '25012-CMP', category: INHERENT, th: 'ความสมบูรณ์', en: 'Completeness', detail: 'ข้อมูลมีครบตามที่คาดหวังไว้ ทั้งความลึกและความกว้าง', dimensions: ['COMPLETENESS'], weight: 1.5 },
+      { id: '25012-CON', category: INHERENT, th: 'ความสอดคล้อง', en: 'Consistency', detail: 'ข้อมูลไม่ขัดแย้งกันเองและสอดคล้องกันข้ามระบบ', dimensions: ['CONSISTENCY'], weight: 1.25 },
+      { id: '25012-CRD', category: INHERENT, th: 'ความน่าเชื่อถือ', en: 'Credibility', detail: 'ข้อมูลถือว่าเป็นความจริง เชื่อถือได้ น่าใช้อ้างอิง', dimensions: ['ACCURACY', 'INTEGRITY'], weight: 1.0 },
+      { id: '25012-CUR', category: INHERENT, th: 'ความเป็นปัจจุบัน', en: 'Currentness', detail: 'ข้อมูลเป็นเวอร์ชันล่าสุดตามหน้าต่างเวลาที่กำหนด', dimensions: ['CURRENTNESS'], weight: 1.25 },
+      { id: '25012-ACC2', category: BOTH, th: 'ความสามารถเข้าถึงได้', en: 'Accessibility', detail: 'ผู้ใช้ที่ได้รับอนุญาตเข้าถึงข้อมูลได้ง่ายและปลอดภัย — ระบบบังคับด้วย RBAC รายชุดข้อมูล', dimensions: ['COMPLETENESS', 'TIMELINESS'], weight: 0.75 },
+      { id: '25012-CPL', category: BOTH, th: 'ความสอดคล้องกฎเกณฑ์', en: 'Compliance', detail: 'ข้อมูลเป็นไปตามมาตรฐาน กฎหมาย และข้อบังคับที่เกี่ยวข้อง (เช่น PDPA)', dimensions: ['VALIDITY', 'CONSISTENCY'], weight: 1.25 },
+      { id: '25012-CFD', category: BOTH, th: 'ความลับ', en: 'Confidentiality', detail: 'ข้อมูลจำกัดการเข้าถึงเฉพาะผู้มีสิทธิ์ — ระบบปิดบัง PII ตามบทบาทโดยค่าเริ่มต้น', dimensions: [], weight: 1.0 },
+      { id: '25012-EFF', category: BOTH, th: 'ประสิทธิภาพ', en: 'Efficiency', detail: 'ปริมาณข้อมูลที่คาดหวังต่อทรัพยากรที่ใช้ — ตรวจด้วยสัญญาณปริมาณข้อมูลผิดปกติ', dimensions: [], weight: 1.0 },
+      { id: '25012-PRC', category: BOTH, th: 'ความละเอียดแม่นยำ', en: 'Precision', detail: 'ข้อมูลมีความละเอียดตรงตามรูปแบบ/หน่วยที่กำหนด', dimensions: ['VALIDITY'], weight: 1.0 },
+      { id: '25012-TRC', category: BOTH, th: 'ความสามารถตามรอย', en: 'Traceability', detail: 'สืบค้นที่มาและประวัติข้อมูลได้ — ระบบบันทึก Audit Trail ทุกการดำเนินการ', dimensions: ['INTEGRITY'], weight: 1.0 },
+      { id: '25012-UND', category: BOTH, th: 'ความเข้าใจได้', en: 'Understandability', detail: 'ข้อมูลถูกนิยามชัดเจน อ่านแล้วเข้าใจตรงกันทุกหน่วยงาน', dimensions: ['CONSISTENCY', 'COMPLETENESS'], weight: 0.75 },
+      { id: '25012-AVA', category: SYSTEM, th: 'ความพร้อมใช้', en: 'Availability', detail: 'ข้อมูลพร้อมใช้ตามระดับที่กำหนด — ตรวจด้วยเกณฑ์ทันตาม SLA', dimensions: ['TIMELINESS'], weight: 1.0 },
+      { id: '25012-PRT', category: SYSTEM, th: 'ความสามารถพกพา', en: 'Portability', detail: 'ข้อมูลใช้ได้กับหลายระบบ/แพลตฟอร์มด้วยรูปแบบเดียวกัน', dimensions: ['CONSISTENCY'], weight: 0.5 },
+      { id: '25012-REC', category: SYSTEM, th: 'ความสามารถกู้คืน', en: 'Recoverability', detail: 'กู้คืนข้อมูลกลับสู่สถานะถูกต้องหลังเกิดเหตุขัดข้องได้', dimensions: ['INTEGRITY', 'COMPLETENESS'], weight: 0.5 },
     ],
   },
   {
@@ -109,12 +112,12 @@ export const FRAMEWORKS: Framework[] = [
     description:
       'มาตรฐานคุณภาพข้อมูลหลักและการแลกเปลี่ยนข้อมูลระหว่างองค์กร — ครอบคลุมไวยากรณ์ ความหมาย และการเข้ารหัสข้อมูล พร้อมกรอบกระบวนการจัดการคุณภาพ (Plan-Do-Check-Act)',
     domains: [
-      { id: '8000-1', th: 'ISO 8000-1 ภาพรวมและหลักการ', en: 'Part 1: Overview', detail: 'หลักการพื้นฐานของคุณภาพข้อมูล — คุณภาพวัดจากการใช้งานจริง (fitness for purpose)', dimensions: [] },
-      { id: '8000-2', th: 'ISO 8000-2 ศัพท์ศาสตร์', en: 'Part 2: Vocabulary', detail: 'ศัพท์มาตรฐานของคุณภาพข้อมูลเพื่อให้ทุกหน่วยงานใช้ความหมายตรงกัน', dimensions: ['CONSISTENCY'] },
-      { id: '8000-8', th: 'ISO 8000-8 ไวยากรณ์และความหมายของข้อมูล', en: 'Part 8: Syntax & Semantics', detail: 'การสร้างแบบข้อมูลที่ระบุทั้งรูปแบบ (syntax) และความหมาย (semantics) อย่างชัดเจน', dimensions: ['VALIDITY', 'ACCURACY'] },
-      { id: '8000-61', th: 'ISO 8000-61 กรอบกระบวนการคุณภาพข้อมูล', en: 'Part 61: Quality Management Process', detail: 'วงจร Plan-Do-Check-Act ของการจัดการคุณภาพข้อมูล — ระบบแปลงเป็น คลังเงื่อนไข → Rule Builder → รันตรวจ → ทบทวนสัญญาณ', dimensions: [] },
-      { id: '8000-110', th: 'ISO 8000-110 คุณภาพข้อมูลหลัก', en: 'Part 110: Master Data Quality', detail: 'ข้อมูลหลักต้องถูกต้องทั้งรูปแบบ (syntax) ความหมาย (semantic) และการเข้ารหัส (coding) เช่น รหัสลูกค้า/บัญชีตามทะเบียนหลัก', dimensions: ['VALIDITY', 'ACCURACY', 'CONSISTENCY'] },
-      { id: '8000-120', th: 'ISO 8000-120 คุณภาพการแลกเปลี่ยนข้อมูล', en: 'Part 120: Data Exchange Quality', detail: 'เอกสารการแลกเปลี่ยนข้อมูลต้องอ้างอิงสมบัติของรายการได้จริงและส่งถึงกันระหว่างระบบได้ครบถ้วน', dimensions: ['INTEGRITY', 'COMPLETENESS'] },
+      { id: '8000-1', th: 'ISO 8000-1 ภาพรวมและหลักการ', en: 'Part 1: Overview', detail: 'หลักการพื้นฐานของคุณภาพข้อมูล — คุณภาพวัดจากการใช้งานจริง (fitness for purpose)', dimensions: ['ACCURACY', 'REASONABLENESS'], weight: 0.75 },
+      { id: '8000-2', th: 'ISO 8000-2 ศัพท์ศาสตร์', en: 'Part 2: Vocabulary', detail: 'ศัพท์มาตรฐานของคุณภาพข้อมูลเพื่อให้ทุกหน่วยงานใช้ความหมายตรงกัน', dimensions: ['CONSISTENCY'], weight: 1.0 },
+      { id: '8000-8', th: 'ISO 8000-8 ไวยากรณ์และความหมายของข้อมูล', en: 'Part 8: Syntax & Semantics', detail: 'การสร้างแบบข้อมูลที่ระบุทั้งรูปแบบ (syntax) และความหมาย (semantics) อย่างชัดเจน', dimensions: ['VALIDITY', 'ACCURACY'], weight: 1.25 },
+      { id: '8000-61', th: 'ISO 8000-61 กรอบกระบวนการคุณภาพข้อมูล', en: 'Part 61: Quality Management Process', detail: 'วงจร Plan-Do-Check-Act ของการจัดการคุณภาพข้อมูล — ระบบแปลงเป็น คลังเงื่อนไข → Rule Builder → รันตรวจ → ทบทวนสัญญาณ', dimensions: ['TIMELINESS'], weight: 0.75 },
+      { id: '8000-110', th: 'ISO 8000-110 คุณภาพข้อมูลหลัก', en: 'Part 110: Master Data Quality', detail: 'ข้อมูลหลักต้องถูกต้องทั้งรูปแบบ (syntax) ความหมาย (semantic) และการเข้ารหัส (coding) เช่น รหัสลูกค้า/บัญชีตามทะเบียนหลัก', dimensions: ['VALIDITY', 'ACCURACY', 'CONSISTENCY', 'UNIQUENESS', 'COMPLETENESS'], weight: 1.5 },
+      { id: '8000-120', th: 'ISO 8000-120 คุณภาพการแลกเปลี่ยนข้อมูล', en: 'Part 120: Data Exchange Quality', detail: 'เอกสารการแลกเปลี่ยนข้อมูลต้องอ้างอิงสมบัติของรายการได้จริงและส่งถึงกันระหว่างระบบได้ครบถ้วน', dimensions: ['INTEGRITY', 'COMPLETENESS'], weight: 1.5 },
     ],
   },
   {
@@ -127,16 +130,16 @@ export const FRAMEWORKS: Framework[] = [
     description:
       'มาตราการวัดคุณภาพข้อมูลที่ระบุสูตร/วิธีคำนวณต่อคุณลักษณะ — ระบบแปลงเป็นสูตรที่อ่านง่ายของแต่ละมาตรา แล้วคำนวณจากผลรันจริง',
     domains: [
-      { id: '25024-SYN', th: 'ความถูกต้องเชิงไวยากรณ์', en: 'Syntactic accuracy', detail: 'วัดสัดส่วนค่าที่ถูกรูปแบบที่กำหนด เช่น อีเมล รูปแบบเบอร์โทร', dimensions: ['VALIDITY'] },
-      { id: '25024-SEM', th: 'ความถูกต้องเชิงความหมาย', en: 'Semantic accuracy', detail: 'วัดสัดส่วนค่าที่ตรงกับค่ามาตรฐาน/แหล่งอ้างอิงที่ยืนยันแล้ว', dimensions: ['ACCURACY'] },
-      { id: '25024-CMP', th: 'ความสมบูรณ์', en: 'Completeness', detail: 'วัดสัดส่วนค่าที่ไม่ว่างในฟิลด์ที่จำเป็น เทียบระเบียนทั้งหมด', dimensions: ['COMPLETENESS'] },
-      { id: '25024-CON', th: 'ความสอดคล้อง', en: 'Consistency', detail: 'วัดสัดส่วนค่าที่อยู่ในชุดค่ามาตรฐานเดียวกันทั้งระบบ', dimensions: ['CONSISTENCY'] },
-      { id: '25024-CRD', th: 'ความน่าเชื่อถือ', en: 'Credibility', detail: 'วัดสัดส่วนค่าที่มีแหล่งที่มายืนยันแล้ว (มาจากทะเบียน/ระบบต้นทาง)', dimensions: ['ACCURACY', 'INTEGRITY'] },
-      { id: '25024-CUR', th: 'ความเป็นปัจจุบัน', en: 'Currentness', detail: 'วัดสัดส่วนระเบียนที่ไม่เก่าเกินหน้าต่างเวลาที่ยอมรับ (วัน)', dimensions: ['CURRENTNESS'] },
-      { id: '25024-AVA', th: 'ความพร้อมใช้ / ทันเวลา', en: 'Availability / Timeliness', detail: 'วัดสัดส่วนข้อมูลที่มาถึงทันตามรอบ SLA (ชั่วโมง)', dimensions: ['TIMELINESS'] },
-      { id: '25024-UNQ', th: 'ความไม่ซ้ำซ้อน', en: 'Uniqueness', detail: 'วัดสัดส่วนค่าที่ปรากฏเพียงหนึ่งเดียวในชุดข้อมูล', dimensions: ['UNIQUENESS'] },
-      { id: '25024-RSN', th: 'ความสมเหตุสมผล', en: 'Reasonableness', detail: 'วัดสัดส่วนค่าที่อยู่ในกรอบธุรกิจที่กำหนด เช่น ช่วงตัวเลขที่เป็นไปได้', dimensions: ['REASONABLENESS'] },
-      { id: '25024-OTH', th: 'คุณลักษณะอื่น ๆ', en: 'Other characteristics', detail: 'คุณลักษณะที่ตรวจข้ามระบบ/กระบวนการ — ระบบครอบคลุมบางส่วนผ่าน RBAC, PII masking และ Audit Trail', dimensions: [] },
+      { id: '25024-SYN', th: 'ความถูกต้องเชิงไวยากรณ์', en: 'Syntactic accuracy', detail: 'วัดสัดส่วนค่าที่ถูกรูปแบบที่กำหนด เช่น อีเมล รูปแบบเบอร์โทร', dimensions: ['VALIDITY'], weight: 1.25 },
+      { id: '25024-SEM', th: 'ความถูกต้องเชิงความหมาย', en: 'Semantic accuracy', detail: 'วัดสัดส่วนค่าที่ตรงกับค่ามาตรฐาน/แหล่งอ้างอิงที่ยืนยันแล้ว', dimensions: ['ACCURACY'], weight: 1.25 },
+      { id: '25024-CMP', th: 'ความสมบูรณ์', en: 'Completeness', detail: 'วัดสัดส่วนค่าที่ไม่ว่างในฟิลด์ที่จำเป็น เทียบระเบียนทั้งหมด', dimensions: ['COMPLETENESS'], weight: 1.5 },
+      { id: '25024-CON', th: 'ความสอดคล้อง', en: 'Consistency', detail: 'วัดสัดส่วนค่าที่อยู่ในชุดค่ามาตรฐานเดียวกันทั้งระบบ', dimensions: ['CONSISTENCY'], weight: 1.0 },
+      { id: '25024-CRD', th: 'ความน่าเชื่อถือ', en: 'Credibility', detail: 'วัดสัดส่วนค่าที่มีแหล่งที่มายืนยันแล้ว (มาจากทะเบียน/ระบบต้นทาง)', dimensions: ['ACCURACY', 'INTEGRITY'], weight: 1.0 },
+      { id: '25024-CUR', th: 'ความเป็นปัจจุบัน', en: 'Currentness', detail: 'วัดสัดส่วนระเบียนที่ไม่เก่าเกินหน้าต่างเวลาที่ยอมรับ (วัน)', dimensions: ['CURRENTNESS'], weight: 1.0 },
+      { id: '25024-AVA', th: 'ความพร้อมใช้ / ทันเวลา', en: 'Availability / Timeliness', detail: 'วัดสัดส่วนข้อมูลที่มาถึงทันตามรอบ SLA (ชั่วโมง)', dimensions: ['TIMELINESS'], weight: 0.75 },
+      { id: '25024-UNQ', th: 'ความไม่ซ้ำซ้อน', en: 'Uniqueness', detail: 'วัดสัดส่วนค่าที่ปรากฏเพียงหนึ่งเดียวในชุดข้อมูล', dimensions: ['UNIQUENESS'], weight: 1.25 },
+      { id: '25024-RSN', th: 'ความสมเหตุสมผล', en: 'Reasonableness', detail: 'วัดสัดส่วนค่าที่อยู่ในกรอบธุรกิจที่กำหนด เช่น ช่วงตัวเลขที่เป็นไปได้', dimensions: ['REASONABLENESS'], weight: 1.0 },
+      { id: '25024-OTH', th: 'คุณลักษณะอื่น ๆ', en: 'Other characteristics', detail: 'คุณลักษณะที่ตรวจข้ามระบบ/กระบวนการ — ระบบครอบคลุมบางส่วนผ่าน RBAC, PII masking และ Audit Trail', dimensions: [], weight: 1.0 },
     ],
   },
   {
@@ -149,11 +152,11 @@ export const FRAMEWORKS: Framework[] = [
     description:
       'กรอบทะเบียนเมทาดาทาและการจัดการองค์ประกอบข้อมูล (Data Element) — ระบบแมปกับความครบถ้วนของเมทาดาทาชุดข้อมูล (ชื่อ/แหล่งข้อมูล/การจำแนกประเภท/ธง PII) และชุดค่ามาตรฐาน',
     domains: [
-      { id: '11179-1', th: 'Part 1: กรอบและหลักการทั่วไป', en: 'Framework and general principles', detail: 'ทะเบียนเมทาดาทาต้องมีหลักการจัดการที่ชัดเจน ตรวจสอบย้อนหลังได้', dimensions: [] },
-      { id: '11179-3', th: 'Part 3: Metamodel — Data Element และ Value Domain', en: 'Registry metamodel', detail: 'ทุกองค์ประกอบข้อมูลต้องผูกกับชุดค่าที่ยอมรับ (Value Domain) — แมปกับกฎ "อยู่ในรายการค่าที่อนุญาต" ของระบบ', dimensions: ['CONSISTENCY'] },
-      { id: '11179-4', th: 'Part 4: การเขียนนิยามข้อมูล', en: 'Formulating data definitions', detail: 'นิยามข้อมูลต้องครบ ชัดเจน และไม่ซ้ำกัน — แมปกับความสมบูรณ์ของเมทาดาทาในระบบ', dimensions: ['COMPLETENESS'] },
-      { id: '11179-5', th: 'Part 5: การตั้งชื่อและการระบุเอกลักษณ์', en: 'Naming and identification', detail: 'ตั้งชื่อ/รหัสองค์ประกอบข้อมูลตามหลักที่กำหนด เพื่อระบุเอกลักษณ์ไม่ซ้ำ — แมปกับมิติความไม่ซ้ำซ้อน', dimensions: ['UNIQUENESS'] },
-      { id: '11179-6', th: 'Part 6: การลงทะเบียน', en: 'Registration', detail: 'สถานะการลงทะเบียนขององค์ประกอบข้อมูล (Preferred/Standard/Recorded) — ตรวจด้วยความครบถ้วนของข้อมูลจำแนกประเภทในแดชบอร์ด', dimensions: [] },
+      { id: '11179-1', th: 'Part 1: กรอบและหลักการทั่วไป', en: 'Framework and general principles', detail: 'ทะเบียนเมทาดาทาต้องมีหลักการจัดการที่ชัดเจน ตรวจสอบย้อนหลังได้', dimensions: ['COMPLETENESS'], weight: 0.5 },
+      { id: '11179-3', th: 'Part 3: Metamodel — Data Element และ Value Domain', en: 'Registry metamodel', detail: 'ทุกองค์ประกอบข้อมูลต้องผูกกับชุดค่าที่ยอมรับ (Value Domain) — แมปกับกฎ "อยู่ในรายการค่าที่อนุญาต" ของระบบ', dimensions: ['CONSISTENCY'], weight: 1.5 },
+      { id: '11179-4', th: 'Part 4: การเขียนนิยามข้อมูล', en: 'Formulating data definitions', detail: 'นิยามข้อมูลต้องครบ ชัดเจน และไม่ซ้ำกัน — แมปกับความสมบูรณ์ของเมทาดาทาในระบบ', dimensions: ['COMPLETENESS'], weight: 1.25 },
+      { id: '11179-5', th: 'Part 5: การตั้งชื่อและการระบุเอกลักษณ์', en: 'Naming and identification', detail: 'ตั้งชื่อ/รหัสองค์ประกอบข้อมูลตามหลักที่กำหนด เพื่อระบุเอกลักษณ์ไม่ซ้ำ — แมปกับมิติความไม่ซ้ำซ้อน', dimensions: ['UNIQUENESS'], weight: 1.0 },
+      { id: '11179-6', th: 'Part 6: การลงทะเบียน', en: 'Registration', detail: 'สถานะการลงทะเบียนขององค์ประกอบข้อมูล (Preferred/Standard/Recorded) — ตรวจด้วยความครบถ้วนของข้อมูลจำแนกประเภทในแดชบอร์ด', dimensions: ['COMPLETENESS', 'CURRENTNESS'], weight: 0.75 },
     ],
   },
 ]
