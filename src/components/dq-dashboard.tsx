@@ -22,10 +22,8 @@ import {
   RefreshCw,
   Scale,
   ShieldCheck,
-  ShieldOff,
   Tags,
   TrendingDown,
-  TrendingUp,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -151,7 +149,7 @@ interface RegulationDomainView {
   /** น้ำหนักของส่วนย่อยในการคำนวณคะแนนรวมของกรอบ (เช่น 1 หรือ 1.5) */
   weight: number
   dimensions: string[]
-  /** คะแนนเฉลี่ยถ่วงน้ำหนักจากทุกชุดข้อมูล (หลังตั้งกฎ DQ) — null = ยังไม่ได้รันตรวจ */
+  /** คะแนนเฉลี่ยถ่วงน้ำหนักจากทุกชุดข้อมูล (ผลประเมินล่าสุด) — null = ยังไม่ได้รันตรวจ */
   score: number | null
   rulesCount: number
   perDataset: RegulationDomainPerDataset[]
@@ -162,7 +160,7 @@ interface RegulationDatasetRow {
   datasetId: string
   name: string
   rulesCount: number
-  /** คะแนน "หลังตั้งกฎ DQ" — null = ยังไม่ได้รันตรวจ (ก่อนตั้งกฎคือ 0 เสมอ) */
+  /** คะแนนประเมินล่าสุด — null = ยังไม่ได้รันตรวจ */
   score: number | null
   lastRunAt: string | null
   grade: RegulationGradeView | null
@@ -178,7 +176,7 @@ interface RegulationFrameworkView {
   totalDomains: number
   /** จำนวนส่วนย่อยที่มีเกณฑ์ตรวจ (dimensions.length > 0) และวัดคะแนนได้จริง */
   measuredDomains: number
-  /** คะแนนรวมถ่วงน้ำหนักของกรอบ (หลังตั้งกฎ DQ) — null = ยังวัดไม่ได้ */
+  /** คะแนนรวมถ่วงน้ำหนักของกรอบ (ผลประเมินล่าสุด) — null = ยังวัดไม่ได้ */
   weightedScore: number | null
   domains: RegulationDomainView[]
   datasets: RegulationDatasetRow[]
@@ -1005,7 +1003,7 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
           {/* ================================================================ */}
           {section === 'regulation' && (
             <div className="space-y-4">
-              {/* เลือกกรอบมาตรฐาน — แสดงคะแนนรวมถ่วงน้ำหนัก (หลังตั้งกฎ DQ) + จำนวนข้อกำหนดที่วัดได้รายกรอบ */}
+              {/* เลือกกรอบมาตรฐาน — แสดงคะแนนรวมถ่วงน้ำหนักจากการประเมินล่าสุด + จำนวนข้อกำหนดที่วัดได้รายกรอบ */}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5" role="radiogroup" aria-label="เลือกกรอบมาตรฐาน">
                 {regFws.map((f) => {
                   const active = f.id === fwId
@@ -1033,7 +1031,7 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                         </div>
                         <span
                           className={`shrink-0 font-mono text-base font-bold ${scoreColor(f.weightedScore)}`}
-                          title="คะแนนรวมถ่วงน้ำหนัก (หลังตั้งกฎ DQ)"
+                          title="คะแนนรวมถ่วงน้ำหนักจากการประเมินล่าสุด"
                         >
                           {f.weightedScore !== null ? f.weightedScore.toFixed(1) : '—'}
                         </span>
@@ -1060,6 +1058,9 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                     <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
                       วัดได้ {regFw.measuredDomains} ข้อ
                     </Badge>
+                    <Badge variant="outline" className="border-slate-200 bg-white font-mono text-slate-800">
+                      คะแนนรวม {regFw.weightedScore !== null ? `${regFw.weightedScore.toFixed(1)}/100` : '—'}
+                    </Badge>
                     {!data.regulation && (
                       <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">
                         รอข้อมูลวิเคราะห์รายมาตรฐานจากเซิร์ฟเวอร์ — แสดงโครงมาตรฐานอย่างเดียว
@@ -1068,95 +1069,93 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* สรุปก่อน–หลังตั้งกฎ DQ (คะแนน "ข้อมูลเดิม" = 0 เพราะไม่มีเกณฑ์ตรวจ = ไม่มีการรับประกัน) */}
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <dl className="rounded-lg border border-rose-200 bg-rose-50/60 p-4">
-                      <div className="flex items-center gap-1.5">
-                        <ShieldOff className="size-4 text-rose-600" aria-hidden="true" />
-                        <dt className="text-xs font-medium text-rose-900">ก่อนตั้งกฎ DQ</dt>
-                      </div>
-                      <dd className="mt-1">
-                        <span className="text-3xl font-bold tabular-nums text-rose-700">0.0</span>
-                        <span className="ml-1 text-xs text-rose-700/80">/100</span>
-                      </dd>
-                      <dd className="mt-0.5 text-[11px] leading-relaxed text-rose-800/90">ข้อมูลเดิมไม่มีเกณฑ์ตรวจ จึงไม่มีการรับประกันคุณภาพข้อมูล</dd>
-                    </dl>
-                    <dl className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
-                      <div className="flex items-center gap-1.5">
-                        <ShieldCheck className="size-4 text-emerald-600" aria-hidden="true" />
-                        <dt className="text-xs font-medium text-emerald-900">หลังตั้งกฎ DQ</dt>
-                      </div>
-                      <dd className="mt-1">
-                        <span className={`text-3xl font-bold tabular-nums ${scoreColor(regFw.weightedScore)}`}>
-                          {regFw.weightedScore !== null ? regFw.weightedScore.toFixed(1) : '—'}
-                        </span>
-                        <span className="ml-1 text-xs text-muted-foreground">/100</span>
-                      </dd>
-                      <dd className="mt-0.5 text-[11px] leading-relaxed text-emerald-900/90">คะแนนรวมถ่วงน้ำหนักจากผลรันตรวจล่าสุดของทุกชุดข้อมูล</dd>
-                    </dl>
-                    <dl className="rounded-lg border border-emerald-200 bg-white p-4">
-                      <div className="flex items-center gap-1.5">
-                        <TrendingUp className="size-4 text-emerald-600" aria-hidden="true" />
-                        <dt className="text-xs font-medium text-emerald-900">คะแนนเพิ่มขึ้น</dt>
-                      </div>
-                      <dd className="mt-1">
-                        <span className="text-3xl font-bold tabular-nums text-emerald-700">
-                          {regFw.weightedScore !== null ? `+${regFw.weightedScore.toFixed(1)}` : '—'}
-                        </span>
-                        <span className="ml-1 text-xs text-muted-foreground">คะแนน</span>
-                      </dd>
-                      <dd className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                        0 → {regFw.weightedScore !== null ? regFw.weightedScore.toFixed(1) : '—'} — คะแนนที่วัดได้จริงเมื่อมีกฎ DQ ครอบคลุม
-                      </dd>
-                    </dl>
-                  </div>
-
-                  {/* v0.24.0 — ความเสี่ยงรายมาตรฐาน (Inherent → Residual) สรุปย่อ
-                      — ดูรายละเอียดรายข้อได้ที่เมนู ภาพรวม → ประเมินความสอดคล้อง */}
-                  {inherent && inherent.byFramework.length > 0 && (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                  {/* v0.24.2 — ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน (แทนสรุปคะแนนก่อน–หลังตั้งกฎ DQ เดิม)
+                      Inherent/Residual คำนวณจาก lib/regulation.ts — chip ระดับความเสี่ยงจาก riskBandOf คลิกเลือกมาตรฐานได้ */}
+                  {inherent && inherent.byFramework.length > 0 ? (
+                    <section
+                      aria-label="ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน"
+                      className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
+                    >
                       <h4 className="text-xs font-semibold text-slate-800">
-                        ความเสี่ยงรายมาตรฐาน — ก่อนมีกฎ (Inherent) → หลังมีกฎ (Residual)
+                        ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน
                       </h4>
                       <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                        ค่าเฉลี่ยความเสี่ยง (เต็ม 25) ของกฎ DQ ที่แมปกับแต่ละมาตรฐาน — คลิกมาตรฐานด้านบนเพื่อดูรายละเอียด
+                        ค่าเฉลี่ยความเสี่ยง (เต็ม 25) ของกฎ DQ ที่แมปกับแต่ละมาตรฐาน — Inherent = ความเสี่ยงตั้งต้น · Residual = ความเสี่ยงคงเหลือจากผลตรวจล่าสุด · คลิกรายการเพื่อเลือกดูรายละเอียดมาตรฐาน
                       </p>
                       <ul className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                        {inherent.byFramework.map((row) => (
-                          <li
-                            key={row.frameworkId}
-                            className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border bg-white px-2.5 py-1.5"
-                          >
-                            <div className="min-w-0 flex-1 basis-32">
-                              <p className="truncate text-xs font-medium text-slate-800" title={`${row.no} ${row.name}`}>
-                                {row.name}
-                              </p>
-                              <p className="truncate text-[10px] font-mono text-muted-foreground">{row.no}</p>
-                            </div>
-                            <div className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-slate-200" role="img" aria-label={`Inherent ${row.inherentAvg.toFixed(1)} → Residual ${row.residualAvg.toFixed(1)} (เต็ม 25)`}>
-                              <div className="h-full rounded-full bg-rose-300" style={{ width: `${Math.min(100, (row.inherentAvg / 25) * 100)}%` }}>
-                                <div
-                                  className="h-full rounded-full bg-emerald-600"
-                                  style={{ width: `${row.inherentAvg > 0 ? Math.min(100, (row.residualAvg / row.inherentAvg) * 100) : 0}%` }}
-                                />
-                              </div>
-                            </div>
-                            <p className="shrink-0 whitespace-nowrap text-[11px] tabular-nums">
-                              <span className="font-mono font-semibold text-rose-700">{row.inherentAvg.toFixed(1)}</span>
-                              <span className="mx-0.5 text-slate-400">→</span>
-                              <span className="font-mono font-bold text-emerald-700">{row.residualAvg.toFixed(1)}</span>
-                              <span className="text-[10px] text-slate-400">/25</span>
-                            </p>
-                            <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 font-mono text-[10px] text-emerald-800">
-                              ลดลง −{Math.round(row.reductionPct)}%
-                            </Badge>
-                          </li>
-                        ))}
+                        {inherent.byFramework.map((row) => {
+                          const bandIH = riskBandOf(row.inherentAvg)
+                          const bandRS = riskBandOf(row.residualAvg)
+                          const selected = row.frameworkId === fwId
+                          return (
+                            <li key={row.frameworkId}>
+                              <button
+                                type="button"
+                                onClick={() => setFwId(row.frameworkId)}
+                                aria-pressed={selected}
+                                aria-label={`ประเมินความเสี่ยง ${row.name} — Inherent ${row.inherentAvg.toFixed(1)} ระดับ${bandIH.label}, Residual ${row.residualAvg.toFixed(1)} ระดับ${bandRS.label}`}
+                                className={`w-full rounded-md border bg-white px-2.5 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                                  selected ? 'border-emerald-300 ring-2 ring-emerald-300' : 'hover:border-emerald-200'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-medium text-slate-800" title={`${row.no} ${row.name}`}>
+                                      {row.name}
+                                    </p>
+                                    <p className="truncate font-mono text-[10px] text-muted-foreground">{row.no}</p>
+                                  </div>
+                                  {row.reductionPct > 0 ? (
+                                    <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 font-mono text-[10px] text-emerald-800">
+                                      ลดลง −{Math.round(row.reductionPct)}%
+                                    </Badge>
+                                  ) : row.reductionPct === 0 ? (
+                                    <Badge variant="outline" className="shrink-0 border-slate-200 bg-slate-50 text-[10px] text-slate-600">
+                                      ทรงตัว
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="shrink-0 border-amber-200 bg-amber-50 font-mono text-[10px] text-amber-900">
+                                      เพิ่มขึ้น +{Math.round(-row.reductionPct)}%
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                                  <span
+                                    className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${bandIH.className}`}
+                                    title={`Inherent ระดับ${bandIH.label} (คะแนน ${row.inherentAvg.toFixed(1)}/25)`}
+                                  >
+                                    {bandIH.label}
+                                  </span>
+                                  <span className="shrink-0 font-mono text-xs font-semibold tabular-nums text-rose-700">
+                                    {row.inherentAvg.toFixed(1)}
+                                  </span>
+                                  <ArrowRight className="size-3 shrink-0 text-slate-400" aria-hidden="true" />
+                                  <span
+                                    className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${bandRS.className}`}
+                                    title={`Residual ระดับ${bandRS.label} (คะแนน ${row.residualAvg.toFixed(1)}/25)`}
+                                  >
+                                    {bandRS.label}
+                                  </span>
+                                  <span className="shrink-0 font-mono text-xs font-bold tabular-nums text-emerald-700">
+                                    {row.residualAvg.toFixed(1)}
+                                  </span>
+                                  <span className="shrink-0 text-[10px] text-slate-400">/25</span>
+                                </div>
+                              </button>
+                            </li>
+                          )
+                        })}
                       </ul>
                       <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                        ดูรายละเอียดรายข้อที่เมนู <span className="font-medium text-slate-700">ภาพรวม → ประเมินความสอดคล้อง</span>
+                        ระดับความเสี่ยง: สูงมาก ≥15 · สูง ≥8 · ปานกลาง ≥4 · ต่ำ &lt;4 — เกณฑ์ทั้งหมดอยู่ใน{' '}
+                        <span className="font-mono">lib/regulation.ts</span> · ดูรายละเอียดรายข้อที่เมนู{' '}
+                        <span className="font-medium text-slate-700">ภาพรวม → ประเมินความสอดคล้อง</span>
                       </p>
-                    </div>
+                    </section>
+                  ) : (
+                    <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                      ยังไม่มีข้อมูลประเมินความเสี่ยงรายมาตรฐาน — เพิ่มกฎ DQ ที่อ้างอิงมาตรฐานและรันตรวจเพื่อเริ่มประเมิน
+                    </p>
                   )}
 
                   {/* sub-tabs 2 มุมมอง: ชุดข้อมูล (default) / รายละเอียดข้อกำหนด */}
@@ -1197,9 +1196,9 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                         </p>
                       ) : (
                         <div className="overflow-x-auto rounded-lg border">
-                          <table className="w-full min-w-[720px] text-left text-xs">
+                          <table className="w-full min-w-[560px] text-left text-xs">
                             <caption className="sr-only">
-                              ตารางคะแนนรายชุดข้อมูลของ {regFw.name} — เทียบคะแนนก่อนตั้งกฎ DQ (0) กับหลังตั้งกฎ พร้อมคะแนนที่เพิ่มขึ้นและเวลารันล่าสุด
+                              ตารางคะแนนรายชุดข้อมูลของ {regFw.name} — คะแนนประเมินล่าสุดจากผลรันตรวจ พร้อมจำนวนกฎที่ครอบคลุมและเวลารันล่าสุด
                             </caption>
                             <thead className="bg-emerald-50/70 text-emerald-900">
                               <tr>
@@ -1209,14 +1208,8 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                                 <th scope="col" className="px-3 py-2 text-center font-medium">
                                   กฎครอบคลุม
                                 </th>
-                                <th scope="col" className="px-3 py-2 text-center font-medium">
-                                  ก่อนตั้งกฎ DQ
-                                </th>
                                 <th scope="col" className="px-3 py-2 font-medium">
-                                  หลังตั้งกฎ DQ
-                                </th>
-                                <th scope="col" className="px-3 py-2 text-center font-medium">
-                                  เพิ่มขึ้น
+                                  คะแนนประเมินล่าสุด
                                 </th>
                                 <th scope="col" className="px-3 py-2 font-medium">
                                   รันล่าสุด
@@ -1232,9 +1225,6 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                                       {ds.name}
                                     </th>
                                     <td className="px-3 py-2 text-center tabular-nums">{ds.rulesCount}</td>
-                                    <td className="px-3 py-2 text-center font-mono text-rose-600" title="ไม่มีกฎ DQ = ไม่มีการรับประกัน">
-                                      0.0
-                                    </td>
                                     <td className="px-3 py-2">
                                       {ds.score !== null ? (
                                         <div className="flex items-center gap-2">
@@ -1254,17 +1244,6 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                                         </Badge>
                                       )}
                                     </td>
-                                    <td className="px-3 py-2 text-center">
-                                      {ds.score !== null && ds.score > 0 ? (
-                                        <Badge variant="outline" className="border-emerald-200 bg-emerald-50 font-mono text-[10.5px] text-emerald-800">
-                                          +{ds.score.toFixed(1)}
-                                        </Badge>
-                                      ) : ds.score !== null ? (
-                                        <span className="font-mono text-muted-foreground">±0.0</span>
-                                      ) : (
-                                        <span className="text-muted-foreground">—</span>
-                                      )}
-                                    </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{fmtTime(ds.lastRunAt)}</td>
                                   </tr>
                                 )
@@ -1274,7 +1253,7 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                         </div>
                       )}
                       <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        มุมชุดข้อมูลรายมาตรฐาน: ก่อนมีกฎ DQ ทุกชุดข้อมูลมีคะแนน 0 (ไม่มีการรับประกัน) — เมื่อตั้งกฎและรันตรวจแล้ว คะแนนจะถูกวัดได้จริงตามผลล่าสุด
+                        มุมชุดข้อมูลรายมาตรฐาน: คะแนนจากผลรันตรวจล่าสุดของแต่ละชุดข้อมูล — ชุดข้อมูลที่ยังไม่ได้รันตรวจจะแสดงสถานะ "รอการประเมิน"
                       </p>
                     </div>
                   )}
@@ -1340,20 +1319,11 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                                 {st.score !== null ? (
                                   <>
                                     <span className="text-muted-foreground">
-                                      ก่อน <span className="font-mono font-semibold text-rose-600">0.0</span>
-                                    </span>
-                                    <ArrowRight className="size-3.5 text-slate-400" aria-hidden="true" />
-                                    <span className="text-muted-foreground">
-                                      หลัง <span className={`font-mono font-bold ${scoreColor(st.score)}`}>{st.score.toFixed(1)}</span>
+                                      คะแนนประเมินล่าสุด{' '}
+                                      <span className={`font-mono font-bold ${scoreColor(st.score)}`}>{st.score.toFixed(1)}</span>
+                                      <span className="ml-0.5 text-[10px] text-slate-400">/100</span>
                                     </span>
                                     <ScoreBar score={st.score} className="max-w-36" />
-                                    {st.score > 0 ? (
-                                      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 font-mono text-[10.5px] text-emerald-800">
-                                        +{st.score.toFixed(1)}
-                                      </Badge>
-                                    ) : (
-                                      <span className="font-mono text-[10.5px] text-muted-foreground">±0.0</span>
-                                    )}
                                   </>
                                 ) : (
                                   <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-500">
