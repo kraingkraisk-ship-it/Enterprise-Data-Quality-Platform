@@ -1252,3 +1252,21 @@ Stage Summary:
 - ไฟล์ที่แก้: src/components/dq-dashboard.tsx (1317 → 1918 บรรทัด, +601) — ไฟล์เดียว ไม่แตะ api/lib/scripts · ลบทิ้ง: scopeDims, domainStatus(), fwSummary, fw (FRAMEWORKS.find), Data Source select เดิมในหัวกรอบ, แถบ byDimension เดิมในโหมด Inherent
 - การตัดสินใจสำคัญ: (1) key ใหม่ทั้งหมด optional + fallback FRAMEWORKS → UI ไม่ crash แม้ API ยังไม่พร้อม (แสดง '—' + badge แจ้ง) (2) คลิกเปลี่ยนกรอบจะ reset fwDataset เพราะตัวเลือกขอบเขตเปลี่ยนรายกรอบ (3) แก้ min-width propagation ล้นจอ 375px ของ grid เดิม (bug ฝังมาแต่ก่อน) (4) Inherent ใน matrix นับ "กฎ-ชุดข้อมูลที่วัดได้" จาก latestRuns (ไม่ใช่เฉพาะกฎที่ไม่ผ่าน) ตามนิยาม "ทุกกฎนับ likelihood=5"
 - สถานะ: รอ agent 41-a ปิดงาน backend ให้ครบ + ผู้ใช้ตรวจผ่าน Preview Panel
+
+---
+Task ID: 41-result
+Agent: Z.ai Code (main session)
+Task: v0.23.0 — ตรวจสอบอิสระผลงาน 41-a/41-b + E2E + commit + tag + push
+
+Work Log:
+- ตรวจ worklog 41-a (บรรทัด 1213) และ 41-b (บรรทัด 1233) ครบ, git status: 5 ไฟล์แก้ + agent-ctx ใหม่
+- lint (eslint .) ผ่าน 0 error · tsc: ไฟล์ที่แก้วันนี้ว่างหมด (error ที่เหลือเป็นของเดิมใน examples/skills/domain-run/exceptions-panel/scorecard/dq.ts/mappings-server — ไม่เกี่ยวกับ v0.23.0)
+- ตรวจ API จริง: regulation.frameworks 5 กรอบ (DAMA 85.7 · 25012 87.4 วัด 13/15 · 8000 87.1 · 25024 89.3 · 11179 96.8) + risks.inherent (measured 11 / unmeasured 3 · Inherent 17.73 → Residual 8.82 · ลดลง 50.3% · byDimension 9 / byFramework 5 / byClassification 3) + key เดิมครบทุก field
+- E2E agent-browser: Regulation — เมนู 5 มาตรฐานแสดง weightedScore + วัดได้ X/Y · การ์ด "ก่อนตั้งกฎ DQ 0 → หลังตั้งกฎ 85.7/100 → คะแนนเพิ่มขึ้น +85.7" · ตารางมุมชุดข้อมูล (ลูกค้าองค์กร 8 กฎ 0.0→94.4 ดี +94.4 · แคตตาล็อกสินค้า ยังไม่รัน) · แท็บข้อกำหนด: badge น้ำหนัก ×1.5/×1/×0.5, แถว "ก่อน 0.0 / หลัง 100.0 / +100.0", มิติใหม่ Traceability แสดง, หมวด "ข้อกำหนดระดับกระบวนการ (ไม่เข้าการคำนวณคะแนน)" โผล่เฉพาะกรอบที่มีข้อไม่วัด (DAMA 9/9 ไม่มี = ถูกต้อง) · Risk — Hero Inherent 17.7/25 → ลดลง 50% → Residual 8.8/25 + chips วัดแล้ว 11/ยังไม่วัด 3 · switcher 3 ขอบเขตทำงานครบ (รายมิติ: TIMELINESS residual 15/15 เรียงบนสุด · รายมาตรฐาน · รายประเภทข้อมูล AML/KYC 5.6) · Matrix toggle Residual/Inherent ✓
+- Mobile 375px: scrollWidth=375 ทั้ง 2 ส่วน NO-OVERFLOW · console error 0 · page error 0 · dev.log clean · screenshot ยืนยันภาพจริง (สี emerald/rose/amber ตามมาตรฐานโปรเจกต์)
+- Commit 2ac5e08 (8 files, +1164/−188) + tag v0.23.0 (24d46ae→2ac5e08) + push สำเร็จ — remote main = local = 2ac5e08, tag อยู่บน GitHub ครบ, worktree ว่าง
+
+Stage Summary:
+- v0.23.0 ปิดงานสมบูรณ์: ผู้ใช้ได้ (1ข) คะแนนข้อมูลเดิม=0 เทียบหลังตั้งกฎ (2ก) Inherent=โอกาส 5×severity (3ข) ข้อไม่มีเกณฑ์ตรวจแยกหมวดไม่เข้าคะแนน (4) เมนูแยกมาตรฐาน + มุมชุดข้อมูลรายมาตรฐาน + รายละเอียดข้อกำหนด + บอกคะแนนเพิ่มขึ้น (5ข) น้ำหนักมิติรายมาตรฐาน (6ค) เสี่ยงครบ 3 ขอบเขต (7) seed เล่าเรื่องปรับปรุงตามเวลา
+- remote=local 100% SHA-for-SHA (main 2ac5e08 + tag v0.23.0)
+- ไฟล์แก้: src/lib/regulation.ts (weight+มิติใหม่ 12 ส่วนย่อย) · src/app/api/dq/analytics/route.ts (regulation.frameworks + risks.inherent) · scripts/seed.ts (RUN_START_RATES + progress 14 รอบ) · src/lib/views.ts (v0.23.0) · src/components/dq-dashboard.tsx (+601 บรรทัด) + agent-ctx 2 ไฟล์
