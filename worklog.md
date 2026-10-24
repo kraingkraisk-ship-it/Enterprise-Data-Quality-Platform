@@ -1190,3 +1190,21 @@ Stage Summary:
 - ไฟล์ใหม่: src/components/data-mapping/mapping-detail-dialog.tsx · แก้: prisma/schema.prisma, src/lib/{mappings,mappings-server,views}.ts, src/app/api/mappings/{route,[id]/route}.ts, src/app/api/assets/[id]/route.ts, src/app/api/dq/rules/route.ts, src/components/{core-features-console,data-mapping-console,data-domain-console}.tsx, src/components/data-mapping/{types,mapping-row,lineage-diagram}.tsx, scripts/seed.ts
 - หมายเหตุ: sandbox รีเซ็ตกลางทาง (รอบ 2) — งานถูกทำใหม่ทั้งหมดและ commit checkpoint ก่อน frontend; ปรับกติกา v0.21.0 เล็กน้อย: แก้เนื้อหา mapping ได้ตอน DEPRECATED (เพื่อให้ flow เวอร์ชันอัตโนมัติเป็นไปได้) — ACTIVE ยังล็อกเหมือนเดิม
 - สถานะ: รอ commit สุดท้าย + tag v0.22.0 + push (PAT ใหม่จากผู้ใช้)
+
+---
+Task ID: 40
+Agent: Z.ai Code (main session)
+Task: v0.23.0 — ออกแบบ Dashboard ใหม่ส่วน Regulation + Risk (เทียบคะแนน/ความเสี่ยง "ข้อมูลเดิม" vs "หลังใช้ DQ Rule" + เพิ่มมิติรายมาตรฐาน) — ระดับ design + คำถาม ยังไม่ implement
+
+Work Log:
+- ปิดงานค้าง v0.22.0 ตรวจสอบแล้ว: remote main = local HEAD = a4ff9aa, tag v0.22.0 (9f5bc5b→a4ff9aa) อยู่บน GitHub ครบ, worktree ว่าง — ไม่มีงานค้าง
+- ศึกษาของเดิมครบ: src/lib/regulation.ts (5 กรอบมาตรฐาน + domain→มิติ + logic เสี่ยง likelihoodOf/riskBandOf/SEVERITY_WEIGHT/coverageStatusOf), src/lib/dama.ts (มาตรา 1–9 + เกรด), src/app/api/dq/analytics/route.ts (คะแนนรายมิติจาก latest run ต่อ rule×dataset, risk = failRate→likelihood × severity), dq-dashboard.tsx ส่วน 3 Regulation (เลือกกรอบ + data source + score ปัจจุบันต่อส่วนย่อย — ไม่มีก่อน–หลัง) และส่วน 4 Risk (นับ band + matrix + top-10 — เฉพาะกฎที่ไม่ผ่าน ไม่มี inherent/residual)
+- ตรวจข้อมูลจริงผ่าน Prisma: DqRun มี 12 คู่ rule×dataset × 14 รอบ (RUN_BATCHES 210→0 วัน) — แต่ passRate ทุกรอบเท่ากันหมด (seed ไม่ได้เล่าเรื่องพัฒนา) → ถ้าทำ "เทียบรอบแรก vs ล่าสุด" ต้องปรับ seed ให้ช่วงแรกแย่กว่าล่าสุด
+- Gap มิติ: ส่วนย่อยที่ยัง dimensions: [] มี 25012 Accessibility/Confidentiality/Efficiency/Traceability/Portability/Recoverability + 8000-1/61 + 11179-1/6 (รวม ~10 จุด) — เตรียมข้อเสนอเพิ่มมิติให้ตรงการตรวจสอบ (เช่น Traceability→INTEGRITY ผูกกับระบบ Data Mapping/Audit Trail, 8000-110→+UNIQUENESS/+COMPLETENESS, Portability→CONSISTENCY)
+- ออกแบบโมเดล: Regulation = เทียบคะแนน "รอบแรกสุดของกฎ (ข้อมูลเดิม)" vs "ล่าสุด" ต่อมิติ/ต่อส่วนย่อย + สรุประดับกรอบ · Risk = Inherent (โอกาส 5 × severity คงที่) vs Residual (จาก fail rate จริง) + % ลดลง + ตารางเสี่ยงรายมาตรฐาน
+- เสนอ 7 คำถามชี้ขาด (นิยามข้อมูลเดิม / นิยามเสี่ยงเดิม / มาตรฐานไม่มีเกณฑ์ตรวจ / ข้อเสนอเพิ่มมิติ / น้ำหนักมิติ / ขอบเขตตารางเสี่ยง / ปรับ seed เล่าเรื่อง) — รอผู้ใช้ตอบก่อน implement
+
+Stage Summary:
+- งาน v0.22.0 ปิดสมบูรณ์ 100% (remote=local SHA-for-SHA)
+- ออกแบบ v0.23.0 เสร็จระดับข้อเสนอ: โมเดลก่อน–หลัง 2 ชั้น (คะแนนจากประวัติ + ความเสี่ยง Inherent/Residual) + แผนที่มิติเพิ่ม ~10 ส่วนย่อย + หน้าตาใหม่ 2 ส่วน (Regulation hero ก่อน→หลัง + แถวส่วนย่อยมี delta / Risk hero ลดลงกี่% + matrix + ตารางเสี่ยงรายมาตรฐาน) — รอ 7 คำตอบผู้ใช้
+- ไม่มีการแก้โค้ดใน Task นี้ (design-only)
