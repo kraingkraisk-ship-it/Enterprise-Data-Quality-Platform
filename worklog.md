@@ -1617,4 +1617,4 @@ Stage Summary:
 - v0.29.0 ครบที่เครื่อง: หมวดใหม่ "ML · สัญญาณอัจฉริยะ" (ลำดับที่ 5 ใน 6 หมวด) รวมแผง ML ①④③② พร้อมหัวหมวดอธิบายหลักการ + ลิงก์ไขว้ Risk↔ML 2 ทาง · หมวด Risk กลับเป็นวิธีประเมินความเสี่ยงล้วน + การ์ดแจ้งย้าย · ศูนย์ ML footnote ตรงเป้าหมายใหม่
 - ขอบเขตที่ไม่แตะ: engines/APIs/ค่าคงที่/DqMlSettings/พฤติกรรมคำนวณทั้งหมด — เป็นการจัดวาง UI ล้วน (ไฟล์แก้ 3 ไฟล์)
 - ไฟล์แก้: src/components/dq-dashboard.tsx (type+SECTIONS+บล็อกหมวด) · src/components/dq/ml-center.tsx (footnote 6 จุด) · src/lib/views.ts (APP_VERSION)
-- Commit ที่เครื่อง: <pending> · Tag: v0.29.0 (local) · Push: รอ PAT ใหม่ (PAT ปัจจุบัน 401)
+- Commit ที่เครื่อง: 7ea022c · Tag: v0.29.0 (local) · Push: พยายามแล้ว — PAT ปัจจุบัน 401 (API /user และ /repos ทั้ง Bearer+token formats) git push ต้อง prompt password = token ไม่ถูกต้อง → รอ PAT ใหม่จากผู้ใช้ แล้ว push main + tag v0.29.0
