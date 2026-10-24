@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
+  ChevronDown,
   ClipboardList,
   EyeOff,
   LayoutDashboard,
@@ -29,16 +30,19 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { DIMENSION_ICONS, DimensionBadge } from '@/components/dimension-picker'
-import { type DimensionKey } from '@/lib/dq'
+import { SEVERITY_KEYS, SEVERITY_LABELS, type DimensionKey, type SeverityKey } from '@/lib/dq'
 import { ROLE_LIST, type RoleKey } from '@/lib/rbac'
 import {
   classificationLabel,
   DATA_CLASSIFICATIONS,
   FRAMEWORKS,
+  LIKELIHOOD_BANDS,
+  RISK_BANDS,
   riskBandOf,
   SEVERITY_WEIGHT,
   UNCLASSIFIED,
@@ -396,6 +400,7 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
   // section 4 — risk
   const [riskScope, setRiskScope] = useState<'dimension' | 'framework' | 'classification'>('dimension')
   const [matrixView, setMatrixView] = useState<'residual' | 'inherent'>('residual')
+  const [methodologyOpen, setMethodologyOpen] = useState(true)
 
   // section 5 — classification
   const [selectedCls, setSelectedCls] = useState(DATA_CLASSIFICATIONS[0]?.id ?? 'DATA_GOVERNANCE')
@@ -1747,6 +1752,155 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                   </CardContent>
                 </Card>
               </div>
+
+              {/* v0.24.1 — วิธีการประเมินความเสี่ยง (Risk Methodology): เกณฑ์ทุกขั้นที่ระบบใช้ตัดสิน
+                  แสดงค่าจาก LIKELIHOOD_BANDS / SEVERITY_WEIGHT / RISK_BANDS ใน lib/regulation.ts โดยตรง
+                  เพื่อให้ "ตัวเลขที่คำนวณ" กับ "ตัวเลขที่แสดง" เป็นชุดเดียวกันเสมอ (Single Source of Truth) */}
+              <Collapsible open={methodologyOpen} onOpenChange={setMethodologyOpen}>
+                <Card className="border-slate-200">
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      aria-expanded={methodologyOpen}
+                      className="flex w-full items-center justify-between gap-3 rounded-t-xl p-4 text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-teal-200 bg-teal-50 text-teal-700">
+                          <Scale className="size-4" aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-slate-900">วิธีการประเมินความเสี่ยง (Risk Methodology)</span>
+                          <span className="block truncate text-[11px] text-muted-foreground">
+                            เกณฑ์ทุกขั้นที่ระบบใช้ตัดสิน — คะแนนความเสี่ยง = โอกาสเกิด (1–5) × ผลกระทบ (2–5) เต็ม 25 · นิยามเดียวใน lib/regulation.ts
+                          </span>
+                        </span>
+                      </span>
+                      <ChevronDown aria-hidden="true" className={`size-4 shrink-0 text-slate-500 transition-transform ${methodologyOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0">
+                      <div className="grid gap-3 md:grid-cols-3">
+                        {/* ① โอกาสเกิด */}
+                        <div className="rounded-lg border bg-white p-3">
+                          <p className="text-xs font-semibold text-slate-800">① โอกาสเกิด (Likelihood) — ระดับ 1–5</p>
+                          <p className="mt-0.5 text-[10.5px] text-muted-foreground">จากอัตราการล้มเหลวของผลตรวจล่าสุดรายกฎ</p>
+                          <table className="mt-2 w-full text-left text-[11px]">
+                            <caption className="sr-only">ตารางระดับโอกาสเกิด 1–5 จากช่วงอัตราการล้มเหลว</caption>
+                            <thead>
+                              <tr className="text-[10px] text-muted-foreground">
+                                <th scope="col" className="py-1 font-medium">ระดับ</th>
+                                <th scope="col" className="py-1 text-right font-medium">อัตราการล้มเหลว</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {LIKELIHOOD_BANDS.map((band, i) => {
+                                const isLast = i === LIKELIHOOD_BANDS.length - 1
+                                const range = isLast
+                                  ? `< ${Math.round(LIKELIHOOD_BANDS[i - 1].minFailRate * 100)}%`
+                                  : `≥ ${Math.round(band.minFailRate * 100)}%`
+                                return (
+                                  <tr key={band.level} className="border-t">
+                                    <td className="py-1.5">
+                                      <span className="font-mono font-bold text-slate-700">{band.level}</span>
+                                      <span className="ml-1.5 font-medium text-slate-800">{band.label}</span>
+                                      <span className="ml-1 text-[10px] text-muted-foreground">{band.en}</span>
+                                    </td>
+                                    <td className="py-1.5 text-right font-mono text-slate-700">{range}</td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                          <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">ยิ่งล้มเหลวมาก โอกาสเกิดยิ่งสูง</p>
+                        </div>
+
+                        {/* ② ผลกระทบ */}
+                        <div className="rounded-lg border bg-white p-3">
+                          <p className="text-xs font-semibold text-slate-800">② ผลกระทบ (Impact) — น้ำหนัก 2–5</p>
+                          <p className="mt-0.5 text-[10.5px] text-muted-foreground">จากระดับความรุนแรง (severity) ของกฎ — ตั้ง/แก้ได้ใน Rule Builder</p>
+                          <table className="mt-2 w-full text-left text-[11px]">
+                            <caption className="sr-only">ตารางน้ำหนักผลกระทบตามระดับความรุนแรงของกฎ</caption>
+                            <thead>
+                              <tr className="text-[10px] text-muted-foreground">
+                                <th scope="col" className="py-1 font-medium">ความรุนแรง</th>
+                                <th scope="col" className="py-1 text-right font-medium">น้ำหนัก</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {SEVERITY_KEYS.map((s: SeverityKey) => (
+                                <tr key={s} className="border-t">
+                                  <td className="py-1.5">
+                                    <Badge variant="outline" className={`text-[10px] font-medium ${SEVERITY_LABELS[s].className}`}>
+                                      {s} · {SEVERITY_LABELS[s].th}
+                                    </Badge>
+                                  </td>
+                                  <td className="py-1.5 text-right font-mono font-bold text-slate-700">{SEVERITY_WEIGHT[s]}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">ยิ่งรุนแรงสูง ผลกระทบทางธุรกิจยิ่งหนัก</p>
+                        </div>
+
+                        {/* ③ ระดับความเสี่ยง */}
+                        <div className="rounded-lg border bg-white p-3">
+                          <p className="text-xs font-semibold text-slate-800">③ ระดับความเสี่ยง (Risk Band) — คะแนน 2–25</p>
+                          <p className="mt-0.5 text-[10.5px] text-muted-foreground">คะแนน = โอกาสเกิด × น้ำหนักผลกระทบ แล้วจัดระดับตามตารางนี้</p>
+                          <table className="mt-2 w-full text-left text-[11px]">
+                            <caption className="sr-only">ตารางจัดระดับความเสี่ยงจากคะแนน</caption>
+                            <thead>
+                              <tr className="text-[10px] text-muted-foreground">
+                                <th scope="col" className="py-1 font-medium">ระดับ</th>
+                                <th scope="col" className="py-1 text-right font-medium">ช่วงคะแนน</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {RISK_BANDS.map((band, i) => {
+                                const isLast = i === RISK_BANDS.length - 1
+                                return (
+                                  <tr key={band.band} className="border-t">
+                                    <td className="py-1.5">
+                                      <Badge variant="outline" className={`text-[10px] font-medium ${band.className}`}>
+                                        {band.label}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-1.5 text-right font-mono text-slate-700">
+                                      {isLast ? `< ${RISK_BANDS[i - 1].minScore}` : `≥ ${band.minScore}`}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                          <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">แถบสีตรงกับเซลล์ในแผนที่ความเสี่ยงด้านบน</p>
+                        </div>
+                      </div>
+
+                      {/* สูตรสองมุมมอง */}
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        <p className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-2 text-[11px] leading-relaxed text-rose-900">
+                          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-rose-600" aria-hidden="true" />
+                          <span>
+                            <strong>Inherent (ก่อนมีกฎ DQ)</strong> = สมมติโอกาสเกิดระดับ 5 (สูงมาก) × น้ำหนักความรุนแรง — ค่าความเสี่ยงสูงสุดหากยังไม่มีการควบคุม
+                          </span>
+                        </p>
+                        <p className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-[11px] leading-relaxed text-emerald-900">
+                          <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-600" aria-hidden="true" />
+                          <span>
+                            <strong>Residual (หลังมีกฎ DQ)</strong> = โอกาสจากอัตราการล้มเหลวจริงล่าสุด × น้ำหนักความรุนแรง — ยิ่งผ่านมาก ความเสี่ยงยิ่งลด
+                          </span>
+                        </p>
+                      </div>
+
+                      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                        นิยามเกณฑ์ทั้งหมดอยู่ใน <span className="font-mono">src/lib/regulation.ts</span> (LIKELIHOOD_BANDS · SEVERITY_WEIGHT · RISK_BANDS) —
+                        ทุกหน้าจอและทุก API (analytics · compliance) ใช้ตรรกะชุดเดียวกัน จึงตรวจสอบย้อนได้ทุกตัวเลข · เป็นข้อมูลประกอบการตัดสินใจของมนุษย์เสมอ
+                      </p>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
             </div>
           )}
 

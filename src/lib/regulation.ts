@@ -339,22 +339,40 @@ export function classificationLabel(id: string): { th: string; en: string; no: s
 /** น้ำหนักระดับผลกระทบ (มาจาก severity ของกฎ) */
 export const SEVERITY_WEIGHT: Record<string, number> = { CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2 }
 
-/** ระดับโอกาสเกิด 1–5 จากอัตราการล้มเหลวของผลตรวจล่าสุด */
+/** ช่วงอัตราการล้มเหลวต่อระดับโอกาสเกิด 1–5 — likelihoodOf ใช้ตารางนี้เป็นเกณฑ์เดียว
+ *  และแดชบอร์ด Risk (Risk Methodology) แสดงค่าจากตารางนี้โดยตรง เพื่อไม่ให้เกณฑ์คลาดกันระหว่าง "ตัวเลขที่คำนวณ" กับ "ตัวเลขที่แสดง" */
+export const LIKELIHOOD_BANDS: Array<{ level: number; label: string; en: string; minFailRate: number }> = [
+  { level: 5, label: 'สูงมาก', en: 'Very high', minFailRate: 0.5 },
+  { level: 4, label: 'สูง', en: 'High', minFailRate: 0.25 },
+  { level: 3, label: 'ปานกลาง', en: 'Medium', minFailRate: 0.1 },
+  { level: 2, label: 'ต่ำ', en: 'Low', minFailRate: 0.03 },
+  { level: 1, label: 'หายาก', en: 'Rare', minFailRate: 0 },
+]
+
+/** ระดับโอกาสเกิด 1–5 จากอัตราการล้มเหลวของผลตรวจล่าสุด (เกณฑ์ตามตาราง LIKELIHOOD_BANDS) */
 export function likelihoodOf(failRate: number): { level: number; label: string } {
-  if (failRate >= 0.5) return { level: 5, label: 'สูงมาก' }
-  if (failRate >= 0.25) return { level: 4, label: 'สูง' }
-  if (failRate >= 0.1) return { level: 3, label: 'ปานกลาง' }
-  if (failRate >= 0.03) return { level: 2, label: 'ต่ำ' }
+  for (const band of LIKELIHOOD_BANDS) {
+    if (failRate >= band.minFailRate) return { level: band.level, label: band.label }
+  }
   return { level: 1, label: 'หายาก' }
 }
 
 export type RiskBand = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 
-/** จัดระดับความเสี่ยงจากคะแนน (โอกาส 1–5 × ผลกระทบ 2–5 = 2–25) */
+/** ช่วงคะแนนต่อระดับความเสี่ยง (คะแนน = โอกาส 1–5 × ผลกระทบ 2–5 = 2–25) — riskBandOf ใช้ตารางนี้เป็นเกณฑ์เดียว
+ *  และแดชบอร์ด Risk (Risk Methodology) แสดงค่าจากตารางนี้โดยตรง */
+export const RISK_BANDS: Array<{ band: RiskBand; label: string; minScore: number; className: string }> = [
+  { band: 'CRITICAL', label: 'สูงมาก', minScore: 15, className: 'bg-rose-50 text-rose-800 border-rose-200' },
+  { band: 'HIGH', label: 'สูง', minScore: 8, className: 'bg-orange-50 text-orange-800 border-orange-200' },
+  { band: 'MEDIUM', label: 'ปานกลาง', minScore: 4, className: 'bg-amber-50 text-amber-900 border-amber-200' },
+  { band: 'LOW', label: 'ต่ำ', minScore: 0, className: 'bg-slate-50 text-slate-700 border-slate-200' },
+]
+
+/** จัดระดับความเสี่ยงจากคะแนน (โอกาส 1–5 × ผลกระทบ 2–5 = 2–25) — เกณฑ์ตามตาราง RISK_BANDS */
 export function riskBandOf(score: number): { band: RiskBand; label: string; className: string } {
-  if (score >= 15) return { band: 'CRITICAL', label: 'สูงมาก', className: 'bg-rose-50 text-rose-800 border-rose-200' }
-  if (score >= 8) return { band: 'HIGH', label: 'สูง', className: 'bg-orange-50 text-orange-800 border-orange-200' }
-  if (score >= 4) return { band: 'MEDIUM', label: 'ปานกลาง', className: 'bg-amber-50 text-amber-900 border-amber-200' }
+  for (const band of RISK_BANDS) {
+    if (score >= band.minScore) return { band: band.band, label: band.label, className: band.className }
+  }
   return { band: 'LOW', label: 'ต่ำ', className: 'bg-slate-50 text-slate-700 border-slate-200' }
 }
 
