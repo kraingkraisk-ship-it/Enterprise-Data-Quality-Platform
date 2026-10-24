@@ -123,6 +123,9 @@ export async function POST(req: NextRequest) {
     // cache ค่าอ้างอิงของเอนจิน EXISTS_IN_DATASET (INTEGRITY) — กันโหลดซ้ำในกฎที่อ้างชุดข้อมูลเดียวกัน
     const refValuesCache = new Map<string, Set<string>>()
     const refDatasetNameCache = new Map<string, string | null>()
+    // cache ค่าของทะเบียนอ้างอิง (โหมดทะเบียน IN_LIST/REFERENCE_MATCH — v0.31.0)
+    const refSetValuesCache = new Map<string, Set<string>>()
+    const refSetNameCache = new Map<string, string | null>()
 
     for (const rule of rulesForDataset) {
       // เงื่อนไขของกฎต้องมาจากคลังเงื่อนไข (หรือเป็นคีย์ระบบเดิม) — ถ้าไม่พบให้ข้ามกฎนี้อย่างชัดเจน
@@ -140,7 +143,7 @@ export async function POST(req: NextRequest) {
             : 'VALIDITY'
 
       // เอนจิน EXISTS_IN_DATASET — โหลดค่าอ้างอิงจากชุดข้อมูลอ้างอิงที่กำหนดในพารามิเตอร์ของกฎ
-      let evalContext: { refValues?: Set<string> } | undefined
+      let evalContext: { refValues?: Set<string>; refSetValues?: Set<string> } | undefined
       let refDatasetName: string | undefined
       if (engineType === 'EXISTS_IN_DATASET') {
         let refDatasetId = ''
@@ -183,6 +186,44 @@ export async function POST(req: NextRequest) {
           refDatasetNameCache.set(refDatasetId, refDataset?.name ?? null)
         }
         refDatasetName = refDatasetNameCache.get(refDatasetId) ?? undefined
+      }
+
+      // โหมดทะเบียน (v0.31.0) — IN_LIST/REFERENCE_MATCH ที่ params.referenceSetId ชี้ทะเบียนข้อมูลอ้างอิง:
+      // โหลดค่า ACTIVE ของทะเบียนมาใช้ประเมิน (แก้ค่าที่ทะเบียน กฎใช้ค่าใหม่ทันที) · ทะเบียนไม่พบ/ไม่ ACTIVE = ข้ามกฎชัดเจน
+      let refSetName: string | undefined
+      if (engineType === 'IN_LIST' || engineType === 'REFERENCE_MATCH') {
+        let referenceSetId = ''
+        try {
+          const p = JSON.parse(rule.parameters || '{}') as Record<string, unknown>
+          referenceSetId = String(p.referenceSetId ?? '').trim()
+        } catch {
+          referenceSetId = ''
+        }
+        if (referenceSetId) {
+          let setStatus = refSetNameCache.get(`status|${referenceSetId}`) ?? null
+          if (setStatus === null) {
+            const rs = await db.referenceSet.findUnique({ where: { id: referenceSetId }, select: { code: true, name: true, status: true } })
+            setStatus = rs ? `${rs.status}|${rs.name} (${rs.code})` : 'MISSING|'
+            refSetNameCache.set(`status|${referenceSetId}`, setStatus)
+          }
+          const [status, ...nameParts] = setStatus.split('|')
+          if (status === 'MISSING' || status !== 'ACTIVE') {
+            // ทะเบียนไม่พบหรือยังไม่อนุมัติ — ประเมินไม่ได้ ข้ามและนับใน skipped (แบบเดียวกับ EXISTS_IN_DATASET)
+            skipped++
+            continue
+          }
+          let refSetValues = refSetValuesCache.get(referenceSetId)
+          if (!refSetValues) {
+            const vals = await db.referenceValue.findMany({
+              where: { setId: referenceSetId, status: 'ACTIVE' },
+              select: { value: true },
+            })
+            refSetValues = new Set(vals.map((v) => v.value.trim()).filter(Boolean))
+            refSetValuesCache.set(referenceSetId, refSetValues)
+          }
+          evalContext = { refSetValues }
+          refSetName = nameParts.join('|') || undefined
+        }
       }
 
       const evaluation = evaluateRule({ column: rule.column, engineType, parameters: rule.parameters }, rows, evalContext)
@@ -257,6 +298,7 @@ export async function POST(req: NextRequest) {
           conditionSentence: template?.sentence,
           engineType,
           refDatasetName,
+          refSetName,
           parameters: rule.parameters,
           severity: rule.severity,
           filter: rule.filter,

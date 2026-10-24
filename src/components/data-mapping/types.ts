@@ -32,6 +32,9 @@ export interface ExpandedMapping {
   mappingType: string
   transformNote: string
   note: string
+  /** ทะเบียนข้อมูลอ้างอิงที่ใช้แมป (v0.31.0 — เฉพาะ LOOKUP) */
+  lookupSetId: string | null
+  lookupSet: { id: string; code: string; name: string; status: string } | null
   status: 'DRAFT' | 'ACTIVE' | 'DEPRECATED'
   /** เวอร์ชันสเปก (v0.22.0) — อัตโนมัติ +0.1 เมื่ออนุมัติเนื้อหาที่แก้ · ปรับมือได้ด้วยสิทธิ์อนุมัติ */
   version: string

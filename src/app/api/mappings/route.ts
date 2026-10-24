@@ -18,7 +18,7 @@ import type { Prisma } from '@prisma/client'
  *      รายการ mapping ทั้งหมด (กรองตาม element ฝั่งใดฝั่งหนึ่ง / สถานะ / ประเภท)
  *      คืน expanded: source/target พร้อมเส้นทางเต็ม โดเมนหลัก.โดเมนย่อย.ชื่อ element
  * POST /api/mappings — สร้าง mapping ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — ต้องผ่าน workflow อนุมัติจึงจะ ACTIVE)
- *      body: { operatorEmail, sourceElementId, targetElementId, mappingType, transformNote?, note? }
+ *      body: { operatorEmail, sourceElementId, targetElementId, mappingType, transformNote?, note?, lookupSetId? (v0.31.0 — เฉพาะ LOOKUP) }
  *
  * สิทธิ์ (เฉพาะ POST): MANAGE_DATASETS — ทุกการสร้างบันทึก Audit Trail
  * กติกา (deny-by-default):
@@ -104,6 +104,21 @@ export async function POST(req: NextRequest) {
     }
     const note = String(body.note ?? '').trim().slice(0, MAPPING_TEXT_MAX)
 
+    // ทะเบียนข้อมูลอ้างอิงของ LOOKUP (v0.31.0) — ระบุได้เฉพาะ mappingType = LOOKUP · ต้องเป็นทะเบียน ACTIVE
+    let lookupSetId: string | null = null
+    const lookupSetRaw = String(body.lookupSetId ?? '').trim()
+    if (lookupSetRaw) {
+      if (mappingType !== 'LOOKUP') {
+        return NextResponse.json({ error: 'ทะเบียนข้อมูลอ้างอิง (lookupSetId) ระบุได้เฉพาะการแมปประเภท LOOKUP เท่านั้น' }, { status: 400 })
+      }
+      const rs = await db.referenceSet.findUnique({ where: { id: lookupSetRaw }, select: { id: true, code: true, name: true, status: true } })
+      if (!rs) return NextResponse.json({ error: 'ไม่พบทะเบียนข้อมูลอ้างอิงที่เลือกในระบบ' }, { status: 404 })
+      if (rs.status !== 'ACTIVE') {
+        return NextResponse.json({ error: `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — อ้างได้เฉพาะทะเบียนที่อนุมัติแล้ว (ACTIVE)` }, { status: 400 })
+      }
+      lookupSetId = rs.id
+    }
+
     // deny-by-default: ทั้งสองฝั่งต้องเป็น element จริงและใช้งานอยู่ (ACTIVE)
     const elements = await db.dataElement.findMany({
       where: { id: { in: [sourceElementId, targetElementId] } },
@@ -145,6 +160,7 @@ export async function POST(req: NextRequest) {
         mappingType,
         transformNote,
         note,
+        lookupSetId,
         createdBy: op.ctx.email,
       },
     })
@@ -153,7 +169,7 @@ export async function POST(req: NextRequest) {
         action: 'CREATE_DATA_MAPPING',
         actor: op.ctx.email,
         target: created.code,
-        detail: `สร้าง Data Mapping ${created.code} (${mappingType}) — สถานะ DRAFT รอส่งขออนุมัติ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `สร้าง Data Mapping ${created.code} (${mappingType})${lookupSetId ? ' · อ้างทะเบียนอ้างอิง' : ''} — สถานะ DRAFT รอส่งขออนุมัติ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 

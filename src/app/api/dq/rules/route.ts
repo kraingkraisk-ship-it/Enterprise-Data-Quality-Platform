@@ -12,7 +12,7 @@ async function loadTemplateMap() {
 
 export async function GET() {
   try {
-    const [rules, templateMap, allDatasets] = await Promise.all([
+    const [rules, templateMap, allDatasets, refSetsForName] = await Promise.all([
       db.dqRule.findMany({
         orderBy: { createdAt: 'desc' },
         include: {
@@ -23,8 +23,11 @@ export async function GET() {
       }),
       loadTemplateMap(),
       db.dataset.findMany({ select: { id: true, name: true } }),
+      // ทะเบียนอ้างอิง (v0.31.0) — ชื่อทะเบียนสำหรับประโยคกฎโหมดทะเบียนแทน id
+      db.referenceSet.findMany({ select: { id: true, code: true, name: true } }),
     ])
     const datasetNameMap = new Map(allDatasets.map((d) => [d.id, d.name]))
+    const refSetNameMap = new Map(refSetsForName.map((s) => [s.id, `${s.name} (${s.code})`]))
 
     return NextResponse.json({
       rules: rules.map((r) => {
@@ -34,13 +37,18 @@ export async function GET() {
         const primaryDataset = datasets[0]
         // เอนจิน EXISTS_IN_DATASET — แสดงชื่อชุดข้อมูลอ้างอิงในประโยคกฎแทน id
         let refDatasetName: string | undefined
-        if (template?.engineType === 'EXISTS_IN_DATASET') {
-          try {
-            const p = JSON.parse(r.parameters || '{}') as Record<string, unknown>
+        // โหมดทะเบียน (v0.31.0) — IN_LIST/REFERENCE_MATCH ที่ชี้ทะเบียน: แสดงชื่อทะเบียนแทน id
+        let refSetName: string | undefined
+        try {
+          const p = JSON.parse(r.parameters || '{}') as Record<string, unknown>
+          if (template?.engineType === 'EXISTS_IN_DATASET') {
             refDatasetName = datasetNameMap.get(String(p.refDatasetId ?? ''))
-          } catch {
-            refDatasetName = undefined
           }
+          if ((template?.engineType === 'IN_LIST' || template?.engineType === 'REFERENCE_MATCH') && String(p.referenceSetId ?? '').trim()) {
+            refSetName = refSetNameMap.get(String(p.referenceSetId).trim())
+          }
+        } catch {
+          refDatasetName = undefined
         }
         return {
           id: r.id,
@@ -78,6 +86,7 @@ export async function GET() {
             conditionSentence: template?.sentence,
             engineType: template?.engineType,
             refDatasetName,
+            refSetName,
             parameters: r.parameters,
             severity: r.severity,
             filter: r.filter,
@@ -114,8 +123,8 @@ function validateParams(parameters: string): string | null {
   return null
 }
 
-/** ตรวจพารามิเตอร์ตามชนิดเอนจิน — ใช้กับทั้งเงื่อนไขระบบและเงื่อนไขส่วนกลาง */
-function validateParamsForTemplate(engineType: string, parameters: string): string | null {
+/** ตรวจพารามิเตอร์ตามชนิดเอนจิน — ใช้กับทั้งเงื่อนไขระบบและเงื่อนไขส่วนกลาง (async — ตรวจทะเบียนอ้างอิงใน DB ด้วย v0.31.0) */
+async function validateParamsForTemplate(engineType: string, parameters: string): Promise<string | null> {
   let p: Record<string, unknown> = {}
   try {
     p = JSON.parse(parameters || '{}') as Record<string, unknown>
@@ -141,11 +150,19 @@ function validateParamsForTemplate(engineType: string, parameters: string): stri
       return null
     }
     case 'IN_LIST': {
+      // โหมดทะเบียน (v0.31.0) — ถ้าระบุ referenceSetId ให้ใช้โหมดทะเบียน (ตรวจว่าทะเบียนมีจริงและ ACTIVE)
+      const setId = String(p.referenceSetId ?? '').trim()
+      if (setId) {
+        const rs = await db.referenceSet.findUnique({ where: { id: setId }, select: { id: true, code: true, name: true, status: true } })
+        if (!rs) return 'ไม่พบทะเบียนข้อมูลอ้างอิงที่เลือกในระบบ'
+        if (rs.status !== 'ACTIVE') return `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — เลือกได้เฉพาะทะเบียนที่อนุมัติแล้ว (ACTIVE)`
+        return null
+      }
       const values = String(p.values ?? '')
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean)
-      if (values.length === 0) return 'กรุณาระบุค่าที่อนุญาตอย่างน้อย 1 ค่า'
+      if (values.length === 0) return 'กรุณาระบุค่าที่อนุญาตอย่างน้อย 1 ค่า หรือเลือกทะเบียนข้อมูลอ้างอิง'
       return null
     }
     case 'MAX_AGE_DAYS': {
@@ -154,11 +171,19 @@ function validateParamsForTemplate(engineType: string, parameters: string): stri
       return null
     }
     case 'REFERENCE_MATCH': {
+      // โหมดทะเบียน (v0.31.0) — ถ้าระบุ referenceSetId ให้ใช้โหมดทะเบียน (ตรวจว่าทะเบียนมีจริงและ ACTIVE)
+      const setId = String(p.referenceSetId ?? '').trim()
+      if (setId) {
+        const rs = await db.referenceSet.findUnique({ where: { id: setId }, select: { id: true, code: true, name: true, status: true } })
+        if (!rs) return 'ไม่พบทะเบียนข้อมูลอ้างอิงที่เลือกในระบบ'
+        if (rs.status !== 'ACTIVE') return `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — เลือกได้เฉพาะทะเบียนที่อนุมัติแล้ว (ACTIVE)`
+        return null
+      }
       const values = String(p.values ?? '')
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean)
-      if (values.length === 0) return 'กรุณาระบุค่ามาตรฐานจากระบบต้นทางอย่างน้อย 1 ค่า'
+      if (values.length === 0) return 'กรุณาระบุค่ามาตรฐานจากระบบต้นทางอย่างน้อย 1 ค่า หรือเลือกทะเบียนข้อมูลอ้างอิง'
       return null
     }
     case 'MAX_AGE_HOURS': {
@@ -246,7 +271,7 @@ export async function POST(req: NextRequest) {
     if (!template.enabled) {
       return NextResponse.json({ error: `เงื่อนไข "${template.name}" ถูกปิดใช้งานอยู่` }, { status: 400 })
     }
-    const paramError = validateParamsForTemplate(template.engineType, parameters)
+    const paramError = await validateParamsForTemplate(template.engineType, parameters)
     if (paramError) return NextResponse.json({ error: paramError }, { status: 400 })
 
     const datasets = await db.dataset.findMany({ where: { id: { in: datasetIds } } })

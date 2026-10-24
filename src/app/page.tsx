@@ -13,6 +13,7 @@ import PlatformOverview from '@/components/platform-overview'
 import AssetImport from '@/components/asset-import'
 import AssetInventory from '@/components/asset-inventory'
 import DataDomainConsole from '@/components/data-domain-console'
+import ReferenceCenter from '@/components/reference-center'
 import DataMappingConsole from '@/components/data-mapping-console'
 import DqScorecard from '@/components/dq/scorecard'
 import DqFailedRecords from '@/components/dq/failed-records'
@@ -106,6 +107,12 @@ export default function Home() {
               คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
           <div className={view === 'asset-domain' ? '' : 'hidden'} aria-hidden={view !== 'asset-domain'}>
             <DataDomainConsole active={view === 'asset-domain'} />
+          </div>
+
+          {/* Reference Data Center — ทะเบียนค่าอ้างอิงศูนย์กลางใต้กลุ่ม Data Asset (v0.31.0)
+              คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลใหม่เมื่อ active */}
+          <div className={view === 'asset-reference' ? '' : 'hidden'} aria-hidden={view !== 'asset-reference'}>
+            <ReferenceCenter active={view === 'asset-reference'} />
           </div>
 
           {/* Data Mapping Console — เส้นเชื่อม element ต้นทาง→ปลายทาง + lineage (v0.21.0)

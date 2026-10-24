@@ -1,4 +1,5 @@
 import {
+  BookMarked,
   ClipboardCheck,
   ClipboardList,
   Crown,
@@ -28,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.30.0'
+export const APP_VERSION = 'v0.31.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -39,8 +40,8 @@ export const APP_VERSION = 'v0.30.0'
  */
 export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'dashboard'
 
-/** มุมมองของโมดูล Data Asset (v0.21.0 เพิ่ม data-mapping) */
-export type AssetViewKey = 'asset-import' | 'asset-inventory' | 'asset-domain' | 'data-mapping'
+/** มุมมองของโมดูล Data Asset (v0.21.0 เพิ่ม data-mapping · v0.31.0 เพิ่ม asset-reference) */
+export type AssetViewKey = 'asset-import' | 'asset-inventory' | 'asset-domain' | 'asset-reference' | 'data-mapping'
 
 /** มุมมองระดับผู้บริหาร (v0.17.0) — จำกัดสิทธิ์ตาม VIEW_EXEC_DASHBOARD */
 export type ExecViewKey = 'exec-dashboard' | 'exec-reports'
@@ -182,6 +183,13 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     desc: 'โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Element > Meta Data (ISO/IEC 11179) — Meta Data 4 กลุ่ม (Business/Technical/Operational/Governance) กรอกครั้งเดียวต่อ element + ธง CDE/การเงิน + workflow อนุมัติ (บันทึกผู้อนุมัติ+Audit Trail) + แมปคอลัมน์จริงจากคลังข้อมูล',
     icon: FolderTree,
   },
+  'asset-reference': {
+    key: 'asset-reference',
+    th: 'ข้อมูลอ้างอิง',
+    en: 'Reference Data',
+    desc: 'ทะเบียนค่ามาตรฐานศูนย์กลาง (DAMA-DMBOK) — สกุลเงิน/รหัสประเทศ/กลุ่มลูกค้า แก้ที่ต้นทางจุดเดียว กฎ IN_LIST/REFERENCE_MATCH ใช้ค่าใหม่ทันที + ผูก valueDomain ของ Element + สแกนค่านอกทะเบียน + นำเข้า/ส่งออก CSV + workflow อนุมัติ',
+    icon: BookMarked,
+  },
   'data-mapping': {
     key: 'data-mapping',
     th: 'การแมปข้อมูล',
@@ -238,7 +246,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     labelTh: 'Data Asset',
     labelEn: 'สินทรัพย์ข้อมูล',
-    items: ['asset-import', 'asset-inventory', 'asset-domain', 'data-mapping'],
+    items: ['asset-import', 'asset-inventory', 'asset-domain', 'asset-reference', 'data-mapping'],
   },
   {
     labelTh: 'คุณภาพข้อมูล',

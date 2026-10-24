@@ -18,6 +18,14 @@ import { ROLES, type RoleKey } from '@/lib/rbac'
 import { MAPPING_TYPES, MAPPING_TYPE_KEYS, type MappingTypeKey } from '@/lib/mappings'
 import type { OperatorUser, PickerDomain, PickerElement } from './types'
 
+/** ทะเบียนข้อมูลอ้างอิงแบบย่อ (v0.31.0 — ตัวเลือกของ LOOKUP) */
+interface RefSetLite {
+  id: string
+  code: string
+  name: string
+  status: string
+}
+
 export interface FixedElement {
   id: string
   code: string
@@ -127,8 +135,26 @@ export function MappingForm({ operators, defaultOperator, domains, elements, fix
   const [note, setNote] = useState('')
   const [source, setSource] = useState({ domainId: '', subDomainId: '', elementId: '' })
   const [target, setTarget] = useState({ domainId: '', subDomainId: '', elementId: '' })
+  /* ทะเบียนข้อมูลอ้างอิง (v0.31.0) — ระบุได้เฉพาะประเภท LOOKUP */
+  const [lookupSetId, setLookupSetId] = useState('')
+  const [refSets, setRefSets] = useState<RefSetLite[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  // โหลดทะเบียนอ้างอิง (เฉพาะ ACTIVE) ครั้งเดียว
+  useEffect(() => {
+    let alive = true
+    fetch('/api/reference/sets')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return
+        setRefSets(((d?.sets ?? []) as RefSetLite[]).filter((s) => s.status === 'ACTIVE'))
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // เลือกผู้ดำเนินการเริ่มต้นให้เองเมื่อรายชื่อโหลดมา (คนแรกที่มีสิทธิ์จัดการ)
   useEffect(() => {
@@ -170,6 +196,7 @@ export function MappingForm({ operators, defaultOperator, domains, elements, fix
           mappingType,
           transformNote: transformNote.trim(),
           note: note.trim(),
+          lookupSetId: mappingType === 'LOOKUP' ? lookupSetId : '',
         }),
       })
       const data = await res.json()
@@ -307,6 +334,29 @@ export function MappingForm({ operators, defaultOperator, domains, elements, fix
             placeholder={`เช่น ${MAPPING_TYPES[mappingType].example}`}
             aria-required="true"
           />
+        </div>
+      )}
+
+      {/* ทะเบียนข้อมูลอ้างอิง (v0.31.0) — เฉพาะ LOOKUP: ระบุทะเบียนที่ใช้แมปรหัส (crosswalk) */}
+      {mappingType === 'LOOKUP' && (
+        <div className="grid gap-1.5">
+          <Label htmlFor="mp-lookupset">ทะเบียนข้อมูลอ้างอิง (ไม่บังคับ — v0.31.0)</Label>
+          <Select value={lookupSetId || 'NO_SET'} onValueChange={(v) => setLookupSetId(v === 'NO_SET' ? '' : v)}>
+            <SelectTrigger id="mp-lookupset" className="h-8 w-full text-xs" aria-label="ทะเบียนข้อมูลอ้างอิงของ LOOKUP">
+              <SelectValue placeholder="— ไม่ระบุทะเบียน —" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="NO_SET">— ไม่ระบุทะเบียน —</SelectItem>
+              {refSets.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name} ({s.code})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
+            ระบุทะเบียนจากหน้า "ข้อมูลอ้างอิง" (Data Asset) ที่ใช้แมปรหัส — ตรวจย้อนได้ว่า crosswalk นี้ใช้ค่ามาตรฐานชุดใด
+          </p>
         </div>
       )}
 

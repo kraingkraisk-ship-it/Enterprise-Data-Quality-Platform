@@ -90,6 +90,18 @@ function metaFieldsFrom(body: Record<string, unknown>) {
   }
 }
 
+/** ตรวจ + resolve referenceSetId (v0.31.0) — คืน null (ไม่ผูก) / id (ผูกได้) หรือ error message */
+async function resolveReferenceSetId(raw: unknown): Promise<{ id: string | null; error: string | null }> {
+  const rawId = String(raw ?? '').trim()
+  if (!rawId) return { id: null, error: null }
+  const rs = await db.referenceSet.findUnique({ where: { id: rawId }, select: { id: true, code: true, name: true, status: true } })
+  if (!rs) return { id: null, error: 'ไม่พบทะเบียนข้อมูลอ้างอิงที่เลือกในระบบ' }
+  if (rs.status !== 'ACTIVE') {
+    return { id: null, error: `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — ผูก valueDomain ได้เฉพาะทะเบียนที่อนุมัติแล้ว (ACTIVE)` }
+  }
+  return { id: rs.id, error: null }
+}
+
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params
@@ -385,9 +397,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (Boolean(body.isFinancial) !== element.isFinancial) changed.push('ธงการเงิน')
     if ((String(body.opUpdateFrequency ?? '').trim().toUpperCase() || '') !== element.opUpdateFrequency) changed.push('ความถี่การปรับปรุง')
 
+    // ผูกทะเบียนข้อมูลอ้างอิง (v0.31.0) — body.referenceSetId: undefined = ไม่ส่งมา (คงค่าเดิม — backward compatible) · '' = ถอน · id = ผูกใหม่
+    let refSetIdToSave: string | null = element.referenceSetId
+    let refSetChanged = false
+    if (body.referenceSetId !== undefined) {
+      const refSet = await resolveReferenceSetId(body.referenceSetId)
+      if (refSet.error) return NextResponse.json({ error: refSet.error }, { status: 400 })
+      refSetIdToSave = refSet.id
+      refSetChanged = refSetIdToSave !== (element.referenceSetId ?? null)
+    }
+
     const updated = await db.dataElement.update({
       where: { id },
-      data: { nameTh, ...metaFieldsFrom(body) }, // หมายเหตุ: status ไม่รับจากฟอร์ม — เปลี่ยนผ่าน workflow อนุมัติเท่านั้น
+      data: { nameTh, referenceSetId: refSetIdToSave, ...metaFieldsFrom(body) }, // หมายเหตุ: status ไม่รับจากฟอร์ม — เปลี่ยนผ่าน workflow อนุมัติเท่านั้น
     })
 
     await db.auditLog.create({
@@ -398,6 +420,22 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         detail: `แก้ไข Meta Data ของ Data Element "${updated.nameTh}" (${updated.code})${changed.length > 0 ? ` — แก้: ${changed.join(', ')}` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
+
+    if (refSetChanged) {
+      const rs = refSetIdToSave
+        ? await db.referenceSet.findUnique({ where: { id: refSetIdToSave }, select: { code: true, name: true } })
+        : null
+      await db.auditLog.create({
+        data: {
+          action: 'SET_ELEMENT_REFERENCE',
+          actor: op.ctx.email,
+          target: `${updated.code} ${updated.nameTh}`,
+          detail: rs
+            ? `ผูก valueDomain ของ Data Element "${updated.nameTh}" (${updated.code}) เข้ากับทะเบียนอ้างอิง "${rs.name}" (${rs.code}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`
+            : `ถอนการผูก valueDomain ของ Data Element "${updated.nameTh}" (${updated.code}) ออกจากทะเบียนอ้างอิง (กลับเป็นข้อความอิสระ) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        },
+      })
+    }
 
     return NextResponse.json({ element: updated, message: `บันทึก Meta Data ของ "${updated.nameTh}" เรียบร้อย` })
   } catch (e) {

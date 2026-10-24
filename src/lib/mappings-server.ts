@@ -7,10 +7,11 @@ import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { buildElementPath, formatMappingCode, mappingCodePrefix } from '@/lib/mappings'
 
-/** include มาตรฐาน: mapping พร้อม element ทั้งสองฝั่ง + โดเมนย่อยของแต่ละฝั่ง */
+/** include มาตรฐาน: mapping พร้อม element ทั้งสองฝั่ง + โดเมนย่อยของแต่ละฝั่ง + ทะเบียนอ้างอิงของ LOOKUP (v0.31.0) */
 export const MAPPING_INCLUDE = {
   source: { include: { subDomain: { select: { id: true, name: true, nameEn: true, parentId: true } } } },
   target: { include: { subDomain: { select: { id: true, name: true, nameEn: true, parentId: true } } } },
+  lookupSet: { select: { id: true, code: true, name: true, status: true } },
 } as const
 
 export type MappingRow = Prisma.DataMappingGetPayload<{ include: typeof MAPPING_INCLUDE }>
@@ -64,6 +65,9 @@ export function mappingExpanded(m: MappingRow, domainMap: Map<string, DomainLite
     mappingType: m.mappingType,
     transformNote: m.transformNote,
     note: m.note,
+    // ทะเบียนข้อมูลอ้างอิงที่ใช้แมป (v0.31.0 — เฉพาะ LOOKUP)
+    lookupSetId: m.lookupSetId,
+    lookupSet: m.lookupSet ? { id: m.lookupSet.id, code: m.lookupSet.code, name: m.lookupSet.name, status: m.lookupSet.status } : null,
     status: m.status,
     version: m.version,
     pendingApproval: m.pendingApproval,

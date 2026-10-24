@@ -398,6 +398,7 @@ model DataDomain {
   datasets Dataset[] // ชุดข้อมูลในโมดูล DQ ที่สังกัดโดเมนนี้ (v0.16.0)
   columnAssignments DataDomainColumnAssignment[]
   elements DataElement[] // Data Element ที่แขวนใต้โดเมนนี้ (เฉพาะโดเมนย่อย — v0.18.0)
+  referenceSets ReferenceSet[] // ทะเบียนข้อมูลอ้างอิงที่แขวนใต้โดเมนย่อยนี้ (v0.31.0)
 
   @@index([parentId])
   @@index([position])
@@ -465,6 +466,8 @@ model DataElement {
   subDomain      DataDomain                 @relation(fields: [subDomainId], references: [id], onDelete: Cascade)
   columnMappings DataElementColumnMapping[]
   rules          DqRule[]
+  referenceSetId String? // ทะเบียนข้อมูลอ้างอิงที่ valueDomain ผูกไว้ (ReferenceSet.id) — โครงสร้างแทนข้อความอิสระ (v0.31.0)
+  referenceSet   ReferenceSet? @relation(fields: [referenceSetId], references: [id], onDelete: SetNull)
   mappingsAsSource DataMapping[] @relation("MappingSource") // Data Mapping ที่ element นี้เป็นต้นทาง (v0.21.0)
   mappingsAsTarget DataMapping[] @relation("MappingTarget") // Data Mapping ที่ element นี้เป็นปลายทาง (v0.21.0)
   // หมายเหตุ: DqRun.dataElementId เป็น snapshot แบบ string (ไม่ใช่ FK) เพื่อคงประวัติแม้ลบ element — คิวรีด้วย where dataElementId
@@ -500,6 +503,8 @@ model DataMapping {
 
   source DataElement @relation("MappingSource", fields: [sourceElementId], references: [id], onDelete: Restrict) // ลบ element ไม่ได้ถ้ายังมี mapping ผูกอยู่
   target DataElement @relation("MappingTarget", fields: [targetElementId], references: [id], onDelete: Restrict)
+  lookupSetId String? // ทะเบียนข้อมูลอ้างอิงที่ใช้แมป (เฉพาะ mappingType = LOOKUP — v0.31.0)
+  lookupSet   ReferenceSet? @relation(fields: [lookupSetId], references: [id], onDelete: SetNull)
 
   @@unique([sourceElementId, targetElementId])
   @@index([targetElementId])
@@ -523,6 +528,64 @@ model DataElementColumnMapping {
 
   @@unique([elementId, assetId, columnName])
   @@index([assetId, columnName])
+}
+
+// ---------------------------------------------------------------------------
+// Reference Data (v0.31.0) — ทะเบียนค่าอ้างอิงศูนย์กลาง (DAMA-DMBOK: Reference Data Management)
+// ปัญหาที่แก้: ค่ามาตรฐานถูก "พิมพ์แปะ" กระจาย 3 จุด — valueDomain (ข้อความอิสระ),
+// IN_LIST/REFERENCE_MATCH (ค่าแปะในกฎแต่ละข้อ), LOOKUP mapping (อ้างข้อความลอย ๆ)
+// → รวมเป็นทะเบียนเดียว แก้ที่ต้นทางจุดเดียว กฎ/Element/Mapping ที่ผูกไว้ใช้ค่าใหม่ทันที
+// โครงสร้าง: ReferenceSet (ทะเบียน) 1 → ReferenceValue (ค่าอ้างอิง) หลายค่า
+// Workflow อนุมัติแบบเดียวกับ Data Element: DRAFT → (ส่ง) รออนุมัติ → ACTIVE → DEPRECATED
+// เวอร์ชัน +0.1 ทุกครั้งที่อนุมัติเนื้อหาค่าที่แก้ไขหลังอนุมัติครั้งก่อน (เหมือน Data Mapping v0.22.0)
+// เอนจิน: กฎ IN_LIST/REFERENCE_MATCH ที่ params.referenceSetId ชี้มาที่นี่ จะใช้เฉพาะค่า ACTIVE ของทะเบียน
+// ---------------------------------------------------------------------------
+
+// ทะเบียนข้อมูลอ้างอิง 1 รายการ (เช่น สกุลเงินมาตรฐาน ISO 4217 · รหัสประเทศ · กลุ่มลูกค้า)
+model ReferenceSet {
+  id              String   @id @default(cuid())
+  code            String   @unique // รหัสระบบ RD-0001 … (สร้างอัตโนมัติ)
+  name            String // ชื่อทะเบียน (ไม่ซ้ำกันทั้งระบบ — ตรวจใน API เพราะแสดงใน picker ของกฎ)
+  nameEn          String   @default("") // ชื่อภาษาอังกฤษ (ไม่บังคับ)
+  description     String   @default("")
+  subDomainId     String // ต้องเป็นโดเมนย่อย (parentId != null) — เจ้าของทะเบียน (ตรวจใน API — deny-by-default)
+  ownerId         String? // email เจ้าของข้อมูล (Data Owner) — ต้องเป็นผู้ใช้ ACTIVE (ตรวจใน API)
+  stewardId       String? // email ผู้ดูแลข้อมูล (Data Steward) — ต้องเป็นผู้ใช้ ACTIVE (ตรวจใน API)
+  status          String   @default("DRAFT") // DRAFT | ACTIVE | DEPRECATED — เปลี่ยนผ่าน workflow อนุมัติเท่านั้น
+  pendingApproval Boolean  @default(false) // workflow อนุมัติ: รอผู้มีสิทธิ์อนุมัติตัดสินอยู่ (ล็อกแก้ไข/ลบขณะรอ)
+  approvedBy      String? // email ผู้อนุมัติล่าสุด (workflow อนุมัติ — บันทึก Audit Trail ทุกครั้ง)
+  approvedAt      DateTime? // เวลาที่อนุมัติล่าสุด — ใช้เทียบว่าเนื้อหาค่าเปลี่ยนหลังอนุมัติ (bump version)
+  version         String   @default("1.0") // เวอร์ชันสเปก: +0.1 อัตโนมัติเมื่ออนุมัติเนื้อหาที่แก้ไข (เหมือน Mapping)
+  createdBy       String // email ผู้สร้าง
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subDomain DataDomain       @relation(fields: [subDomainId], references: [id], onDelete: Restrict) // ลบโดเมนย่อยไม่ได้ถ้ายังมีทะเบียน
+  values    ReferenceValue[]
+  elements  DataElement[] // Element ที่ valueDomain ผูกทะเบียนนี้
+  lookupMappings DataMapping[] // Mapping แบบ LOOKUP ที่อ้างทะเบียนนี้
+
+  @@index([subDomainId, status])
+  @@index([status])
+}
+
+// ค่าอ้างอิง 1 ค่าในทะเบียน — ห้ามซ้ำในทะเบียนเดียวกัน · เลิกใช้ด้วยสถานะ RETIRED (ไม่ลบ — คงประวัติ audit)
+model ReferenceValue {
+  id         String   @id @default(cuid())
+  setId      String
+  value      String // รหัส/ค่า เช่น USD, THB (ไม่ซ้ำในทะเบียนเดียวกัน — ตรวจใน API)
+  labelTh    String   @default("") // ชื่อเรียกภาษาไทย เช่น ดอลลาร์สหรัฐ
+  labelEn    String   @default("") // ชื่อเรียกภาษาอังกฤษ
+  definition String   @default("") // นิยาม/หมายเหตุของค่า
+  sortOrder  Int      @default(0) // ลำดับการแสดงผล
+  status     String   @default("ACTIVE") // ACTIVE | RETIRED
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  set ReferenceSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+
+  @@unique([setId, value])
+  @@index([setId, status])
 }
 
 // คอลัมน์ของ Data Asset — metadata สำหรับแสดงใน Data Inventory

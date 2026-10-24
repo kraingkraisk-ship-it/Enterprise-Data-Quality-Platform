@@ -399,6 +399,17 @@ export function MappingDetailDialog({
                     <code className="block rounded-md bg-muted px-2.5 py-1.5 font-mono text-[12px]">{m.transformNote}</code>
                   </SpecRow>
                 )}
+                {m.mappingType === 'LOOKUP' && (
+                  <SpecRow label="ทะเบียนข้อมูลอ้างอิง">
+                    {m.lookupSet ? (
+                      <span className="text-[12px]">
+                        {m.lookupSet.name} <span className="font-mono text-[11px] text-muted-foreground">({m.lookupSet.code})</span>
+                      </span>
+                    ) : (
+                      <span className="text-[12px] text-muted-foreground">ไม่ระบุทะเบียน — ดูกฎการแปลงเป็นข้อความ</span>
+                    )}
+                  </SpecRow>
+                )}
                 {m.note && (
                   <SpecRow label="หมายเหตุ">
                     <span className="text-[12px] text-foreground/80">{m.note}</span>

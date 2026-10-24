@@ -18,7 +18,8 @@ import {
  * POST /api/elements — สร้าง element ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — ต้องผ่าน workflow อนุมัติจึงจะ ACTIVE ใช้งานได้)
  *      body: { operatorEmail, subDomainId, nameTh, nameEn?, definition?, examples?, dataType?,
  *              formatPattern?, valueDomain?, maxLength?, unit?, ownerId?, stewardId?, custodianId?,
- *              pii?, classification?, isCde?, isFinancial?, opUpdateFrequency?, opNotes?, customFields? }
+ *              pii?, classification?, isCde?, isFinancial?, opUpdateFrequency?, opNotes?, customFields?,
+ *              referenceSetId? (v0.31.0 — ผูกทะเบียนข้อมูลอ้างอิงกับ valueDomain — เฉพาะทะเบียน ACTIVE) }
  *
  * สิทธิ์ (เฉพาะ POST): MANAGE_DATASETS — ทุกการสร้างบันทึก Audit Trail
  * กติกา (deny-by-default):
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
         orderBy: [{ position: 'asc' }, { nameTh: 'asc' }],
         include: {
           subDomain: { select: { id: true, name: true, nameEn: true, parentId: true } },
+          referenceSet: { select: { id: true, code: true, name: true, status: true } }, // v0.31.0
         },
       }),
       db.dqRule.groupBy({ by: ['dataElementId'], _count: { _all: true }, where: { dataElementId: { not: null } } }),
@@ -67,6 +69,10 @@ export async function GET(req: NextRequest) {
         dataType: e.dataType,
         formatPattern: e.formatPattern,
         valueDomain: e.valueDomain,
+        referenceSetId: e.referenceSetId, // v0.31.0 — ทะเบียนข้อมูลอ้างอิงที่ valueDomain ผูกไว้
+        referenceSet: e.referenceSet
+          ? { id: e.referenceSet.id, code: e.referenceSet.code, name: e.referenceSet.name, status: e.referenceSet.status }
+          : null,
         maxLength: e.maxLength,
         unit: e.unit,
         ownerId: e.ownerId,
@@ -164,6 +170,18 @@ function metaFieldsFrom(body: Record<string, unknown>) {
   }
 }
 
+/** ตรวจ + resolve referenceSetId (v0.31.0) — คืน null (ไม่ผูก) / id (ผูกได้) หรือ error message */
+async function resolveReferenceSetId(raw: unknown): Promise<{ id: string | null; error: string | null }> {
+  const rawId = String(raw ?? '').trim()
+  if (!rawId) return { id: null, error: null }
+  const rs = await db.referenceSet.findUnique({ where: { id: rawId }, select: { id: true, code: true, name: true, status: true } })
+  if (!rs) return { id: null, error: 'ไม่พบทะเบียนข้อมูลอ้างอิงที่เลือกในระบบ' }
+  if (rs.status !== 'ACTIVE') {
+    return { id: null, error: `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — ผูก valueDomain ได้เฉพาะทะเบียนที่อนุมัติแล้ว (ACTIVE)` }
+  }
+  return { id: rs.id, error: null }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null
@@ -200,6 +218,10 @@ export async function POST(req: NextRequest) {
     const peopleError = await validateStewardshipEmails(body)
     if (peopleError) return NextResponse.json({ error: peopleError }, { status: 400 })
 
+    // ---------- ผูกทะเบียนข้อมูลอ้างอิง (v0.31.0 — เฉพาะทะเบียน ACTIVE) ----------
+    const refSet = await resolveReferenceSetId(body.referenceSetId)
+    if (refSet.error) return NextResponse.json({ error: refSet.error }, { status: 400 })
+
     // ---------- กันชื่อซ้ำในโดเมนย่อยเดียวกัน ----------
     const dup = await db.dataElement.findFirst({ where: { subDomainId, nameTh }, select: { id: true } })
     if (dup) {
@@ -215,6 +237,7 @@ export async function POST(req: NextRequest) {
         position,
         createdBy: op.ctx.email,
         status: 'DRAFT', // v0.20.0: workflow อนุมัติ — element ใหม่เริ่มที่ DRAFT เสมอ ต้องผ่านการอนุมัติจึงจะ ACTIVE
+        referenceSetId: refSet.id,
         ...metaFieldsFrom(body),
       },
     })
@@ -224,7 +247,7 @@ export async function POST(req: NextRequest) {
         action: 'CREATE_DATA_ELEMENT',
         actor: op.ctx.email,
         target: `${created.code} ${created.nameTh}`,
-        detail: `สร้าง Data Element "${created.nameTh}" (${created.code}) ภายใต้โดเมนย่อย "${subDomain.name}" — สถานะเริ่มต้น DRAFT (รอส่งขออนุมัติ)${created.isCde ? ' · CDE' : ''}${created.isFinancial ? ' · การเงิน' : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `สร้าง Data Element "${created.nameTh}" (${created.code}) ภายใต้โดเมนย่อย "${subDomain.name}" — สถานะเริ่มต้น DRAFT (รอส่งขออนุมัติ)${created.isCde ? ' · CDE' : ''}${created.isFinancial ? ' · การเงิน' : ''}${refSet.id ? ' · ผูกทะเบียนอ้างอิง' : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 

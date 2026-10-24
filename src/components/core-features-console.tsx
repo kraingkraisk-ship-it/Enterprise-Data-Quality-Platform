@@ -61,6 +61,7 @@ import {
   DIMENSION_KEYS,
   DIMENSION_LABELS,
   DIMENSION_META,
+  isConditionKey,
   SEVERITY_KEYS,
   SEVERITY_LABELS,
   type TemplateParamDef,
@@ -70,6 +71,14 @@ import type { DomainItem } from '@/lib/domains'
 import { ELEMENT_DATA_TYPE_LABELS, type ElementDataType } from '@/lib/elements'
 import { isCoreView, type ViewKey } from '@/lib/views'
 import DqDashboard from '@/components/dq-dashboard'
+
+/** ทะเบียนข้อมูลอ้างอิงแบบย่อ (v0.31.0) — ตัวเลือกโหมดทะเบียนของ IN_LIST/REFERENCE_MATCH */
+interface ReferenceSetOption {
+  id: string
+  code: string
+  name: string
+  activeValueCount: number
+}
 
 /** Data Element แบบย่อสำหรับ Rule Builder (จาก /api/elements) */
 interface ElementRowLite {
@@ -352,6 +361,8 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rbElDomain, setRbElDomain] = useState('')
   const [rbElSub, setRbElSub] = useState('')
   const [rbElementId, setRbElementId] = useState('')
+  /* ทะเบียนข้อมูลอ้างอิง (v0.31.0) — ตัวเลือกโหมดทะเบียนของเอนจิน IN_LIST/REFERENCE_MATCH (เฉพาะ ACTIVE) */
+  const [rbReferenceSets, setRbReferenceSets] = useState<ReferenceSetOption[]>([])
   /* Rule Builder wizard (v0.18.1) — ขั้นตอนปัจจุบัน 1–4 */
   const [rbStep, setRbStep] = useState(1)
 
@@ -398,18 +409,29 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     }
   }, [])
 
-  // Data Element สำหรับ Rule Builder (v0.18.0) — โหลดครั้งเดียวพอ (เปลี่ยนน้อยมาก)
+  // Data Element สำหรับ Rule Builder (v0.18.0) + ทะเบียนอ้างอิง (v0.31.0) — โหลดครั้งเดียวพอ (เปลี่ยนน้อยมาก)
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
-        const [dom, els] = await Promise.all([
+        const [dom, els, refSets] = await Promise.all([
           fetch('/api/domains').then((r) => r.json()),
           fetch('/api/elements').then((r) => r.json()),
+          fetch('/api/reference/sets').then((r) => r.json()),
         ])
         if (!alive) return
         setRbDomains(dom.domains ?? [])
         setRbElements(els.elements ?? [])
+        setRbReferenceSets(
+          (refSets.sets ?? [])
+            .filter((s: { status: string; activeValueCount: number }) => s.status === 'ACTIVE' && s.activeValueCount > 0)
+            .map((s: { id: string; code: string; name: string; activeValueCount: number }) => ({
+              id: s.id,
+              code: s.code,
+              name: s.name,
+              activeValueCount: s.activeValueCount,
+            })),
+        )
       } catch {
         /* คงค่าว่างไว้ */
       }
@@ -510,7 +532,16 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   // เงื่อนไขในคลัง — แยกของระบบ / ที่ผู้ใช้สร้าง (เฉพาะที่เปิดใช้งาน สำหรับสร้างกฎ)
   const systemConditions = useMemo(() => conditions.filter((c) => c.isSystem && c.enabled), [conditions])
   const customConditions = useMemo(() => conditions.filter((c) => !c.isSystem && c.enabled), [conditions])
-  const rbTemplate = useMemo(() => conditions.find((c) => c.key === rbCondition) ?? null, [conditions, rbCondition])
+  // rbTemplate — เงื่อนไขที่เลือก · ของระบบใช้นิยามพารามิเตอร์ล่าสุดจากคลังกลาง CONDITIONS เสมอ
+  // (anti-drift — เช่นโหมดทะเบียน referenceSetId ของ IN_LIST/REFERENCE_MATCH v0.31.0 แสดงทันทีโดยไม่พึ่ง params ค้างใน DB)
+  const rbTemplate = useMemo(() => {
+    const t = conditions.find((c) => c.key === rbCondition) ?? null
+    if (!t) return null
+    if (t.isSystem && isConditionKey(t.key)) {
+      return { ...t, params: CONDITIONS[t.key].params }
+    }
+    return t
+  }, [conditions, rbCondition])
 
   // เงื่อนไขที่มีพารามิเตอร์ชนิด "เลือกชุดข้อมูลอ้างอิง" (เช่นเอนจิน EXISTS_IN_DATASET) —
   // โหลดคอลัมน์ของชุดข้อมูลอ้างอิงจากข้อมูลจริง เพื่อให้เลือกคอลัมน์อ้างอิงได้จาก dropdown
@@ -568,6 +599,9 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
 
   const previewSentence = useMemo(() => {
     const template = rbTemplate
+    const refSetName = rbParams.referenceSetId
+      ? rbReferenceSets.find((s) => s.id === rbParams.referenceSetId)?.name
+      : undefined
     return buildRuleSentence({
       datasetNames: rbDatasetNames.length > 0 ? rbDatasetNames : undefined,
       column: rbColumn || '[Column]',
@@ -575,11 +609,12 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       conditionSentence: template?.sentence,
       engineType: template?.engineType,
       refDatasetName: rbRefDatasetName,
+      refSetName,
       parameters: JSON.stringify(rbParams),
       severity: rbSeverity,
       filter: rbFilter || null,
     })
-  }, [rbDatasetNames, rbColumn, rbCondition, rbTemplate, rbRefDatasetName, rbParams, rbSeverity, rbFilter])
+  }, [rbDatasetNames, rbColumn, rbCondition, rbTemplate, rbRefDatasetName, rbParams, rbReferenceSets, rbSeverity, rbFilter])
 
   // คอลัมน์ที่เลือกได้ — union จากข้อมูลตัวอย่างของทุกชุดข้อมูลที่เลือก
   const rbColumnOptions = useMemo(() => rbPreview?.columns ?? [], [rbPreview])
@@ -1345,6 +1380,53 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     พารามิเตอร์ของเงื่อนไข “{rbTemplate.name}” (using)
                   </p>
                   {rbTemplate.params.map((p) => {
+                    // ชนิดพิเศษ (v0.31.0): เลือกทะเบียนข้อมูลอ้างอิง — โหมดทะเบียนของ IN_LIST/REFERENCE_MATCH
+                    // เลือกทะเบียน → ล้างค่าที่พิมพ์ไว้ (values) เพื่อไม่สับสนว่าเอนจินใช้อะไรจริง
+                    if (p.type === 'reference-set') {
+                      const chosen = rbParams[p.key] ?? ''
+                      return (
+                        <div key={p.key} className="space-y-1.5">
+                          <Label htmlFor={`rb-param-${p.key}`} className="text-xs">
+                            {p.label}
+                          </Label>
+                          <Select
+                            value={chosen ? chosen : 'RB_NO_SET'}
+                            onValueChange={(v) =>
+                              setRbParams((prev) => {
+                                const next = { ...prev }
+                                if (v === 'RB_NO_SET') {
+                                  delete next[p.key]
+                                } else {
+                                  next[p.key] = v
+                                  // ล้างค่าที่พิมพ์ไว้ — โหมดทะเบียนใช้ทะเบียนเท่านั้น
+                                  for (const q of rbTemplate.params) {
+                                    if (q.key === 'values') delete next[q.key]
+                                  }
+                                }
+                                return next
+                              })
+                            }
+                          >
+                            <SelectTrigger id={`rb-param-${p.key}`}>
+                              <SelectValue placeholder="— พิมพ์ค่าเอง (ไม่ใช้ทะเบียน) —" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-64">
+                              <SelectItem value="RB_NO_SET">— พิมพ์ค่าเอง (ไม่ใช้ทะเบียน) —</SelectItem>
+                              {rbReferenceSets.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                  {s.name} ({s.code} · {s.activeValueCount} ค่า)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {chosen && (
+                            <p className="text-[11px] text-emerald-800">
+                              โหมดทะเบียน: เอนจินจะใช้ค่า ACTIVE ล่าสุดจากทะเบียนตอนรัน — เพิ่ม/ลดค่าที่หน้า "ข้อมูลอ้างอิง" กฎไม่ต้องแก้
+                            </p>
+                          )}
+                        </div>
+                      )
+                    }
                     // ชนิดพิเศษ: เลือกชุดข้อมูลอ้างอิงจากรายการชุดข้อมูลในระบบ
                     if (p.type === 'dataset') {
                       return (
@@ -1417,6 +1499,19 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                       )
                     }
                     // ชนิดทั่วไป: ตัวเลข / ข้อความ
+                    // พารามิเตอร์ "values" ของเอนจินโหมดทะเบียน — เมื่อเลือกใช้ทะเบียนแล้วซ่อนช่องพิมพ์ (กันสับสน)
+                    if (p.key === 'values' && rbParams.referenceSetId) {
+                      return (
+                        <div key={p.key} className="space-y-1.5">
+                          <Label htmlFor={`rb-param-${p.key}`} className="text-xs">
+                            {p.label}
+                          </Label>
+                          <p className="rounded-md border border-dashed px-3 py-2 text-[11px] text-muted-foreground">
+                            ใช้ค่าจากทะเบียนข้อมูลอ้างอิงอยู่ — จัดการค่าที่หน้า "ข้อมูลอ้างอิง" (Data Asset)
+                          </p>
+                        </div>
+                      )
+                    }
                     return (
                       <div key={p.key} className="space-y-1.5">
                         <Label htmlFor={`rb-param-${p.key}`} className="text-xs">

@@ -112,6 +112,23 @@ export const AUDIT_ACTIONS: Record<string, { th: string; group: AuditGroupKey }>
   ASSIGN_DOMAIN_COLUMNS: { th: 'ผูกคอลัมน์เข้า Element', group: ASSET },
   MAP_ELEMENT_COLUMNS: { th: 'แมปคอลัมน์ Element', group: ASSET },
 
+  /* ---------------- ข้อมูลอ้างอิง (Reference Data — v0.31.0) ---------------- */
+  CREATE_REFERENCE_SET: { th: 'สร้างทะเบียนอ้างอิง', group: ASSET },
+  UPDATE_REFERENCE_SET: { th: 'แก้ไขทะเบียนอ้างอิง', group: ASSET },
+  DELETE_REFERENCE_SET: { th: 'ลบทะเบียนอ้างอิง', group: ASSET },
+  SUBMIT_REFERENCE_APPROVAL: { th: 'ส่งขออนุมัติทะเบียน', group: ASSET },
+  APPROVE_REFERENCE_SET: { th: 'อนุมัติทะเบียนอ้างอิง', group: ASSET },
+  REJECT_REFERENCE_APPROVAL: { th: 'ปฏิเสธอนุมัติทะเบียน', group: ASSET },
+  DEPRECATE_REFERENCE_SET: { th: 'เลิกใช้ทะเบียนอ้างอิง', group: ASSET },
+  CREATE_REFERENCE_VALUE: { th: 'เพิ่มค่าอ้างอิง', group: ASSET },
+  UPDATE_REFERENCE_VALUE: { th: 'แก้ไขค่าอ้างอิง', group: ASSET },
+  RETIRE_REFERENCE_VALUE: { th: 'เลิกใช้ค่าอ้างอิง', group: ASSET },
+  REACTIVATE_REFERENCE_VALUE: { th: 'เปิดใช้ค่าอ้างอิงซ้ำ', group: ASSET },
+  IMPORT_REFERENCE_VALUES: { th: 'นำเข้าค่าอ้างอิง (CSV)', group: ASSET },
+  SCAN_REFERENCE_ORPHAN: { th: 'สแกนค่านอกทะเบียน', group: ASSET },
+  SET_ELEMENT_REFERENCE: { th: 'ผูก Element กับทะเบียนอ้างอิง', group: ASSET },
+  SET_MAPPING_LOOKUP_SET: { th: 'ผูก Mapping LOOKUP กับทะเบียน', group: ASSET },
+
   /* ------------------------------ กฎและการแมป ------------------------------ */
   CREATE_RULE: { th: 'สร้างกฎ', group: RULE },
   TOGGLE_RULE: { th: 'เปิด/ปิดกฎ', group: RULE },

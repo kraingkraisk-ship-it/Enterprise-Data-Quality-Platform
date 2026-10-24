@@ -180,8 +180,9 @@ export interface ConditionDefinition {
   params: Array<{
     key: string
     label: string
-    /** number = ช่องตัวเลข, text = ช่องข้อความ, dataset = เลือกชุดข้อมูลอ้างอิง, dataset-column = เลือกคอลัมน์ของชุดข้อมูลอ้างอิง */
-    type: 'number' | 'text' | 'dataset' | 'dataset-column'
+  /** ชนิดพารามิเตอร์: number = ช่องตัวเลข, text = ช่องข้อความ, dataset = เลือกชุดข้อมูลอ้างอิง, dataset-column = เลือกคอลัมน์ของชุดข้อมูลอ้างอิง,
+   *  reference-set = เลือกทะเบียนข้อมูลอ้างอิง (โหมดทะเบียน v0.31.0) */
+    type: 'number' | 'text' | 'dataset' | 'dataset-column' | 'reference-set'
     placeholder?: string
   }>
 }
@@ -228,7 +229,11 @@ export const CONDITIONS: Record<ConditionKey, ConditionDefinition> = {
     en: 'Must be one of allowed values',
     sentence: 'be one of the allowed values',
     dimension: 'CONSISTENCY',
-    params: [{ key: 'values', label: 'ค่าที่อนุญาต (คั่นด้วยเครื่องหมาย ,)', type: 'text', placeholder: 'ACTIVE, INACTIVE' }],
+    params: [
+      { key: 'values', label: 'ค่าที่อนุญาต (คั่นด้วยเครื่องหมาย ,)', type: 'text', placeholder: 'ACTIVE, INACTIVE' },
+      // โหมดทะเบียน (v0.31.0) — เลือกทะเบียนอ้างอิงแทนการพิมพ์ค่า: แก้ค่าที่ทะเบียน กฎใช้ค่าใหม่ทันที
+      { key: 'referenceSetId', label: 'หรือเลือกจากทะเบียนข้อมูลอ้างอิง', type: 'reference-set' },
+    ],
   },
   UNIQUE: {
     key: 'UNIQUE',
@@ -254,6 +259,8 @@ export const CONDITIONS: Record<ConditionKey, ConditionDefinition> = {
     dimension: 'ACCURACY',
     params: [
       { key: 'values', label: 'ค่ามาตรฐานจากระบบต้นทาง (คั่นด้วยเครื่องหมาย ,)', type: 'text', placeholder: 'ENTERPRISE, SME, RETAIL' },
+      // โหมดทะเบียน (v0.31.0) — ค่ามาตรฐานจากทะเบียนข้อมูลอ้างอิง (single source of truth)
+      { key: 'referenceSetId', label: 'หรือเลือกจากทะเบียนข้อมูลอ้างอิง', type: 'reference-set' },
     ],
   },
   MAX_AGE_HOURS: {
@@ -314,13 +321,14 @@ export function isDimensionKey(v: string): v is DimensionKey {
 export interface TemplateParamDef {
   key: string
   label: string
-  /** number = ช่องตัวเลข, text = ช่องข้อความ, dataset = เลือกชุดข้อมูลอ้างอิง, dataset-column = เลือกคอลัมน์ของชุดข้อมูลอ้างอิง */
-  type: 'number' | 'text' | 'dataset' | 'dataset-column'
+  /** number = ช่องตัวเลข, text = ช่องข้อความ, dataset = เลือกชุดข้อมูลอ้างอิง, dataset-column = เลือกคอลัมน์ของชุดข้อมูลอ้างอิง,
+   *  reference-set = เลือกทะเบียนข้อมูลอ้างอิง (โหมดทะเบียน v0.31.0) */
+  type: 'number' | 'text' | 'dataset' | 'dataset-column' | 'reference-set'
   placeholder?: string
 }
 
 /** ชนิดพารามิเตอร์ที่ระบบรองรับทั้งหมด — ใช้ตรวจฝั่ง API */
-export const TEMPLATE_PARAM_TYPES: TemplateParamDef['type'][] = ['number', 'text', 'dataset', 'dataset-column']
+export const TEMPLATE_PARAM_TYPES: TemplateParamDef['type'][] = ['number', 'text', 'dataset', 'dataset-column', 'reference-set']
 
 /** แปลง JSON string เป็นรายการนิยามพารามิเตอร์ — คืน [] หาก JSON ไม่ถูกต้อง (fail-safe) */
 export function parseTemplateParams(json: string): TemplateParamDef[] {
@@ -354,10 +362,10 @@ export const ENGINE_DESCRIPTIONS: Record<ConditionKey, string> = {
   EMAIL: 'ตรวจรูปแบบอีเมล (ไม่ต้องมีพารามิเตอร์)',
   REGEX: 'ตรวจด้วย Regular Expression — ต้องมีพารามิเตอร์ pattern',
   RANGE: 'ตรวจช่วงตัวเลข — ต้องมีพารามิเตอร์ min และ max',
-  IN_LIST: 'ตรวจค่าในรายการที่อนุญาต — ต้องมีพารามิเตอร์ values',
+  IN_LIST: 'ตรวจค่าในรายการที่อนุญาต — ต้องมีพารามิเตอร์ values หรือ referenceSetId (โหมดทะเบียน)',
   UNIQUE: 'ตรวจค่าซ้ำในชุดข้อมูล (ไม่ต้องมีพารามิเตอร์)',
   MAX_AGE_DAYS: 'ตรวจอายุข้อมูล (วัน) — ต้องมีพารามิเตอร์ days',
-  REFERENCE_MATCH: 'ตรวจว่าค่าตรงกับค่ามาตรฐานที่ระบบต้นทางยืนยัน — ต้องมีพารามิเตอร์ values',
+  REFERENCE_MATCH: 'ตรวจว่าค่าตรงกับค่ามาตรฐานที่ระบบต้นทางยืนยัน — ต้องมีพารามิเตอร์ values หรือ referenceSetId (โหมดทะเบียน — ใช้ค่าจากทะเบียนข้อมูลอ้างอิง)',
   MAX_AGE_HOURS: 'ตรวจอายุข้อมูลแบบชั่วโมง (ตาม SLA เช่น feed รายชั่วโมง) — ต้องมีพารามิเตอร์ hours',
   EXISTS_IN_DATASET: 'ตรวจ Referential Integrity — ค่าต้องมีอยู่จริงในคอลัมน์ของชุดข้อมูลอ้างอิง (ต้องมีพารามิเตอร์ refDatasetId และ refColumn)',
 }
@@ -402,14 +410,19 @@ export interface RuleLike {
   engineType?: string
   /** ชื่อชุดข้อมูลอ้างอิง (สำหรับเอนจิน EXISTS_IN_DATASET — แสดงชื่อที่อ่านง่ายแทน id) */
   refDatasetName?: string
+  /** ชื่อทะเบียนข้อมูลอ้างอิง (สำหรับโหมดทะเบียนของ IN_LIST/REFERENCE_MATCH — v0.31.0) */
+  refSetName?: string
 }
 
-function formatParamValue(engineType: string, params: Record<string, unknown>, refDatasetName?: string): string {
+function formatParamValue(engineType: string, params: Record<string, unknown>, refDatasetName?: string, refSetName?: string): string {
   switch (engineType) {
     case 'RANGE':
       return `[${String(params.min ?? '?')} – ${String(params.max ?? '?')}]`
     case 'IN_LIST':
     case 'REFERENCE_MATCH': {
+      // โหมดทะเบียน (v0.31.0) — แสดงชื่อทะเบียนที่อ่านง่ายแทน id เมื่อกฎใช้โหมดทะเบียน
+      const setId = String(params.referenceSetId ?? '').trim()
+      if (setId) return `[ทะเบียน: ${refSetName ?? setId}]`
       const raw = String(params.values ?? '')
       return `[${raw}]`
     }
@@ -441,7 +454,7 @@ export function buildRuleSentence(rule: RuleLike): string {
   } catch {
     params = {}
   }
-  const usingPart = engine ? formatParamValue(engine, params, rule.refDatasetName) : '[Parameters]'
+  const usingPart = engine ? formatParamValue(engine, params, rule.refDatasetName, rule.refSetName) : '[Parameters]'
   const severityTh = isSeverityKey(rule.severity) ? SEVERITY_LABELS[rule.severity].th : rule.severity
 
   let sentence = `For ${datasetPart}, ${rule.column} must ${mustSentence}`
@@ -461,10 +474,12 @@ export interface RuleEvaluation {
   failedRows: number
 }
 
-/** บริบทเพิ่มเติมของการประเมิน — เช่น ค่าอ้างอิงจากชุดข้อมูลหลัก (INTEGRITY) */
+/** บริบทเพิ่มเติมของการประเมิน — เช่น ค่าอ้างอิงจากชุดข้อมูลหลัก (INTEGRITY) หรือค่าจากทะเบียนอ้างอิง */
 export interface EvaluationContext {
   /** ค่าที่มีอยู่จริงในคอลัมน์อ้างอิง (ใช้กับเอนจิน EXISTS_IN_DATASET) */
   refValues?: Set<string>
+  /** ค่า ACTIVE จากทะเบียนข้อมูลอ้างอิง (ใช้กับโหมดทะเบียนของ IN_LIST/REFERENCE_MATCH — v0.31.0) */
+  refSetValues?: Set<string>
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -519,6 +534,13 @@ export function evaluateRule(
         break
       }
       case 'IN_LIST': {
+        // โหมดทะเบียน (v0.31.0) — params.referenceSetId ชี้ทะเบียน: ใช้ค่า ACTIVE จากทะเบียน (แก้ที่ทะเบียน กฎใช้ใหม่ทันที)
+        const setId = String(params.referenceSetId ?? '').trim()
+        if (setId) {
+          const allowed = context?.refSetValues
+          failed = value === null || value === undefined || !allowed || !allowed.has(String(value).trim())
+          break
+        }
         const allowed = String(params.values ?? '')
           .split(',')
           .map((s) => s.trim())
@@ -551,6 +573,13 @@ export function evaluateRule(
       }
       case 'REFERENCE_MATCH': {
         // ความถูกต้อง (ACCURACY) — ค่าต้องตรงกับค่ามาตรฐานที่ระบบต้นทางยืนยัน
+        // โหมดทะเบียน (v0.31.0) — params.referenceSetId ชี้ทะเบียน: ใช้ค่า ACTIVE จากทะเบียน (single source of truth)
+        const setId = String(params.referenceSetId ?? '').trim()
+        if (setId) {
+          const allowed = context?.refSetValues
+          failed = value === null || value === undefined || !allowed || !allowed.has(String(value).trim())
+          break
+        }
         const allowed = String(params.values ?? '')
           .split(',')
           .map((s) => s.trim())

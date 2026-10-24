@@ -179,6 +179,8 @@ interface ElementRow {
   dataType: string
   formatPattern: string
   valueDomain: string
+  referenceSetId: string | null
+  referenceSet: { id: string; code: string; name: string; status: string } | null
   maxLength: number | null
   unit: string
   ownerId: string | null
@@ -207,6 +209,8 @@ interface ElementDetail {
   dataType: string
   formatPattern: string
   valueDomain: string
+  referenceSetId: string | null
+  referenceSet: { id: string; code: string; name: string; status: string } | null
   maxLength: number | null
   unit: string
   ownerId: string | null
@@ -468,6 +472,9 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [elDataType, setElDataType] = useState<string>('TEXT')
   const [elFormat, setElFormat] = useState('')
   const [elValueDomain, setElValueDomain] = useState('')
+  /* ทะเบียนข้อมูลอ้างอิง (v0.31.0) — ผูก valueDomain กับทะเบียนค่ามาตรฐานแทนข้อความอิสระ */
+  const [elRefSet, setElRefSet] = useState('')
+  const [refSets, setRefSets] = useState<Array<{ id: string; code: string; name: string; status: string }>>([])
   const [elMaxLength, setElMaxLength] = useState('')
   const [elUnit, setElUnit] = useState('')
   const [elOwner, setElOwner] = useState('')
@@ -596,6 +603,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       .then((d) => {
         if (!alive) return
         setUsers((d?.users ?? []).filter((u: AssetUser & { status?: string }) => u.status === 'ACTIVE'))
+      })
+      .catch(() => undefined)
+    // ทะเบียนข้อมูลอ้างอิง (v0.31.0) — ตัวเลือกผูก valueDomain (เฉพาะทะเบียนที่อนุมัติแล้ว)
+    fetch('/api/reference/sets')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return
+        setRefSets((d?.sets ?? []).filter((s: { status: string }) => s.status === 'ACTIVE'))
       })
       .catch(() => undefined)
     return () => {
@@ -851,6 +866,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElDataType('TEXT')
     setElFormat('')
     setElValueDomain('')
+    setElRefSet('')
     setElMaxLength('')
     setElUnit('')
     setElOwner('')
@@ -878,6 +894,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElDataType(detail.dataType)
     setElFormat(detail.formatPattern)
     setElValueDomain(detail.valueDomain)
+    setElRefSet(detail.referenceSetId ?? '')
     setElMaxLength(detail.maxLength !== null ? String(detail.maxLength) : '')
     setElUnit(detail.unit)
     setElOwner(detail.ownerId ?? '')
@@ -914,6 +931,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
           dataType: elDataType,
           formatPattern: elFormat.trim(),
           valueDomain: elValueDomain.trim(),
+          referenceSetId: elRefSet,
           maxLength: elMaxLength.trim() === '' ? null : Number(elMaxLength),
           unit: elUnit.trim(),
           ownerId: elOwner || null,
@@ -1782,6 +1800,10 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                       />
                       <MetaField label="รูปแบบ / พาเทิร์น" value={detail.formatPattern || '—'} />
                       <MetaField label="ค่าอนุญาต (Value Domain)" value={detail.valueDomain || '—'} />
+                      <MetaField
+                        label="ทะเบียนข้อมูลอ้างอิง"
+                        value={detail.referenceSet ? `${detail.referenceSet.name} (${detail.referenceSet.code})` : 'ไม่ผูก — ข้อความอิสระ'}
+                      />
                       <MetaField label="ความยาวสูงสุด" value={detail.maxLength !== null ? String(detail.maxLength) : '—'} />
                     </div>
 
@@ -2343,6 +2365,25 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 <Label htmlFor="el-valuedomain">ค่าอนุญาต (Value Domain)</Label>
                 <Input id="el-valuedomain" value={elValueDomain} onChange={(e) => setElValueDomain(e.target.value)} maxLength={ELEMENT_TEXT_MAX} placeholder="เช่น USD, EUR, THB หรือ ≥ 0" />
               </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="el-refset">ผูกทะเบียนข้อมูลอ้างอิง (ไม่บังคับ — v0.31.0)</Label>
+              <Select value={elRefSet || NO_DOMAIN} onValueChange={(v) => setElRefSet(v === NO_DOMAIN ? '' : v)}>
+                <SelectTrigger id="el-refset">
+                  <SelectValue placeholder="— ข้อความอิสระ (ไม่ผูกทะเบียน) —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DOMAIN}>— ข้อความอิสระ (ไม่ผูกทะเบียน) —</SelectItem>
+                  {refSets.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                ผูกแล้วค่าอนุญาตอ้างอิงจากทะเบียนเดียวกับกฎ IN_LIST/REFERENCE_MATCH — แก้ค่าที่หน้า "ข้อมูลอ้างอิง" (Data Asset) จุดเดียว
+              </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="grid gap-1.5">
