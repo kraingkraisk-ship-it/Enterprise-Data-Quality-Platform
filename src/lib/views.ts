@@ -7,6 +7,7 @@ import {
   FolderTree,
   Gauge,
   GitBranch,
+  History,
   LayoutDashboard,
   Library,
   ListChecks,
@@ -27,7 +28,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.29.0'
+export const APP_VERSION = 'v0.30.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -47,8 +48,11 @@ export type ExecViewKey = 'exec-dashboard' | 'exec-reports'
 /** มุมมองหน้าใหม่ของโมดูล Data Quality */
 export type DqViewKey = 'scorecard' | 'rule-library' | 'profiling' | 'validation-results' | 'failed-records' | 'issues' | 'ml-center'
 
-/** มุมมองทั้งหมดของแอป (รวม Data Asset, RBAC และหน้าแนะนำแพลตฟอร์ม) */
-export type ViewKey = CoreViewKey | AssetViewKey | DqViewKey | ExecViewKey | 'compliance-assessment' | 'rbac' | 'about'
+/** มุมมองการกำกับดูแล (v0.30.0 เพิ่ม audit-center) */
+export type GovViewKey = 'rbac' | 'audit-center' | 'about'
+
+/** มุมมองทั้งหมดของแอป (รวม Data Asset, Governance และหน้าแนะนำแพลตฟอร์ม) */
+export type ViewKey = CoreViewKey | AssetViewKey | DqViewKey | ExecViewKey | GovViewKey | 'compliance-assessment' | 'about'
 
 export interface ViewMeta {
   key: ViewKey
@@ -189,8 +193,15 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'rbac',
     th: 'บทบาทและสิทธิ์',
     en: 'RBAC Console',
-    desc: 'จัดการบทบาทผู้ใช้ มอบสิทธิ์เข้าถึงรายชุดข้อมูล และตรวจ Audit Trail',
+    desc: 'จัดการบทบาทผู้ใช้ มอบสิทธิ์เข้าถึงรายชุดข้อมูล และตรวจ Audit Trail ด้านสิทธิ์',
     icon: ShieldCheck,
+  },
+  'audit-center': {
+    key: 'audit-center',
+    th: 'ศูนย์บันทึกตรวจสอบ',
+    en: 'Audit Log Center',
+    desc: 'คลังบันทึกการตรวจสอบศูนย์กลางทั้งระบบ: การ์ดสรุป · กรองกลุ่ม action 6 กลุ่ม · ผู้กระทำ · ช่วงวันที่ · ค้นหา · ส่งออก CSV · นโยบายเก็บรักษา (meta-audit)',
+    icon: History,
   },
   about: {
     key: 'about',
@@ -237,6 +248,6 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     labelTh: 'การกำกับดูแล',
     labelEn: 'Governance',
-    items: ['rbac', 'about'],
+    items: ['rbac', 'audit-center', 'about'],
   },
 ]

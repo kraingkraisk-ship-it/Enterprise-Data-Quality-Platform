@@ -686,3 +686,13 @@ model DqMlSettings {
   updatedBy       String? // email ผู้บันทึกล่าสุด (audit trail)
   updatedAt       DateTime @updatedAt
 }
+
+// นโยบายการเก็บรักษา Audit Log (v0.30.0) — singleton แถวเดียวของระบบ (id = 1)
+// กำหนด "เก็บ log ไว้กี่วัน" — ลบของเก่าได้เฉพาะผู้มีสิทธิ์ MANAGE_USERS จากหน้า "ศูนย์บันทึกตรวจสอบ"
+// ทุกการตั้งค่าและการลบจริงถูกบันทึกลง AuditLog ด้วย (meta-audit: SET_AUDIT_RETENTION / AUDIT_LOG_PRUNE)
+model AuditPolicy {
+  id            Int      @id @default(1)
+  retentionDays Int      @default(365) // จำนวนวันที่เก็บบันทึกไว้ (30–3650) — เกินกำหนดถือว่าหมดอายุ
+  updatedBy     String? // email ผู้บันทึกล่าสุด (audit trail)
+  updatedAt     DateTime @updatedAt
+}

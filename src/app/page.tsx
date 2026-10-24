@@ -8,6 +8,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import AppSidebar from '@/components/app-sidebar'
 import CoreFeaturesConsole from '@/components/core-features-console'
 import RbacConsole from '@/components/rbac-console'
+import AuditCenter from '@/components/audit-center'
 import PlatformOverview from '@/components/platform-overview'
 import AssetImport from '@/components/asset-import'
 import AssetInventory from '@/components/asset-inventory'
@@ -152,7 +153,13 @@ export default function Home() {
 
           {/* RBAC Console — คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
           <div className={view === 'rbac' ? '' : 'hidden'} aria-hidden={view !== 'rbac'}>
-            <RbacConsole />
+            <RbacConsole onGoAuditCenter={() => setView('audit-center')} />
+          </div>
+
+          {/* ศูนย์บันทึกตรวจสอบ — คลัง Audit Log ศูนย์กลางทั้งระบบ (v0.30.0)
+              คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลใหม่เมื่อ active */}
+          <div className={view === 'audit-center' ? '' : 'hidden'} aria-hidden={view !== 'audit-center'}>
+            <AuditCenter active={view === 'audit-center'} />
           </div>
 
           {/* คอนโซลคุณภาพข้อมูล (คลังกฎ / ผลการตรวจ / ข้อยกเว้น / DQ แดชบอร์ด)

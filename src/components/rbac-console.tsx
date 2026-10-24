@@ -47,6 +47,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
+import { auditBadge } from '@/lib/audit-actions'
 import {
   PERMISSION_KEYS,
   PERMISSION_LABELS,
@@ -101,15 +102,7 @@ const SOURCE_LABELS: Record<string, string> = {
   REST_API: 'REST API',
 }
 
-const AUDIT_STYLES: Record<string, { th: string; className: string }> = {
-  CREATE_USER: { th: 'สร้างบัญชี', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  ASSIGN_ROLE: { th: 'เปลี่ยนบทบาท', className: 'bg-amber-50 text-amber-900 border-amber-200' },
-  SUSPEND_USER: { th: 'ระงับบัญชี', className: 'bg-rose-50 text-rose-800 border-rose-200' },
-  ACTIVATE_USER: { th: 'เปิดบัญชี', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  GRANT_ACCESS: { th: 'มอบสิทธิ์', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  REVOKE_ACCESS: { th: 'ยกเลิกสิทธิ์', className: 'bg-rose-50 text-rose-800 border-rose-200' },
-  SET_ACCESS_LEVEL: { th: 'ปรับระดับสิทธิ์', className: 'bg-amber-50 text-amber-900 border-amber-200' },
-}
+// v0.30.0 — badge ของ Audit Log ใช้คลังกลาง auditBadge() จาก src/lib/audit-actions.ts (ครอบคลุม action ทุกชนิดทั้งระบบ)
 
 function fmtTime(iso: string): string {
   try {
@@ -127,7 +120,12 @@ function fmtTime(iso: string): string {
 
 /* ----------------------------- component --------------------------------- */
 
-export default function RbacConsole() {
+interface RbacConsoleProps {
+  /** (v0.30.0) ปุ่มกระโดดไป "ศูนย์บันทึกตรวจสอบ" — เมนู การกำกับดูแล > ศูนย์บันทึกตรวจสอบ */
+  onGoAuditCenter?: () => void
+}
+
+export default function RbacConsole({ onGoAuditCenter }: RbacConsoleProps) {
   const { toast } = useToast()
 
   const [users, setUsers] = useState<ApiUser[] | null>(null)
@@ -662,6 +660,22 @@ export default function RbacConsole() {
 
       {/* --------------------------- AUDIT TAB ----------------------------- */}
       <TabsContent value="audit" className="mt-4 space-y-4">
+        {/* (v0.30.0) การ์ดแจ้งย้าย — log ทั้งระบบมีศูนย์ใหม่ พร้อมตัวกรอง/ค้นหา/ส่งออก/นโยบายเก็บรักษา */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-teal-200 bg-teal-50 p-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-teal-900">
+              บันทึกการตรวจสอบทั้งระบบมีหน้าศูนย์ใหม่ — "ศูนย์บันทึกตรวจสอบ" (v0.30.0)
+            </p>
+            <p className="mt-0.5 text-xs text-teal-800">
+              ดู log จากทุกโมดูลพร้อมกรองกลุ่ม action · ผู้กระทำ · ช่วงวันที่ · ค้นหา · ส่งออก CSV · นโยบายเก็บรักษา
+            </p>
+          </div>
+          {onGoAuditCenter && (
+            <Button size="sm" className="shrink-0 bg-teal-700 text-white hover:bg-teal-800" onClick={onGoAuditCenter}>
+              ไปที่ศูนย์บันทึกตรวจสอบ
+            </Button>
+          )}
+        </div>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             ทุกการเปลี่ยนแปลงสิทธิ์ถูกบันทึกอัตโนมัติ — ตรวจสอบย้อนหลังได้ 100%
@@ -685,7 +699,7 @@ export default function RbacConsole() {
                 <li className="py-10 text-center text-sm text-muted-foreground">ยังไม่มีรายการ</li>
               )}
               {logs?.map((log) => {
-                const style = AUDIT_STYLES[log.action] ?? { th: log.action, className: 'bg-muted text-foreground border-border' }
+                const style = auditBadge(log.action)
                 return (
                   <li key={log.id} className="flex flex-col gap-1 px-4 py-3 transition-colors hover:bg-slate-50 sm:flex-row sm:items-start sm:gap-3">
                     <Badge variant="outline" className={`shrink-0 ${style.className}`}>

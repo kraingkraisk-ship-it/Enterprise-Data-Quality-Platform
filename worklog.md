@@ -1635,3 +1635,31 @@ Stage Summary:
 - v0.29.0 (แยก ML ออกจากหมวด Risk — หมวดใหม่ "ML · สัญญาณอัจฉริยะ" แผง ①④③② + ลิงก์ไขว้ Risk↔ML + ศูนย์ ML footnote ใหม่) ปิดวงจร 100% บน remote — main + tag ครบ
 - ไทม์ไลน์รวม: v0.25.0 (①④) → v0.26.0 (②) → v0.27.0 (③) → v0.28.0 (ศูนย์ ML) → v0.29.0 (แยกหมวด ML ในแดชบอร์ด) · ⑤ LLM ตัดตามมติเดิม
 - PAT ใหม่ใช้งานได้ ยังไม่ถูกเก็บในไฟล์ config ใด ๆ (inline push เท่านั้น)
+
+---
+Task ID: 50
+Agent: Z.ai Code (main orchestrator)
+Task: v0.30.0 — ศูนย์บันทึกตรวจสอบ (Audit Log Center): เมนูใหม่ภายใต้ "การกำกับดูแล" รวมการอ่าน/กรอง/ค้น/ส่งออก/นโยบายเก็บรักษา (คำขอผู้ใช้: "อยากเพิ่มการจัดเก็บ Audit log ต่างๆ" → อภิปรายแล้วตกลงขอบเขต ข้อ 1–5 + retention รอบนี้เลย + วางเมนูใต้การกำกับดูแล)
+
+Work Log:
+- สำรวจของเดิม: AuditLog มีจุดเขียน 50+ จุดใน 30+ API (สแกนครบ → action จริง ~60 ชนิด) แต่อ่านได้แค่ /api/rbac/audit (param เดียว limit) + viewer ซ่อนในแท็บ RBAC — สรุปปัญหา "เขียนเยอะ อ่านยาก" ผู้ใช้เห็นด้วย
+- prisma/schema.prisma: เพิ่ม model AuditPolicy (singleton id=1: retentionDays ค่าเริ่มต้น 365 · updatedBy · updatedAt) + db:push สำเร็จ
+- src/lib/audit-actions.ts (ใหม่): คลัง action กลาง 63 ชนิด 6 กลุ่ม (rbac 7 · asset 22 · rule 18 · dq 15 · ml 2 · system 3) พร้อมชื่อไทย + สี badge ต่อกลุ่ม (amber/teal/emerald/slate/orange/rose — ไม่ใช้ blue/indigo) + auditBadge() fallback ชื่อดิบ + actionsOfGroups()
+- src/lib/audit-query.ts (ใหม่): builder ตัวกรองร่วม groups/actions/actor/q/from/to → Prisma where + summary ภาษาไทย (ใช้ร่วมรายการ+ส่งออก = มุมมองเดียวกันเสมอ)
+- src/app/api/audit/route.ts (ใหม่): GET รายการ + total + stats (total/today/last7/topActor ทั้งระบบ) + facets (actors top 12 · byGroup นับต่อกลุ่ม) + policy preview (willPrune/oldestAt) — อ่านได้ทุกบทบาทตามหลักโปร่งใสเดิม
+- src/app/api/audit/export/route.ts (ใหม่): GET CSV ตัวกรองชุดเดียวกับจอ (builder เดียว) สูงสุด 5,000 แถว · UTF-8 BOM ให้ Excel อ่านไทยถูก · Content-Disposition ตั้งชื่อไฟล์พร้อม timestamp · header X-Audit-Filter ต้อง encodeURIComponent (แก้บั๊ก ByteString: ข้อความไทยใน header ไม่ได้)
+- src/app/api/audit/retention/route.ts (ใหม่): GET นโยบาย+willPrune+oldest (สร้างค่าเริ่มต้นถ้าไม่มีแถว) · POST {operatorEmail, retentionDays?, apply?} ต้องมีสิทธิ์ MANAGE_USERS → ตั้ง 30–3650 วัน (audit SET_AUDIT_RETENTION) · apply ลบจริง deleteMany < cutoff (audit AUDIT_LOG_PRUNE เขียนหลังลบ = meta-audit ไม่ลบตัวเอง ระบุได้ว่าใครลบกี่รายการเมื่อไร)
+- src/components/audit-center.tsx (ใหม่): การ์ดสรุป 4 ใบ (บันทึกทั้งหมด/วันนี้/7 วัน/top actor) · chips กรองกลุ่ม 6 ปุ่มพร้อมจำนวน + chip "อื่น ๆ" ถ้ามี action นอกคลัง · เลือกผู้กระทำ (facet) · ช่วงวันที่ · ค้นหา (Enter/ปุ่ม) · ล้างตัวกรอง · ส่งออก CSV ของมุมมองนี้ · รายการ max-h scroll + โหลดเพิ่มทีละ 50 (append ด้วย fetchedCountRef) · การ์ดนโยบายเก็บรักษา: สถานะปัจจุบัน/หมดอายุแล้ว/ถ้าลบตอนนี้ + เลือกผู้ดำเนินการ (เฉพาะบทบาท MANAGE_USERS) + เลือกจำนวนวัน + AlertDialog ยืนยันลบ + ปุ่มลบ disabled เมื่อ willPrune=0
+- src/lib/views.ts: APP_VERSION v0.30.0 · GovViewKey (rbac/audit-center/about) · ViewKey รวม GovViewKey · VIEWS['audit-center'] (th ศูนย์บันทึกตรวจสอบ / en Audit Log Center / icon History / desc ครบฟีเจอร์) · NAV_GROUPS การกำกับดูแล = [rbac, audit-center, about]
+- src/app/page.tsx: import AuditCenter + mount แบบ visibility (คง mounted ไม่เสียสถานะ) + RbacConsole ส่ง prop onGoAuditCenter
+- src/components/rbac-console.tsx: รับ prop onGoAuditCenter? · แท็บบันทึกตรวจสอบเพิ่มการ์ดแจ้งย้ายสี teal ("ศูนย์บันทึกตรวจสอบ v0.30.0" + ปุ่มกระโดด) · ลบ AUDIT_STYLES ท้องถิ่น 7 รายการ → ใช้ auditBadge() คลังกลาง (แท็บเดิมแสดง ML/ระบบถูกต้องด้วย)
+- lint ผ่านสะอาด
+- E2E agent-browser: เมนูใหม่แสดงใต้การกำกับดูแล · หน้าศูนย์เรนเดอร์ครบ (4 การ์ดสรุปตัวเลขจริง 56 · chips จำนวนครบ 2/14/14/7/17/2 · แสดง 50 จาก 56 + โหลดเพิ่มเหลือ 6 ตรงเป๊ะ) · กรองกลุ่ม ML → 17 รายการถูกต้อง · ค้น "นโยบายเก็บรักษา" → เจอ 2 meta-audit แม่นยำ · UI บันทึกนโยบาย: เลือกผู้ดูแลระบบ + 180 วัน → toast "สำเร็จ...บันทึกลง Audit Log แล้ว" + การ์ดอัปเดต "เก็บไว้ 180 วัน" · RBAC แท็บบันทึกตรวจสอบเห็นการ์ดแจ้งย้าย + badge คลังกลาง (ลบบันทึกตามนโยบาย rose / สร้างแผนสุ่มตรวจ orange) + ปุ่มกระโดดกลับหน้าศูนย์ round trip ครบ · mobile 375px scrollWidth=375 NO-OVERFLOW · desktop 1280px NO-OVERFLOW · page error 0
+- ทดสอบ API curl ครบ: กรองกลุ่ม/actor/q ไทย/ช่วงวัน (อนาคต=0) · export CSV กลุ่ม ML 17 แถว + ทั้งหมด 54 แถว ภาษาไทยครบ · retention POST: DATA_STEWARD โดน 403 (ข้อความ RBAC ชัด) · SYS_ADMIN ตั้ง 90 วันสำเร็จ · ค่า 10 วันโดน 400 (30–3650) · apply → pruned:0 ถูกต้อง · ยืนยัน meta-audit 2 แถว (AUDIT_LOG_PRUNE + SET_AUDIT_RETENTION) ลง log จริง
+- ขอบเขตไม่แตะ: จุดเขียน log เดิม 50+ จุดใน API อื่นทั้งหมด · engines/ML/แดชบอร์ด — การเพิ่มหน้าใหม่ล้วน (ส่งออกเป็น GET ไม่เขียน audit row ตามขนบ GET ทั้งระบบที่ไม่มีตัวตนผู้ใช้)
+- สถานะหลังทดสอบ: นโยบาย 180 วัน (ปรับโดย sys.admin ผ่าน UI จริง) · meta-audit 3 แถวในกลุ่ม "ระบบ"
+
+Stage Summary:
+- v0.30.0 ศูนย์บันทึกตรวจสอบครบ: จาก "เขียนเยอะ อ่านยาก" → มีหน้าศูนย์เดียวใต้เมนู การกำกับดูแล: สรุป · กรอง 6 กลุ่ม · ผู้กระทำ · วันที่ · ค้นหา · แบ่งหน้า · ส่งออก CSV ตรงมุมมอง · นโยบายเก็บรักษาที่ meta-audit ตัวเอง — คลัง action กลาง 63 ชนิดแก้ปัญหาชื่อไม่ตรงเอกสารทั้งระบบในจุดเดียว
+- ไฟล์ใหม่ 6: src/lib/audit-actions.ts · src/lib/audit-query.ts · src/app/api/audit/route.ts · src/app/api/audit/export/route.ts · src/app/api/audit/retention/route.ts · src/components/audit-center.tsx · ไฟล์แก้ 4: prisma/schema.prisma (AuditPolicy) · src/lib/views.ts · src/app/page.tsx · src/components/rbac-console.tsx
+- PAT: github_pat_11BYQP3SA0ZDcE9ZHvgeZP_... (ผู้ใช้ส่งใหม่รอบนี้ ตรวจ HTTP 200 ทั้ง /user และ /repos) → push ด้วย inline URL ไม่เก็บลง config
