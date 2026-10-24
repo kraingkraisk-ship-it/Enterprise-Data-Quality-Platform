@@ -1737,3 +1737,19 @@ Work Log:
 Stage Summary:
 - v0.31.0 (ข้อมูลอ้างอิง — ทะเบียนค่ามาตรฐานศูนย์กลางใต้ Data Asset: ทะเบียน+ค่า+workflow อนุมัติ+โหมดทะเบียนในกฎ IN_LIST/REFERENCE_MATCH+ผูก valueDomain/LOOKUP+สแกน orphan+CSV) ครบที่เครื่อง: commit b45bd43 + tag v0.31.0 (local) — **push ยังไม่ได้: PAT 401 รอ PAT ใหม่จากผู้ใช้**
 - ไทม์ไลน์รวม: v0.25.0 (①④) → v0.26.0 (②) → v0.27.0 (③) → v0.28.0 (ศูนย์ ML) → v0.29.0 (แยกหมวด ML) → v0.30.0 (ศูนย์บันทึกตรวจสอบ) → v0.31.0 (ข้อมูลอ้างอิง)
+
+---
+Task ID: 53
+Agent: Z.ai Code (main orchestrator)
+Task: รับ PAT ใหม่ ยืนยัน แล้ว push v0.31.0 ขึ้น GitHub สำเร็จ (ปิดวงจร ข้อมูลอ้างอิง)
+
+Work Log:
+- ผู้ใช้ส่ง PAT ใหม่ → ตรวจสอบก่อนใช้ตามวินัยมาตรฐาน: GET /repos/kraingkraisk-ship-it/Enterprise-Data-Quality-Platform = **HTTP 200** (ผ่าน)
+- ยืนยัน state ที่เครื่องก่อน push: tree สะอาด · commit b45bd43 (v0.31.0 feat ข้อมูลอ้างอิง) + tag v0.31.0 (local) ตรงกับ worklog Task 52/52-result ทุกจุด — งานค้างมีเพียง push เดียว
+- push ด้วย inline URL (x-access-token:PAT@github.com/...) ไม่เก็บ PAT ลง .git/config: `main 67d7325..7ab8bfb` + `* [new tag] v0.31.0`
+- ตรวจยืนยันบน GitHub API หลัง push: main head = 7ab8bfb (worklog 52-result, parent = b45bd43) · tag v0.31.0 = b45bd43 = local tag — ตรงกันทั้งสองฝั่ง
+
+Stage Summary:
+- **v0.31.0 (ข้อมูลอ้างอิง — Reference Data Center) ปิดวงจรสมบูรณ์บน remote**: commit b45bd43 + tag v0.31.0 อยู่บน GitHub แล้ว ไม่มีงานค้าง push เหลืออยู่
+- ไทม์ไลน์รวม (ทุกเวอร์ชันอยู่บน remote แล้ว): v0.25.0 (①④) → v0.26.0 (②) → v0.27.0 (③) → v0.28.0 (ศูนย์ ML) → v0.29.0 (แยกหมวด ML) → v0.30.0 (ศูนย์บันทึกตรวจสอบ) → v0.31.0 (ข้อมูลอ้างอิง)
+- ข้อจำกัดเดิมคงอยู่: PAT หมดอายุ/ถูก revoke เป็นระยะ (รูปแบบเดียวกับ Task 43–52) — เซสชันถัดไปตรวจ PAT ก่อน push เสมอ
