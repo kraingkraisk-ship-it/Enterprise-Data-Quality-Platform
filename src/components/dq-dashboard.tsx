@@ -20,6 +20,7 @@ import {
   ClipboardList,
   EyeOff,
   LayoutDashboard,
+  ListChecks,
   Network,
   RefreshCw,
   Scale,
@@ -35,10 +36,12 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { DIMENSION_ICONS, DimensionBadge } from '@/components/dimension-picker'
-import { SEVERITY_KEYS, SEVERITY_LABELS, type DimensionKey, type SeverityKey } from '@/lib/dq'
+import { ROLE_LIST, type RoleKey } from '@/lib/rbac'
+import { SEVERITY_KEYS, SEVERITY_LABELS, rolesWithPermission, type DimensionKey, type SeverityKey } from '@/lib/dq'
+import { RISK_SCORE_MAX, SAMPLING_FOOTNOTE_TH, SAMPLING_METHOD, SAMPLING_POLICIES } from '@/lib/sampling'
+import type { SamplePlanView } from '@/lib/sampling-engine'
 import { CLUSTER_SHARE_MIN, ML_FOOTNOTE_TH, ML_MIN_HISTORY, Z_LEVELS } from '@/lib/ml'
 import type { AnomalyView, ClusterView, MlEvaluation } from '@/lib/ml-engine'
-import { ROLE_LIST, type RoleKey } from '@/lib/rbac'
 import {
   classificationLabel,
   DATA_CLASSIFICATIONS,
@@ -1881,6 +1884,9 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
 
               {/* v0.25.0 — ④ ML Root Cause Clustering: สมมติฐานสาเหตุร่วมของรอบล่าสุด */}
               <MlClusterCard />
+
+              {/* v0.26.0 — ② Risk-based Sampling: จัดสรรงบการทบทวนตามความเสี่ยง */}
+              <SamplingPanel users={users} />
             </div>
           )}
 
@@ -2388,6 +2394,270 @@ function MlClusterRow({ c }: { c: ClusterView }) {
           {c.hypothesis}
         </p>
       )}
+    </div>
+  )
+}
+
+/** ② แผนสุ่มตรวจตามความเสี่ยง — จัดสรรงบการทบทวนรายกฎ×ชุดข้อมูล สุ่มแบบทำซ้ำได้ (v0.26.0) */
+function SamplingPanel({ users }: { users: DashUser[] }) {
+  const { toast } = useToast()
+  const reviewRoles = useMemo(() => rolesWithPermission('REVIEW_SIGNALS').map((r) => r.key), [])
+  const [operator, setOperator] = useState('')
+  const [policy, setPolicy] = useState<'FULL' | 'P10' | 'P5' | 'P1'>('P10')
+  const [plan, setPlan] = useState<SamplePlanView | null>(null)
+  const [planMessage, setPlanMessage] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // ผู้ดำเนินการเริ่มต้น — บัญชีแรกที่ ACTIVE และมีสิทธิ์ REVIEW_SIGNALS
+  useEffect(() => {
+    if (operator) return
+    const first = users.find((u) => u.status !== 'SUSPENDED' && reviewRoles.includes(u.role as RoleKey))
+    if (first) setOperator(first.email)
+  }, [users, reviewRoles, operator])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/dq/sampling')
+      const body = (await res.json().catch(() => ({}))) as { plan: SamplePlanView | null; message?: string; error?: string }
+      if (!res.ok) throw new Error(body.error ?? 'โหลดแผนสุ่มตรวจไม่สำเร็จ')
+      setPlan(body.plan)
+      setPlanMessage(body.plan ? null : (body.message ?? 'ยังไม่ได้สร้างแผนสุ่มตรวจสำหรับรอบนี้'))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'โหลดแผนสุ่มตรวจไม่สำเร็จ')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  async function generate() {
+    if (!operator) {
+      toast({ title: 'กรุณาเลือกผู้ดำเนินการ (ต้องมีสิทธิ์ทบทวนสัญญาณ)', variant: 'destructive' })
+      return
+    }
+    setGenerating(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/dq/sampling', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorEmail: operator, policy }),
+      })
+      const body = (await res.json().catch(() => ({}))) as { plan: SamplePlanView | null; message?: string; error?: string }
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
+      setPlan(body.plan)
+      if (body.plan) {
+        setPlanMessage(null)
+        toast({
+          title: 'สร้างแผนสุ่มตรวจแล้ว',
+          description: `นโยบาย ${body.plan.policyLabel} — งบ ${body.plan.summary.budgetRows} แถว · ครอบคลุมความเสี่ยง ${body.plan.summary.riskCoveragePct}%`,
+        })
+      } else {
+        setPlanMessage(body.message ?? 'สร้างแผนไม่สำเร็จ')
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'สร้างแผนสุ่มตรวจไม่สำเร็จ'
+      setError(msg)
+      toast({ title: 'สร้างแผนสุ่มตรวจไม่สำเร็จ', description: msg, variant: 'destructive' })
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const s = plan?.summary
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+              <ListChecks className="h-4 w-4 text-teal-700" aria-hidden />
+              แผนสุ่มตรวจตามความเสี่ยง (Risk-based Sampling)
+            </CardTitle>
+            <CardDescription className="mt-1">
+              เมื่อแถวที่ล้มเหลวมีมากจนทบทวนไม่ไหว — ระบบจัดสรร &quot;งบการทบทวน&quot; ให้กลุ่มที่ความเสี่ยงสูงสุดก่อน
+              (validation ยังรันตรวจครบทุกแถวเหมือนเดิม แผนนี้ช่วยตอบว่า &quot;มนุษย์ควรเปิดดูแถวไหนก่อน&quot; เท่านั้น)
+            </CardDescription>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 shrink-0 gap-1 text-xs"
+            onClick={() => void load()}
+            aria-label="โหลดแผนสุ่มตรวจใหม่"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />
+            โหลดใหม่
+          </Button>
+        </div>
+        {plan && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800">
+              บันทึกจาก batch ล่าสุด · {fmtTime(plan.batchAt)}
+            </Badge>
+            <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-700">
+              นโยบาย {plan.policyLabel}
+            </Badge>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent>
+        {/* ตัวเลือกนโยบาย + ผู้ดำเนินการ (ตาม RBAC — REVIEW_SIGNALS) */}
+        <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="เลือกนโยบายงบการทบทวน">
+          {SAMPLING_POLICIES.map((p) => (
+            <Button
+              key={p.key}
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-pressed={policy === p.key}
+              className={`h-8 gap-1 text-xs ${policy === p.key ? 'border-teal-500 bg-teal-50 text-teal-900 ring-1 ring-teal-500' : ''}`}
+              onClick={() => setPolicy(p.key)}
+            >
+              {p.label}
+            </Button>
+          ))}
+          <div className="ms-auto flex flex-wrap items-center gap-2">
+            <Select value={operator} onValueChange={setOperator}>
+              <SelectTrigger aria-label="ผู้ดำเนินการสร้างแผน (ต้องมีสิทธิ์ทบทวนสัญญาณ)" className="h-8 w-[280px] text-xs">
+                <SelectValue placeholder="เลือกผู้ดำเนินการ" />
+              </SelectTrigger>
+              <SelectContent>
+                {users
+                  .filter((u) => u.status !== 'SUSPENDED' && reviewRoles.includes(u.role as RoleKey))
+                  .map((u) => (
+                    <SelectItem key={u.email} value={u.email} className="text-xs">
+                      {u.name} ({ROLE_LIST.find((r) => r.key === u.role)?.th ?? u.role})
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Button size="sm" className="h-8 gap-1 text-xs" onClick={() => void generate()} disabled={generating}>
+              <ListChecks className="h-3.5 w-3.5" aria-hidden />
+              {generating ? 'กำลังสร้างแผน…' : 'สร้างแผนสุ่มตรวจ'}
+            </Button>
+          </div>
+        </div>
+
+        {loading && <p className="py-6 text-center text-sm text-muted-foreground">กำลังโหลดแผนสุ่มตรวจ…</p>}
+        {error && !loading && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800" role="alert">
+            {error}
+          </div>
+        )}
+        {!loading && !error && !plan && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-muted-foreground">
+            {planMessage ?? 'ยังไม่ได้สร้างแผนสุ่มตรวจสำหรับรอบนี้ — เลือกนโยบายแล้วกด "สร้างแผนสุ่มตรวจ"'}
+          </div>
+        )}
+        {!loading && !error && plan && s && (
+          <>
+            {/* สรุปงบการทบทวน */}
+            <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px]" aria-label="สรุปงบการทบทวน">
+              <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-900">
+                งบทบทวน {s.budgetRows} แถว
+              </Badge>
+              <Badge variant="outline" className="max-w-full whitespace-normal border-slate-200 bg-slate-50 text-slate-700">
+                แถวล้มทั้งรอบ {s.totalFailedRows} · เก็บทบทวนได้ {s.reviewableRows} (จำกัด snapshot 200 แถว/กฎ)
+              </Badge>
+              <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
+                กลุ่มที่รวม {s.includedGroups}/{s.totalGroups}
+              </Badge>
+              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">
+                ครอบคลุมความเสี่ยง {s.riskCoveragePct}%
+              </Badge>
+            </div>
+
+            {plan.groups.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">ไม่มีกลุ่มความล้มเหลวให้จัดสรร (ผลดี)</p>
+            ) : (
+              <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="รายการกลุ่มตามความเสี่ยง">
+                {plan.groups.map((g) => (
+                  <SamplingGroupRow key={`${g.ruleId}-${g.datasetId}`} g={g} />
+                ))}
+              </div>
+            )}
+
+            {/* เกณฑ์แสดงจากตารางค่าคงที่ src/lib/sampling.ts โดยตรง — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ */}
+            <div className="mt-3 space-y-1.5 rounded-md bg-slate-50 px-2.5 py-2">
+              <p className="text-[11px] font-medium text-slate-700">
+                วิธีจัดสรร: <span className="font-mono">{SAMPLING_METHOD}</span> · เพดานคะแนน {RISK_SCORE_MAX}
+              </p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{SAMPLING_FOOTNOTE_TH}</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                สุ่มรายแถวแบบทำซ้ำได้ (seed จาก batch + นโยบาย + กลุ่ม) — สร้างแผนซ้ำด้วยนโยบายเดิมเมื่อสถานะแถวไม่เปลี่ยน จะได้ชุดแถวเดิมเป๊ะ
+                ตรวจย้อนได้ · แถวที่ถูกเลือกมีสถานะ NEW ก่อนเสมอ · นิยามอยู่ใน{' '}
+                <span className="font-mono">src/lib/sampling.ts</span> + <span className="font-mono">src/lib/sampling-engine.ts</span>
+              </p>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function SamplingGroupRow({ g }: { g: SamplePlanView['groups'][number] }) {
+  const f = g.factors
+  const boosts = [
+    f.mlBoost > 0 ? `ML +${f.mlBoost}` : '',
+    f.driftBoost > 0 ? `แนวโน้มแย่ลง +${f.driftBoost}` : '',
+    f.piiBoost > 0 ? `PII +${f.piiBoost}` : '',
+  ].filter(Boolean)
+  const rowNos = g.picked.map((p) => p.rowNo)
+  return (
+    <div role="listitem" className={`rounded-lg border p-3 ${g.included ? '' : 'opacity-60'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className={`text-[10.5px] ${g.riskBand.className}`}>
+            {g.riskBand.label} · {g.riskScore}/{RISK_SCORE_MAX}
+          </Badge>
+          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-600">
+            {g.sourceType || 'ไม่ระบุแหล่ง'}
+          </Badge>
+          <span className="truncate text-sm font-medium">{g.datasetName}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            · {g.column} — {g.conditionName} · มิติ{g.dimensionTh}
+          </span>
+        </div>
+        {g.included ? (
+          <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800">
+            สุ่มให้ทบทวน {g.sampleSize} แถว
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-500">
+            ไม่ได้อยู่ในงบนี้
+          </Badge>
+        )}
+      </div>
+      <div className="mt-2 flex items-center gap-2" aria-label={`คะแนนความเสี่ยง ${g.riskScore} จาก ${RISK_SCORE_MAX}`}>
+        <div className="h-2 min-w-10 flex-1 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-full rounded-full bg-teal-600" style={{ width: `${Math.min(100, (g.riskScore / RISK_SCORE_MAX) * 100)}%` }} />
+        </div>
+      </div>
+      <p className="mt-1.5 text-xs text-slate-600">
+        คะแนน = โอกาส {f.likelihood} ({f.likelihoodLabel}) × ผลกระทบ {f.impact} ({g.severity})
+        {boosts.length > 0 && <span className="text-amber-800"> + {boosts.join(' · ')}</span>} · อัตราล้มเหลว{' '}
+        {(g.failRate * 100).toFixed(1)}%
+      </p>
+      <p className="mt-0.5 text-xs text-slate-600">
+        แถวล้ม {g.failedRows} · เก็บทบทวนได้ {g.reviewableRows} แถว
+        {g.included && g.picked.length > 0 && (
+          <>
+            {' '}
+            · สถานะแถวที่เลือก: NEW {g.statusCounts.NEW} / FIXED {g.statusCounts.FIXED} / IGNORED {g.statusCounts.IGNORED} · แถวที่เลือก:{' '}
+            {rowNos.slice(0, 6).map((n) => `#${n}`).join(', ')}
+            {rowNos.length > 6 ? ` … +${rowNos.length - 6}` : ''}
+          </>
+        )}
+      </p>
     </div>
   )
 }

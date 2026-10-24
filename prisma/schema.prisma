@@ -42,6 +42,7 @@ model Dataset {
   anomalies  DqAnomaly[]
   profileRuns DqProfileRun[]
   issues     DqIssue[]
+  samplePlans DqSamplePlan[] @relation("samplePlans")
   domain     DataDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
   @@index([status])
@@ -136,6 +137,7 @@ model DqRule {
   runs       DqRun[]
   exceptions DqException[]
   anomalies  DqAnomaly[]
+  samplePlans DqSamplePlan[] @relation("samplePlans")
   element    DataElement? @relation(fields: [dataElementId], references: [id], onDelete: SetNull)
 
   @@index([dataElementId])
@@ -183,6 +185,7 @@ model DqValidationBatch {
   failures DqFailureRecord[]
   anomalies DqAnomaly[]
   failureClusters DqFailureCluster[]
+  samplePlans DqSamplePlan[] @relation("samplePlans")
 
   @@index([datasetId, createdAt])
   @@index([groupRunId])
@@ -599,5 +602,35 @@ model DqFailureCluster {
   batch DqValidationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@unique([batchId, signatureKey])
+  @@index([batchId])
+}
+
+// แผนสุ่มตรวจตามความเสี่ยง (v0.26.0) — จัดสรร "งบการทบทวน" รายกฎ×ชุดข้อมูล ตามคะแนนความเสี่ยง
+// คะแนน = โอกาสจากอัตราล้มเหลว × น้ำหนัก severity (สเกลเดียวกับ Risk Methodology) + คะแนนเสริมจากตารางคงที่
+// (ML anomaly ทิศแย่ลง / drift / PII) — เกณฑ์ทั้งหมดใน src/lib/sampling.ts (single source of truth)
+// สุ่มรายแถวแบบ deterministic (seed จาก batch+นโยบาย+กลุ่ม) — นโยบายเดิม + สถานะแถวเดิม = ชุดแถวเดิมเป๊ะ ตรวจย้อนได้
+model DqSamplePlan {
+  id            String   @id @default(cuid())
+  batchId       String
+  policy        String // FULL | P10 | P5 | P1 (ตาราง SAMPLING_POLICIES ใน src/lib/sampling.ts)
+  ruleId        String
+  datasetId     String
+  dimension     String
+  riskScore     Float // คะแนนความเสี่ยงรวม (2–RISK_SCORE_MAX = 30)
+  factorsJson   String   @default("{}") // JSON {likelihood, likelihoodLabel, impact, mlBoost, driftBoost, piiBoost, zScore?}
+  failRate      Float // อัตราล้มเหลวของกลุ่มใน batch นี้ (0–1)
+  failedRows    Int // แถวล้มจาก DqRun.failedRows (ไม่ติด cap)
+  reviewableRows Int    @default(0) // แถวที่เก็บ snapshot ทบทวนได้จริง (DqFailureRecord — cap 200/กฎ)
+  sampleSize    Int      @default(0) // จำนวนแถวที่ได้รับงบจริง
+  included      Boolean  @default(true) // false = งบไม่พอถึงกลุ่มนี้ (เรียงความเสี่ยงแล้วจึงตัดที่กลุ่มท้าย)
+  sampledRecordIdsJson String @default("[]") // JSON string[] — id ของ DqFailureRecord ที่ถูกเลือก
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  rule    DqRule            @relation("samplePlans", fields: [ruleId], references: [id], onDelete: Cascade)
+  dataset Dataset           @relation("samplePlans", fields: [datasetId], references: [id], onDelete: Cascade)
+  batch   DqValidationBatch @relation("samplePlans", fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, ruleId, datasetId])
   @@index([batchId])
 }
