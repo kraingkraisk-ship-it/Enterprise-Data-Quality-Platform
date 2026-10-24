@@ -1463,3 +1463,18 @@ Stage Summary:
 - ไฟล์ใหม่: prisma/schema.prisma (+DqSamplePlan), src/lib/sampling.ts, src/lib/sampling-engine.ts, src/app/api/dq/sampling/route.ts · แก้: dq-dashboard.tsx, views.ts
 - บทเรียนเทคนิค: (1) Prisma 6.19 batched-array transaction รายงาน validation error ผิด operation — ใช้ interactive transaction เมื่อต้อง debug และพิจารณาใช้เป็นค่าเริ่มต้นกับ transaction หลาย ops ที่มี createMany (2) accessibility snapshot แบบ compact ตัด listitem โครงซ้ำ — ตรวจจำนวน render จริงด้วย DOM query เสมอ
 - สถานะ git: commit 4106cc6 + tag v0.26.0 อยู่ที่เครื่องเท่านั้น — โค้ด/E2E สมบูรณ์ 100% รอ push เมื่อผู้ใช้ส่ง PAT ใหม่ (remote ยังเป็น 0b9ba12 = v0.25.0)
+
+---
+Task ID: 46-result
+Agent: Z.ai Code (main session)
+Task: push v0.26.0 ด้วย PAT ใหม่ — ปิดวงจร ② Risk-based Sampling บน GitHub
+
+Work Log:
+- PAT ใหม่ยืนยันด้วย API /user = HTTP 200 (บัญชี kraingkraisk-ship-it) ตามบทเรียน Task 43/44 (ต้องเช็กก่อน push เสมอ)
+- ยืนยันสถานะก่อน push: local HEAD 8083695 (worklog Task 46) บน commit 4106cc6 (v0.26.0) + tag v0.26.0, remote main ยัง 0b9ba12 (v0.25.0), tree สะอาด
+- push main + refs/tags/v0.26.0 → 0b9ba12..8083695 + [new tag] v0.26.0 สำเร็จ
+- ls-remote ยืนยัน: remote main = 8083695 = local, tag v0.26.0 = 4106cc6 = local ตรงทุกตำแหน่ง
+
+Stage Summary:
+- v0.26.0 (② Risk-based Sampling) ปิดวงจร 100% บน remote — main + tag ครบ ระบบ sync สมบูรณ์
+- ครบตามแผน ML ระลอกผ่านมาแล้ว: v0.25.0 (①+④) → v0.26.0 (②) — เหลือ ③ จาก 5 ข้อเสนอ (คลาสสิก ML ตัวสุดท้าย) รอออกแบบ
