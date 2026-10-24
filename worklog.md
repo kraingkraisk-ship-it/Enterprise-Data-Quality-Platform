@@ -1676,3 +1676,18 @@ Work Log:
 Stage Summary:
 - v0.30.0 (ศูนย์บันทึกตรวจสอบ — เมนูใต้การกำกับดูแล · คลัง action กลาง 63 ชนิด · กรอง/ค้น/ส่งออก CSV · นโยบายเก็บรักษา meta-audit) ปิดวงจร 100% บน remote — main + tag ครบ
 - ไทม์ไลน์รวม: v0.25.0 (①④) → v0.26.0 (②) → v0.27.0 (③) → v0.28.0 (ศูนย์ ML) → v0.29.0 (แยกหมวด ML) → v0.30.0 (ศูนย์บันทึกตรวจสอบ)
+
+---
+Task ID: 51
+Agent: Z.ai Code (main orchestrator)
+Task: รับ PAT ใหม่จากผู้ใช้ (หมุนเวียน token) — ตรวจสอบและยืนยันสถานะ repo
+
+Work Log:
+- ผู้ใช้ส่ง PAT ใหม่ (fine-grained) → ตรวจ API /user = 200 · /repos = 200 · header x-accepted-github-permissions แสดง metadata=read จึงทดสอบสิทธิ์เขียนเพิ่ม
+- ทดสอบเขียนด้วยวิธีไม่กระทบ repo: POST /git/blobs (วัตถุแยกไม่ผูก ref ใด — ไม่ปรากฏในโค้ด/commit/tag) = HTTP 201 → สิทธิ์ Contents:write ใช้ได้จริง
+- ตรวจสถานะ repo: main...origin/main ไม่มี ahead/behind (local d9605a1 = remote) · tag v0.30.0 อยู่บน remote แล้ว (Task 50-result) → ไม่มีอะไรค้าง push
+- บันทึกผลและ push งานบันทึกนี้ด้วย PAT ใหม่ = ยืนยันการ push จริงบน ref จริง (ค่า PAT ไม่ถูกบันทึกลง worklog/config ทุกกรณี — inline URL เท่านั้น)
+
+Stage Summary:
+- PAT ใหม่พร้อมใช้สำหรับ push ครั้งถัดไป (อ่าน+เขียนครบ) · repo สมบูรณ์: v0.30.0 ปิดวงจรบน remote แล้ว ไม่มีงานค้าง
+- ไทม์ไลน์รวม: v0.25.0 (①④) → v0.26.0 (②) → v0.27.0 (③) → v0.28.0 (ศูนย์ ML) → v0.29.0 (แยกหมวด ML) → v0.30.0 (ศูนย์บันทึกตรวจสอบ)
