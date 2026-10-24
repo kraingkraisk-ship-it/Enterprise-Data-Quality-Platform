@@ -1663,3 +1663,16 @@ Stage Summary:
 - v0.30.0 ศูนย์บันทึกตรวจสอบครบ: จาก "เขียนเยอะ อ่านยาก" → มีหน้าศูนย์เดียวใต้เมนู การกำกับดูแล: สรุป · กรอง 6 กลุ่ม · ผู้กระทำ · วันที่ · ค้นหา · แบ่งหน้า · ส่งออก CSV ตรงมุมมอง · นโยบายเก็บรักษาที่ meta-audit ตัวเอง — คลัง action กลาง 63 ชนิดแก้ปัญหาชื่อไม่ตรงเอกสารทั้งระบบในจุดเดียว
 - ไฟล์ใหม่ 6: src/lib/audit-actions.ts · src/lib/audit-query.ts · src/app/api/audit/route.ts · src/app/api/audit/export/route.ts · src/app/api/audit/retention/route.ts · src/components/audit-center.tsx · ไฟล์แก้ 4: prisma/schema.prisma (AuditPolicy) · src/lib/views.ts · src/app/page.tsx · src/components/rbac-console.tsx
 - PAT: github_pat_11BYQP3SA0ZDcE9ZHvgeZP_... (ผู้ใช้ส่งใหม่รอบนี้ ตรวจ HTTP 200 ทั้ง /user และ /repos) → push ด้วย inline URL ไม่เก็บลง config
+
+---
+Task ID: 50-result
+Agent: Z.ai Code (main orchestrator)
+Task: push v0.30.0 ขึ้น GitHub (ต่อเนื่อง Task 50)
+
+Work Log:
+- push main v0.30.0 (inline URL x-access-token) → สำเร็จ: main d51b063..916375f · tag v0.30.0 [new tag]
+- ยืนยันบน GitHub API: remote tag v0.30.0 → sha 916375f (ตรง local) · git fetch ซิงก์ → status ไม่มี ahead/behind = unpushed 0
+
+Stage Summary:
+- v0.30.0 (ศูนย์บันทึกตรวจสอบ — เมนูใต้การกำกับดูแล · คลัง action กลาง 63 ชนิด · กรอง/ค้น/ส่งออก CSV · นโยบายเก็บรักษา meta-audit) ปิดวงจร 100% บน remote — main + tag ครบ
+- ไทม์ไลน์รวม: v0.25.0 (①④) → v0.26.0 (②) → v0.27.0 (③) → v0.28.0 (ศูนย์ ML) → v0.29.0 (แยกหมวด ML) → v0.30.0 (ศูนย์บันทึกตรวจสอบ)
