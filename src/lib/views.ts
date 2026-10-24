@@ -16,6 +16,7 @@ import {
   ScanSearch,
   ScrollText,
   ShieldCheck,
+  Sparkles,
   Waypoints,
   type LucideIcon,
 } from 'lucide-react'
@@ -26,7 +27,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.27.0'
+export const APP_VERSION = 'v0.28.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -44,7 +45,7 @@ export type AssetViewKey = 'asset-import' | 'asset-inventory' | 'asset-domain' |
 export type ExecViewKey = 'exec-dashboard' | 'exec-reports'
 
 /** มุมมองหน้าใหม่ของโมดูล Data Quality */
-export type DqViewKey = 'scorecard' | 'rule-library' | 'profiling' | 'validation-results' | 'failed-records' | 'issues'
+export type DqViewKey = 'scorecard' | 'rule-library' | 'profiling' | 'validation-results' | 'failed-records' | 'issues' | 'ml-center'
 
 /** มุมมองทั้งหมดของแอป (รวม Data Asset, RBAC และหน้าแนะนำแพลตฟอร์ม) */
 export type ViewKey = CoreViewKey | AssetViewKey | DqViewKey | ExecViewKey | 'compliance-assessment' | 'rbac' | 'about'
@@ -127,6 +128,13 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     en: 'DQ Issues',
     desc: 'ทะเบียนปัญหาพร้อม lifecycle: เปิด → ดำเนินการ → แก้ไขแล้ว → ปิดโดยผู้อนุมัติ พร้อมแท็บข้อยกเว้น & การอนุมัติ',
     icon: ListChecks,
+  },
+  'ml-center': {
+    key: 'ml-center',
+    th: 'ศูนย์ ML',
+    en: 'ML Center',
+    desc: 'แดชบอร์ดสรุป ML ศูนย์กลาง 4 ตัว (ความผิดปกติข้ามรอบ · สาเหตุร่วม · พยากรณ์แนวโน้ม · แผนสุ่มตรวจ) + สุขภาพ ML + แนวโน้มข้ามรอบ + ปรับเกณฑ์ค่าคงที่จากการใช้งานจริง (สิทธิ์ทบทวนสัญญาณ)',
+    icon: Sparkles,
   },
   rules: {
     key: 'rules',
@@ -224,7 +232,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     labelTh: 'คุณภาพข้อมูล',
     labelEn: 'Data Quality',
-    items: ['scorecard', 'rule-library', 'profiling', 'validation-results', 'failed-records', 'issues'],
+    items: ['scorecard', 'rule-library', 'profiling', 'validation-results', 'failed-records', 'issues', 'ml-center'],
   },
   {
     labelTh: 'การกำกับดูแล',

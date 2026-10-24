@@ -2,6 +2,7 @@
  * Forecast Engine (v0.27.0) — ③ Quality Trend Forecasting
  * พยากรณ์อัตราล้มเหลวรายกฎ×ชุดข้อมูลจาก linear trend ของหน้าต่าง 10 รอบล่าสุด (รวมรอบปัจจุบัน เรียงเวลาจริง)
  * คณิตทั้งหมดอ่านเกณฑ์จาก src/lib/forecast.ts + ml.ts + regulation.ts (single source of truth)
+ * v0.28.0 — เกณฑ์ปรับได้: ดึงค่าจริงจาก DqMlSettings ผ่าน getMlSettings() ครั้งเดียวต่อการประเมิน
  *
  * การทำงาน 2 โหมด (แนวเดียวกับ ml-engine):
  * - evaluateForecastBatch(batchId): คำนวณ + บันทึกลง DqForecast (idempotent ต่อ batch) + ส่งสัญญาณเมื่อผ่านเกณฑ์
@@ -11,17 +12,16 @@
  * หลักการล็อก: พยากรณ์เป็น "สัญญาณล่วงหน้ารอมนุษย์ทบทวน" — ไม่แตะ DqRun.status / threshold / การตัดสินผ่าน-ไม่ผ่าน
  */
 import { db } from '@/lib/db'
-import { DRIFT_R2_MIN, ML_MIN_HISTORY, ML_WINDOW } from '@/lib/ml'
 import { linearTrend } from '@/lib/ml-engine'
 import { DIMENSION_LABELS, isDimensionKey } from '@/lib/dq'
 import { likelihoodOf } from '@/lib/regulation'
+import { getMlSettings } from '@/lib/ml-settings-server'
 import {
   confidenceOf,
   directionOf,
   FORECAST_HORIZONS,
   FORECAST_METHOD,
-  F_MIN_SIGNAL_BAND,
-  F_MIN_SLOPE,
+  type ForecastCriteria,
 } from '@/lib/forecast'
 
 /* --------------------------- โครงผลลัพธ์ (UI ใช้ type-only) --------------------------- */
@@ -91,16 +91,17 @@ function assessForecast(
   currentRun: RunLite,
   window: RunLite[],
   meta: { datasetName: string; sourceType: string; column: string; conditionName: string; severity: string },
+  s: ForecastCriteria,
 ): ForecastView {
   // window จาก DB มาแบบ desc (ใหม่สุดก่อน) — ผู้เรียกต้อง reverse เป็นเวลาจริงก่อนส่งเข้ามา (บทเรียน drift ทิศกลับ v0.25.0)
   const rates = window.map(failRateOf)
   const failRate = failRateOf(currentRun)
-  const insufficient = window.length < ML_MIN_HISTORY
+  const insufficient = window.length < s.mlMinHistory
   const trend = linearTrend(rates)
   const slope = insufficient ? 0 : trend.slope
   const r2 = insufficient ? 0 : trend.r2
-  const dir = insufficient ? directionOf(0) : directionOf(slope)
-  const conf = insufficient ? { key: 'LOW' as const, label: 'ยังไม่พอประเมิน', badgeClass: 'border-slate-200 bg-slate-50 text-slate-500' } : confidenceOf(r2)
+  const dir = insufficient ? directionOf(0, s) : directionOf(slope, s)
+  const conf = insufficient ? { key: 'LOW' as const, label: 'ยังไม่พอประเมิน', badgeClass: 'border-slate-200 bg-slate-50 text-slate-500' } : confidenceOf(r2, s)
 
   // ค่าคาด k รอบข้างหน้า = รอบล่าสุด + slope×k (จำกัด 0–1) — เกณฑ์จาก forecast.ts
   const last = rates.length > 0 ? rates[rates.length - 1] : failRate
@@ -111,11 +112,11 @@ function assessForecast(
     }
   }
 
-  // เกณฑ์ส่งสัญญาณ (จากตารางค่าคงที่): ทิศแย่ลง + R² ≥ DRIFT_R2_MIN + แถวโอกาสของค่าคาดรอบถัดไป ≥ F_MIN_SIGNAL_BAND
+  // เกณฑ์ส่งสัญญาณ (จาก settings ปัจจุบัน): ทิศแย่ลง + R² ≥ driftR2Min + แถวโอกาสของค่าคาดรอบถัดไป ≥ fMinSignalBand
   let signalLevel: ForecastView['signalLevel'] = null
   if (!insufficient && forecasts[1] !== null) {
     const band = likelihoodOf(forecasts[1])
-    if (dir.key === 'WORSE' && r2 >= DRIFT_R2_MIN && band.level >= F_MIN_SIGNAL_BAND) {
+    if (dir.key === 'WORSE' && r2 >= s.driftR2Min && band.level >= s.fMinSignalBand) {
       signalLevel = band.level >= 5 ? 'CRITICAL' : band.level >= 4 ? 'HIGH' : 'MEDIUM'
     }
   }
@@ -149,11 +150,11 @@ function assessForecast(
 }
 
 /** หน้าต่างประวัติล่าสุดของคู่กฎ×ชุดข้อมูล ก่อนเวลาที่กำหนด (รวมรอบที่มี createdAt ≤ before) — เรียงเวลาจริงเก่า→ใหม่ */
-async function windowFor(ruleId: string, datasetId: string, before: Date): Promise<RunLite[]> {
+async function windowFor(ruleId: string, datasetId: string, before: Date, take: number): Promise<RunLite[]> {
   const rows = await db.dqRun.findMany({
     where: { ruleId, datasetId, createdAt: { lte: before } },
     orderBy: { createdAt: 'desc' },
-    take: ML_WINDOW,
+    take,
     select: { id: true, ruleId: true, datasetId: true, totalRows: true, failedRows: true, dimension: true, createdAt: true },
   })
   return rows.reverse() // desc → เวลาจริงเก่า→ใหม่
@@ -180,6 +181,9 @@ export async function evaluateForecastBatch(batchId: string): Promise<ForecastEv
   const batch = await db.dqValidationBatch.findUnique({ where: { id: batchId } })
   if (!batch) throw new Error(`ไม่พบ batch ${batchId}`)
 
+  // เกณฑ์ปัจจุบันจาก DqMlSettings (v0.28.0) — ดึงครั้งเดียวต่อการประเมิน
+  const s = await getMlSettings()
+
   const runs = await db.dqRun.findMany({
     where: { batchId },
     orderBy: { createdAt: 'asc' },
@@ -189,8 +193,8 @@ export async function evaluateForecastBatch(batchId: string): Promise<ForecastEv
   const views: ForecastView[] = []
   for (const run of runs) {
     // หน้าต่างรวมรอบปัจจุบันของคู่นี้ (createdAt ≤ batch.createdAt — ครอบรอบที่เพิ่งรัน)
-    const window = await windowFor(run.ruleId, run.datasetId, batch.createdAt)
-    const view = assessForecast(run, window, await metaFor(run.ruleId, run.datasetId))
+    const window = await windowFor(run.ruleId, run.datasetId, batch.createdAt, s.mlWindow)
+    const view = assessForecast(run, window, await metaFor(run.ruleId, run.datasetId), s)
     views.push(view)
 
     const existing = await db.dqForecast.findUnique({
@@ -252,6 +256,8 @@ export async function evaluateForecastBatch(batchId: string): Promise<ForecastEv
 export async function readForecastBatch(batchId: string): Promise<ForecastEvaluation | null> {
   const batch = await db.dqValidationBatch.findUnique({ where: { id: batchId } })
   if (!batch) return null
+  // แสดงผลตามเกณฑ์ปัจจุบัน (v0.28.0) — ทิศ/ความเชื่อมั่น/สัญญาณ คำนวณใหม่จากค่าดิบที่เก็บไว้
+  const s = await getMlSettings()
   const rows = await db.dqForecast.findMany({
     where: { batchId },
     orderBy: { slope: 'desc' },
@@ -261,12 +267,12 @@ export async function readForecastBatch(batchId: string): Promise<ForecastEvalua
 
   const forecasts: ForecastView[] = []
   for (const row of rows) {
-    const insufficient = row.windowSize < ML_MIN_HISTORY
-    const confidence = insufficient ? { key: 'LOW' as const, label: 'ยังไม่พอประเมิน', badgeClass: 'border-slate-200 bg-slate-50 text-slate-500' } : confidenceOf(row.r2)
-    const direction = insufficient ? directionOf(0) : directionOf(row.slope)
+    const insufficient = row.windowSize < s.mlMinHistory
+    const confidence = insufficient ? { key: 'LOW' as const, label: 'ยังไม่พอประเมิน', badgeClass: 'border-slate-200 bg-slate-50 text-slate-500' } : confidenceOf(row.r2, s)
+    const direction = insufficient ? directionOf(0, s) : directionOf(row.slope, s)
     const band = row.forecast1 !== null ? likelihoodOf(row.forecast1) : { level: 0, label: '—' }
     const signalLevel =
-      !insufficient && row.forecast1 !== null && direction.key === 'WORSE' && row.r2 >= DRIFT_R2_MIN && band.level >= F_MIN_SIGNAL_BAND
+      !insufficient && row.forecast1 !== null && direction.key === 'WORSE' && row.r2 >= s.driftR2Min && band.level >= s.fMinSignalBand
         ? band.level >= 5
           ? ('CRITICAL' as const)
           : band.level >= 4
@@ -291,7 +297,7 @@ export async function readForecastBatch(batchId: string): Promise<ForecastEvalua
       direction,
       forecasts: { 1: row.forecast1, 3: row.forecast3, 5: row.forecast5 },
       windowSize: row.windowSize,
-      history: (await windowFor(row.ruleId, row.datasetId, batch.createdAt)).map((w) => ({
+      history: (await windowFor(row.ruleId, row.datasetId, batch.createdAt, s.mlWindow)).map((w) => ({
         at: w.createdAt.toISOString(),
         failRate: Number(failRateOf(w).toFixed(4)),
       })),
@@ -322,6 +328,7 @@ export async function readForecastBatch(batchId: string): Promise<ForecastEvalua
 
 /** โหมดสด — พยากรณ์จาก "ผลรันล่าสุดรายกฎ×ชุดข้อมูล" (ไม่บันทึก ไม่ส่งสัญญาณ) — คณิตเดียวกับโหมด batch */
 export async function evaluateForecastLatest(): Promise<ForecastEvaluation> {
+  const s = await getMlSettings()
   const pairs = await db.dqRun.groupBy({ by: ['ruleId', 'datasetId'], _max: { createdAt: true } })
   const latestRuns: RunLite[] = []
   for (const p of pairs) {
@@ -336,8 +343,8 @@ export async function evaluateForecastLatest(): Promise<ForecastEvaluation> {
 
   const views: ForecastView[] = []
   for (const run of latestRuns) {
-    const window = await windowFor(run.ruleId, run.datasetId, run.createdAt)
-    views.push(assessForecast(run, window, await metaFor(run.ruleId, run.datasetId)))
+    const window = await windowFor(run.ruleId, run.datasetId, run.createdAt, s.mlWindow)
+    views.push(assessForecast(run, window, await metaFor(run.ruleId, run.datasetId), s))
   }
 
   return {

@@ -13,6 +13,7 @@
  */
 import { db } from '@/lib/db'
 import { likelihoodOf, riskBandOf, SEVERITY_WEIGHT, type RiskBand } from '@/lib/regulation'
+import { getMlSettings } from '@/lib/ml-settings-server'
 import {
   DRIFT_BOOST,
   ML_LEVEL_BOOST,
@@ -202,6 +203,9 @@ export async function generateSamplePlan(batchId: string, policyKey: SamplingPol
   const batch = await db.dqValidationBatch.findUnique({ where: { id: batchId } })
   if (!batch) return { plan: null, reason: 'NO_BATCH', message: 'ไม่พบรอบรัน (batch) นี้ในระบบ' }
 
+  // เกณฑ์ drift อ่านจาก DqMlSettings ปัจจุบัน (v0.28.0 — แก้ duplicate 0.6 เดิมให้อ่านจาก settings เดียวกับ engine ①)
+  const s = await getMlSettings()
+
   // กลุ่ม = ผลรันที่ล้มเหลวของ batch รายกฎ×ชุดข้อมูล (batch เดียวปกติ 1 รันต่อกลุ่ม — รวมกันกัน edge)
   const runs = await db.dqRun.findMany({
     where: { batchId, failedRows: { gt: 0 } },
@@ -245,7 +249,7 @@ export async function generateSamplePlan(batchId: string, policyKey: SamplingPol
   for (const a of anomalies) {
     const worse = a.failRate >= a.baseline
     const boost = worse && (a.level === 'CRITICAL' || a.level === 'HIGH' || a.level === 'MEDIUM') ? ML_LEVEL_BOOST[a.level] : 0
-    const drift = worse && (a.driftSlope ?? 0) > 0 && (a.driftR2 ?? 0) >= 0.6
+    const drift = worse && (a.driftSlope ?? 0) > 0 && (a.driftR2 ?? 0) >= s.driftR2Min
     anomalyMap.set(`${a.ruleId}|${a.datasetId}`, { boost, z: a.level === 'INSUFFICIENT_HISTORY' ? null : a.zScore, drift })
   }
 

@@ -667,3 +667,22 @@ model DqForecast {
   @@index([batchId])
   @@index([direction])
 }
+
+// เกณฑ์ค่าคงที่ของ ML (v0.28.0) — singleton แถวเดียวของระบบ (id = 1)
+// ค่าเริ่มต้นอ้างอิงตารางค่าคงที่เดิมใน src/lib/ml.ts + src/lib/forecast.ts (แหล่งตัวเลขจริงแหล่งเดียว)
+// ปรับได้ผ่านหน้า "ศูนย์ ML" (ต้องมีสิทธิ์ REVIEW_SIGNALS) ทุกการเปลี่ยนแปลงบันทึก Audit Trail
+model DqMlSettings {
+  id              Int      @id @default(1)
+  mlWindow        Int      @default(10) // จำนวนรอบประวัติสูงสุดต่อการคำนวณ baseline/trend
+  mlMinHistory    Int      @default(5) // ประวัติน้อยกว่านี้ = ยังไม่ประเมิน (INSUFFICIENT_HISTORY)
+  zCritical       Float    @default(3) // z ≥ ค่านี้ = สูงมาก (CRITICAL)
+  zHigh           Float    @default(2) // z ≥ ค่านี้ = สูง (HIGH)
+  zMedium         Float    @default(1) // z ≥ ค่านี้ = ปานกลาง (MEDIUM) — ต่ำกว่า = ปกติ
+  driftR2Min      Float    @default(0.6) // R² ต่ำสุดที่ถือว่า drift/trend มีนัยสำคัญ
+  clusterShareMin Float    @default(0.4) // สัดส่วนความล้มเหลวขั้นต่ำที่กลุ่มเสนอเป็นสมมติฐานสาเหตุร่วม
+  fR2High         Float    @default(0.8) // R² ที่ถือว่าเส้นพยากรณ์แม่นยำสูง
+  fMinSlope       Float    @default(0.01) // ความชันขั้นต่ำที่ถือว่า "มีทิศทาง" (0.01 = 1 จุด% ต่อรอบ)
+  fMinSignalBand  Int      @default(3) // แถวโอกาสขั้นต่ำของค่าคาดรอบถัดไปที่จะส่งสัญญาณ (3 = ปานกลาง)
+  updatedBy       String? // email ผู้บันทึกล่าสุด (audit trail)
+  updatedAt       DateTime @updatedAt
+}

@@ -42,8 +42,9 @@ import { ROLE_LIST, type RoleKey } from '@/lib/rbac'
 import { SEVERITY_KEYS, SEVERITY_LABELS, rolesWithPermission, type DimensionKey, type SeverityKey } from '@/lib/dq'
 import { RISK_SCORE_MAX, SAMPLING_FOOTNOTE_TH, SAMPLING_METHOD, SAMPLING_POLICIES } from '@/lib/sampling'
 import type { SamplePlanView } from '@/lib/sampling-engine'
-import { DRIFT_R2_MIN, CLUSTER_SHARE_MIN, ML_FOOTNOTE_TH, ML_MIN_HISTORY, Z_LEVELS } from '@/lib/ml'
-import { F_MIN_SIGNAL_BAND, FORECAST_FOOTNOTE_TH } from '@/lib/forecast'
+import { mlFootnoteTh, zBandsOf } from '@/lib/ml'
+import { forecastFootnoteTh } from '@/lib/forecast'
+import { DEFAULT_ML_SETTINGS, type MlSettings } from '@/lib/ml-settings'
 import type { ForecastEvaluation, ForecastHorizons, ForecastView } from '@/lib/forecast-engine'
 import type { AnomalyView, ClusterView, MlEvaluation } from '@/lib/ml-engine'
 import {
@@ -2143,6 +2144,24 @@ function useMlEvaluation(endpoint: 'anomalies' | 'clusters') {
   return { data, loading, error, reload }
 }
 
+/** เกณฑ์ ML ปัจจุบันจาก /api/dq/ml/settings — แผงแสดงเกณฑ์เดียวกับที่ engine ใช้คำนวณ (v0.28.0) */
+function useMlSettings(): MlSettings {
+  const [s, setS] = useState<MlSettings>(DEFAULT_ML_SETTINGS)
+  useEffect(() => {
+    let live = true
+    fetch('/api/dq/ml/settings')
+      .then((r) => r.json())
+      .then((b: { settings?: MlSettings }) => {
+        if (live && b?.settings) setS(b.settings)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
+  return s
+}
+
 /** ป้ายโหมดการประเมิน — โปร่งใสว่าตัวเลขมาจาก batch ที่บันทึกหรือโหมดสด */
 function MlModeBadge({ mode, batchAt }: { mode: string; batchAt: string | null }) {
   if (mode === 'BATCH') {
@@ -2189,6 +2208,8 @@ function MlSparkline({ history, baseline }: { history: Array<{ failRate: number 
 /** ① ความผิดปกติข้ามรอบ — เรียนรู้ baseline รายกฎจากประวัติจริง (v0.25.0) */
 function MlAnomalyPanel() {
   const { data, loading, error, reload } = useMlEvaluation('anomalies')
+  const s = useMlSettings()
+  const bands = zBandsOf(s)
   const anomalies = data?.anomalies ?? []
   const counts = {
     CRITICAL: anomalies.filter((a) => a.level === 'CRITICAL').length,
@@ -2245,21 +2266,22 @@ function MlAnomalyPanel() {
             ) : (
               <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="รายการความผิดปกติรายกฎ">
                 {anomalies.map((a) => (
-                  <MlAnomalyRow key={`${a.ruleId}-${a.datasetId}`} a={a} />
+                  <MlAnomalyRow key={`${a.ruleId}-${a.datasetId}`} a={a} minHistory={s.mlMinHistory} />
                 ))}
               </div>
             )}
-            {/* เกณฑ์แสดงจากตารางค่าคงที่ src/lib/ml.ts โดยตรง — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ */}
+            {/* เกณฑ์แสดงจาก settings ปัจจุบัน (v0.28.0) — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ ปรับได้ที่ศูนย์ ML */}
             <div className="mt-3 space-y-1.5 rounded-md bg-slate-50 px-2.5 py-2">
               <p className="text-[11px] font-medium text-slate-700">
                 เกณฑ์ระดับจากคะแนน z:{' '}
-                {Z_LEVELS.slice()
+                {bands
+                  .slice()
                   .reverse()
                   .map((z) => `z ≥ ${z.minZ} = ${z.label}`)
                   .join(' · ')}{' '}
-                · ต่ำกว่า {Z_LEVELS[Z_LEVELS.length - 1].minZ} = ปกติ
+                · ต่ำกว่า {bands[bands.length - 1].minZ} = ปกติ
               </p>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">{ML_FOOTNOTE_TH}</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{mlFootnoteTh(s)}</p>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 ประเมินอัตโนมัติหลังรัน validation ทุกครั้ง — ระดับ สูง/สูงมาก ถูกส่งเข้ากล่องสัญญาณ (รอมนุษย์ทบทวน) ·
                 นิยามอยู่ใน <span className="font-mono">src/lib/ml.ts</span> + <span className="font-mono">src/lib/ml-engine.ts</span> ตรวจย้อนได้ทุกตัวเลข
@@ -2272,7 +2294,7 @@ function MlAnomalyPanel() {
   )
 }
 
-function MlAnomalyRow({ a }: { a: AnomalyView }) {
+function MlAnomalyRow({ a, minHistory }: { a: AnomalyView; minHistory: number }) {
   const insufficient = a.level === 'INSUFFICIENT_HISTORY'
   return (
     <div role="listitem" className={`rounded-lg border p-3 ${insufficient ? 'opacity-70' : ''}`}>
@@ -2296,7 +2318,7 @@ function MlAnomalyRow({ a }: { a: AnomalyView }) {
       </div>
       {insufficient ? (
         <p className="mt-1.5 text-xs text-muted-foreground">
-          ประวัติไม่พอ — มี {a.windowSize}/{ML_MIN_HISTORY} รอบ (ระบบจะเริ่มประเมินเมื่อประวัติครบ {ML_MIN_HISTORY} รอบ เพื่อความน่าเชื่อถือของ baseline)
+          ประวัติไม่พอ — มี {a.windowSize}/{minHistory} รอบ (ระบบจะเริ่มประเมินเมื่อประวัติครบ {minHistory} รอบ เพื่อความน่าเชื่อถือของ baseline)
         </p>
       ) : (
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
@@ -2317,6 +2339,7 @@ function MlAnomalyRow({ a }: { a: AnomalyView }) {
 /** ④ สมมติฐานสาเหตุร่วม — จัดกลุ่ม exact-match ตามลายเซ็น (v0.25.0) */
 function MlClusterCard() {
   const { data, loading, error, reload } = useMlEvaluation('clusters')
+  const s = useMlSettings()
   const clusters = data?.clusters ?? []
   return (
     <Card>
@@ -2367,7 +2390,7 @@ function MlClusterCard() {
               </div>
             )}
             <p className="mt-3 rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              เกณฑ์เสนอสมมติฐาน: กลุ่มครอบ ≥ {Math.round(CLUSTER_SHARE_MIN * 100)}% ของความล้มเหลวทั้งรอบ (CLUSTER_SHARE_MIN ใน src/lib/ml.ts) ·
+              เกณฑ์เสนอสมมติฐาน: กลุ่มครอบ ≥ {Math.round(s.clusterShareMin * 100)}% ของความล้มเหลวทั้งรอบ (clusterShareMin — ปรับได้ที่ศูนย์ ML) ·
               นับแถวจากผลรันจริงรายกฎ — เป็นข้อเสนอให้มนุษย์เริ่มตรวจจุดที่ใช่ที่สุดก่อนเสมอ ไม่ใช่การสรุปสาเหตุแทนผู้เชี่ยวชาญ
             </p>
           </>
@@ -2432,13 +2455,14 @@ function useForecastData() {
 
 function ForecastPanel() {
   const { data, loading, error, reload } = useForecastData()
+  const s = useMlSettings()
   const rows = data?.forecasts ?? []
   const counts = {
     WORSE: rows.filter((f) => f.direction.key === 'WORSE').length,
     BETTER: rows.filter((f) => f.direction.key === 'BETTER').length,
-    STABLE: rows.filter((f) => f.direction.key === 'STABLE' && f.windowSize >= ML_MIN_HISTORY).length,
+    STABLE: rows.filter((f) => f.direction.key === 'STABLE' && f.windowSize >= s.mlMinHistory).length,
     SIGNAL: rows.filter((f) => f.signalLevel !== null).length,
-    INSUFFICIENT: rows.filter((f) => f.windowSize < ML_MIN_HISTORY).length,
+    INSUFFICIENT: rows.filter((f) => f.windowSize < s.mlMinHistory).length,
   }
   return (
     <Card>
@@ -2482,16 +2506,16 @@ function ForecastPanel() {
             ) : (
               <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="รายการพยากรณ์แนวโน้มรายกฎ">
                 {rows.map((f) => (
-                  <ForecastRow key={`${f.ruleId}-${f.datasetId}`} f={f} />
+                  <ForecastRow key={`${f.ruleId}-${f.datasetId}`} f={f} minHistory={s.mlMinHistory} />
                 ))}
               </div>
             )}
-            {/* เกณฑ์แสดงจากตารางค่าคงที่ src/lib/forecast.ts + ml.ts โดยตรง — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ */}
+            {/* เกณฑ์แสดงจาก settings ปัจจุบัน (v0.28.0) — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ ปรับได้ที่ศูนย์ ML */}
             <div className="mt-3 space-y-1.5 rounded-md bg-slate-50 px-2.5 py-2">
-              <p className="text-[11px] leading-relaxed text-muted-foreground">{FORECAST_FOOTNOTE_TH}</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{forecastFootnoteTh(s)}</p>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
-                ส่งสัญญาณล่วงหน้า (kind <span className="font-mono">ML_FORECAST</span>) เฉพาะ: ทิศแย่ลง · R² ≥ {DRIFT_R2_MIN} · ค่าคาดรอบถัดไปอยู่แถวโอกาสขั้นต่ำ{' '}
-                {F_MIN_SIGNAL_BAND} (ปานกลาง = ≥ 10% ตาม LIKELIHOOD_BANDS) — ระดับสัญญาณจากแถวโอกาสของค่าคาด (แถว 5 = วิกฤต / 4 = สูง / 3 = ปานกลาง)
+                ส่งสัญญาณล่วงหน้า (kind <span className="font-mono">ML_FORECAST</span>) เฉพาะ: ทิศแย่ลง · R² ≥ {s.driftR2Min} · ค่าคาดรอบถัดไปอยู่แถวโอกาสขั้นต่ำ{' '}
+                {s.fMinSignalBand} (ปานกลาง = ≥ 10% ตาม LIKELIHOOD_BANDS) — ระดับสัญญาณจากแถวโอกาสของค่าคาด (แถว 5 = วิกฤต / 4 = สูง / 3 = ปานกลาง)
               </p>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 พยากรณ์อัตโนมัติหลังรัน validation ทุกครั้ง — นิยามอยู่ใน <span className="font-mono">src/lib/forecast.ts</span> +{' '}
@@ -2505,8 +2529,8 @@ function ForecastPanel() {
   )
 }
 
-function ForecastRow({ f }: { f: ForecastView }) {
-  const insufficient = f.windowSize < ML_MIN_HISTORY
+function ForecastRow({ f, minHistory }: { f: ForecastView; minHistory: number }) {
+  const insufficient = f.windowSize < minHistory
   const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`)
   const slopePct = (f.slope * 100).toFixed(2)
   return (
@@ -2541,7 +2565,7 @@ function ForecastRow({ f }: { f: ForecastView }) {
       </div>
       {insufficient ? (
         <p className="mt-1.5 text-xs text-muted-foreground">
-          ประวัติไม่พอ — มี {f.windowSize}/{ML_MIN_HISTORY} รอบ (ระบบจะเริ่มพยากรณ์เมื่อประวัติครบ {ML_MIN_HISTORY} รอบ เพื่อความน่าเชื่อถือของเส้น trend)
+          ประวัติไม่พอ — มี {f.windowSize}/{minHistory} รอบ (ระบบจะเริ่มพยากรณ์เมื่อประวัติครบ {minHistory} รอบ เพื่อความน่าเชื่อถือของเส้น trend)
         </p>
       ) : (
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">

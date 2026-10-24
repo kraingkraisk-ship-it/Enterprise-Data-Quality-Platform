@@ -1,6 +1,8 @@
 /**
  * ML Engine (v0.25.0) — ① Anomaly Detection ข้ามรอบ + ④ Root Cause Clustering
  * คณิตทั้งหมดอ่านเกณฑ์จาก src/lib/ml.ts (ตารางข้อมูล — anti-drift เดียวกับ regulation.ts)
+ * v0.28.0 — เกณฑ์ปรับได้: ดึงค่าจริงจาก DqMlSettings ผ่าน getMlSettings() ครั้งเดียวต่อการประเมิน
+ * (ไม่มีแถว/อ่านไม่ได้ = ใช้ค่าเริ่มต้นจากตารางค่าคงที่ — ระบบไม่เคยพังเพราะ settings)
  *
  * การทำงาน 2 โหมด:
  * - evaluateBatch(batchId): คำนวณ + บันทึกผลลง DqAnomaly/DqFailureCluster (idempotent ต่อ batch)
@@ -14,16 +16,13 @@
 import { db } from '@/lib/db'
 import {
   ANOMALY_METHOD,
-  CLUSTER_SHARE_MIN,
-  DRIFT_R2_MIN,
   MAD_TO_SD,
   MIN_MAD,
-  ML_MIN_HISTORY,
-  ML_WINDOW,
   SIGNAL_LEVELS,
-  Z_MIN_ANOMALY,
   zLevelOf,
+  type MlCriteria,
 } from '@/lib/ml'
+import { getMlSettings } from '@/lib/ml-settings-server'
 import { DIMENSION_LABELS, isDimensionKey, type DimensionKey } from '@/lib/dq'
 
 /** มิติที่ไม่รู้จัก → แสดงเป็นค่าดิบ (กัน label หาย) */
@@ -141,6 +140,7 @@ function assessAnomaly(
   currentRun: RunLite,
   history: RunLite[],
   meta: { datasetName: string; sourceType: string; column: string; conditionName: string; severity: string },
+  s: MlCriteria,
 ): AnomalyView {
   const failRate = failRateOf(currentRun)
   // history จาก DB เรียง createdAt desc (ใหม่สุดก่อน) — ต้องกลับเป็นเวลาจริง (เก่า→ใหม่)
@@ -150,13 +150,13 @@ function assessAnomaly(
   const madRaw = median(rates.map((r) => Math.abs(r - baseline)))
   const mad = Math.max(madRaw * MAD_TO_SD, MIN_MAD)
   const zScore = Math.abs(failRate - baseline) / mad
-  const zl = zLevelOf(zScore)
+  const zl = zLevelOf(zScore, s)
   const trend = linearTrend(rates)
-  const drift = trend.slope > 0 && trend.r2 >= DRIFT_R2_MIN
-  const insufficient = history.length < ML_MIN_HISTORY
+  const drift = trend.slope > 0 && trend.r2 >= s.driftR2Min
+  const insufficient = history.length < s.mlMinHistory
   // ทิศทางสำคัญ: ห่างจาก baseline ในทิศ "ดีขึ้น" (failRate ต่ำลงผิดปกติ) ไม่ใช่ความเสี่ยง —
   // แสดงเป็นข้อมูลให้ตรวจ (อาจมีข้อมูลหาย) แต่ไม่นับระดับความเสี่ยงและไม่ส่งสัญญาณ
-  const anomalous = zScore >= Z_MIN_ANOMALY
+  const anomalous = zScore >= s.zMedium
   const better = anomalous && failRate < baseline
 
   return {
@@ -203,7 +203,7 @@ function assessAnomaly(
  * จัดกลุ่มผลรันที่ล้มเหลวด้วยลายเซ็น (แหล่งข้อมูล, ชุดข้อมูล, มิติ) แบบ exact-match
  * ตัวนับใช้ DqRun.failedRows โดยตรง (ไม่ติด cap 200 ของ failure record) — แม่นกว่าและอธิบายได้
  */
-async function buildClusters(runs: RunLite[]): Promise<{ clusters: ClusterView[]; totalFailedRows: number }> {
+async function buildClusters(runs: RunLite[], s: MlCriteria): Promise<{ clusters: ClusterView[]; totalFailedRows: number }> {
   const failed = runs.filter((r) => r.failedRows > 0)
   if (failed.length === 0) return { clusters: [], totalFailedRows: 0 }
 
@@ -244,7 +244,7 @@ async function buildClusters(runs: RunLite[]): Promise<{ clusters: ClusterView[]
       .sort((a, b) => b.failedRows - a.failedRows)
     const dims = [...new Set(members.map((m) => m.dimension))]
     const hypothesis =
-      sharePct >= CLUSTER_SHARE_MIN * 100
+      sharePct >= s.clusterShareMin * 100
         ? `ความล้มเหลว ${sharePct}% ของทั้งรอบมาจากแหล่งข้อมูล "${sourceType || 'ไม่ระบุ'}" ในมิติ${dims
             .map(dimensionThOf)
             .join('/')} (${memberViews.length} กฎ) — แนะนำตรวจสอบต้นทางของแหล่งนี้ก่อนรายกฎ เพราะมักมีสาเหตุร่วมกัน`
@@ -287,6 +287,9 @@ export async function evaluateBatch(batchId: string): Promise<MlEvaluation> {
   const batch = await db.dqValidationBatch.findUnique({ where: { id: batchId } })
   if (!batch) throw new Error(`ไม่พบ batch ${batchId}`)
 
+  // เกณฑ์ปัจจุบันจาก DqMlSettings (v0.28.0) — ดึงครั้งเดียวต่อการประเมิน
+  const s = await getMlSettings()
+
   const runs = await db.dqRun.findMany({
     where: { batchId },
     orderBy: { createdAt: 'asc' },
@@ -307,18 +310,23 @@ export async function evaluateBatch(batchId: string): Promise<MlEvaluation> {
     const history = await db.dqRun.findMany({
       where: { ruleId: run.ruleId, datasetId: run.datasetId, createdAt: { lt: batch.createdAt }, id: { notIn: runs.map((x) => x.id) } },
       orderBy: { createdAt: 'desc' },
-      take: ML_WINDOW,
+      take: s.mlWindow,
       select: { id: true, ruleId: true, datasetId: true, totalRows: true, failedRows: true, passRate: true, dimension: true, createdAt: true },
     })
     const rule = ruleMap.get(run.ruleId)
     const ds = datasetMap.get(run.datasetId)
-    const view = assessAnomaly(run, history, {
-      datasetName: ds?.name ?? run.datasetId,
-      sourceType: ds?.sourceType ?? '',
-      column: rule?.column ?? run.ruleId,
-      conditionName: rule?.condition ?? run.ruleId,
-      severity: rule?.severity ?? 'MEDIUM',
-    })
+    const view = assessAnomaly(
+      run,
+      history,
+      {
+        datasetName: ds?.name ?? run.datasetId,
+        sourceType: ds?.sourceType ?? '',
+        column: rule?.column ?? run.ruleId,
+        conditionName: rule?.condition ?? run.ruleId,
+        severity: rule?.severity ?? 'MEDIUM',
+      },
+      s,
+    )
     anomalyViews.push(view)
 
     const existing = await db.dqAnomaly.findUnique({
@@ -356,7 +364,7 @@ export async function evaluateBatch(batchId: string): Promise<MlEvaluation> {
         dimension: isDimensionKey(view.dimension) ? view.dimension : 'VALIDITY',
         title,
         detail: `z = ${view.zScore} (ระดับ${view.label}) — รอบนี้ ${(view.failRate * 100).toFixed(1)}% เทียบ baseline ${(view.baseline * 100).toFixed(1)}% (มัธยฐาน ${view.windowSize} รอบ, MAD ${(view.mad * 100).toFixed(2)}%)${
-          view.drift ? ' + แนวโน้มแย่ลงต่อเนื่อง (R² ≥ ' + DRIFT_R2_MIN + ')' : ''
+          view.drift ? ' + แนวโน้มแย่ลงต่อเนื่อง (R² ≥ ' + s.driftR2Min + ')' : ''
         } — เป็นสัญญาณรอมนุษย์ทบทวน ไม่ตัดสินแทนเกณฑ์ผ่าน/ไม่ผ่านเดิม (ML v0.25.0)`,
         severity: view.level === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
         status: 'PENDING_REVIEW',
@@ -365,7 +373,7 @@ export async function evaluateBatch(batchId: string): Promise<MlEvaluation> {
   }
 
   // ---------- ④ cluster ----------
-  const { clusters, totalFailedRows } = await buildClusters(runs)
+  const { clusters, totalFailedRows } = await buildClusters(runs, s)
   for (const c of clusters) {
     const existing = await db.dqFailureCluster.findUnique({
       where: { batchId_signatureKey: { batchId, signatureKey: c.signatureKey } },
@@ -409,6 +417,8 @@ export async function evaluateBatch(batchId: string): Promise<MlEvaluation> {
 export async function readBatchEvaluation(batchId: string): Promise<MlEvaluation | null> {
   const batch = await db.dqValidationBatch.findUnique({ where: { id: batchId } })
   if (!batch) return null
+  // แสดงผลตามเกณฑ์ปัจจุบัน (v0.28.0) — ระดับ/ทิศ drift คำนวณใหม่จากค่าดิบที่เก็บไว้
+  const s = await getMlSettings()
   const [anomalyRows, clusterRows] = await Promise.all([
     db.dqAnomaly.findMany({
       where: { batchId },
@@ -421,9 +431,9 @@ export async function readBatchEvaluation(batchId: string): Promise<MlEvaluation
 
   const anomalies: AnomalyView[] = []
   for (const row of anomalyRows) {
-    const insufficient = row.level === 'INSUFFICIENT_HISTORY'
-    const zl = zLevelOf(row.zScore)
-    const better = !insufficient && row.zScore >= Z_MIN_ANOMALY && row.failRate < row.baseline
+    const insufficient = row.windowSize < s.mlMinHistory
+    const zl = zLevelOf(row.zScore, s)
+    const better = !insufficient && row.zScore >= s.zMedium && row.failRate < row.baseline
     anomalies.push({
       ruleId: row.ruleId,
       datasetId: row.datasetId,
@@ -449,7 +459,7 @@ export async function readBatchEvaluation(batchId: string): Promise<MlEvaluation
       better,
       driftSlope: row.driftSlope,
       driftR2: row.driftR2,
-      drift: (row.driftSlope ?? 0) > 0 && (row.driftR2 ?? 0) >= DRIFT_R2_MIN,
+      drift: (row.driftSlope ?? 0) > 0 && (row.driftR2 ?? 0) >= s.driftR2Min,
       windowSize: row.windowSize,
       history: await historyFor(row.ruleId, row.datasetId, batch.createdAt),
       at: row.createdAt.toISOString(),
@@ -500,6 +510,7 @@ export async function readBatchEvaluation(batchId: string): Promise<MlEvaluation
  * ใช้เมื่อยังไม่มี batch ในระบบ (เช่นข้อมูล seed) — คณิตเดียวกับโหมด batch ทุกตัวเลข
  */
 export async function evaluateLatest(): Promise<MlEvaluation> {
+  const s = await getMlSettings()
   // ผลรันล่าสุดของแต่ละคู่ (ruleId, datasetId)
   const pairs = await db.dqRun.groupBy({ by: ['ruleId', 'datasetId'], _max: { createdAt: true } })
   const latestRuns: RunLite[] = []
@@ -527,23 +538,28 @@ export async function evaluateLatest(): Promise<MlEvaluation> {
     const history = await db.dqRun.findMany({
       where: { ruleId: run.ruleId, datasetId: run.datasetId, createdAt: { lt: run.createdAt } },
       orderBy: { createdAt: 'desc' },
-      take: ML_WINDOW,
+      take: s.mlWindow,
       select: { id: true, ruleId: true, datasetId: true, totalRows: true, failedRows: true, passRate: true, dimension: true, createdAt: true },
     })
     const rule = ruleMap.get(run.ruleId)
     const ds = datasetMap.get(run.datasetId)
     anomalyViews.push(
-      assessAnomaly(run, history, {
-        datasetName: ds?.name ?? run.datasetId,
-        sourceType: ds?.sourceType ?? '',
-        column: rule?.column ?? run.ruleId,
-        conditionName: rule?.condition ?? run.ruleId,
-        severity: rule?.severity ?? 'MEDIUM',
-      }),
+      assessAnomaly(
+        run,
+        history,
+        {
+          datasetName: ds?.name ?? run.datasetId,
+          sourceType: ds?.sourceType ?? '',
+          column: rule?.column ?? run.ruleId,
+          conditionName: rule?.condition ?? run.ruleId,
+          severity: rule?.severity ?? 'MEDIUM',
+        },
+        s,
+      ),
     )
   }
 
-  const { clusters, totalFailedRows } = await buildClusters(latestRuns)
+  const { clusters, totalFailedRows } = await buildClusters(latestRuns, s)
   for (const v of anomalyViews) {
     v.history = await historyFor(v.ruleId, v.datasetId, new Date(v.at))
   }

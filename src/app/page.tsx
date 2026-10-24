@@ -17,6 +17,7 @@ import DqScorecard from '@/components/dq/scorecard'
 import DqFailedRecords from '@/components/dq/failed-records'
 import DqProfiling from '@/components/dq/profiling'
 import DqIssues from '@/components/dq/issues'
+import MlCenter from '@/components/dq/ml-center'
 import ExecutiveDashboard from '@/components/dq/executive-dashboard'
 import ExecutiveReports from '@/components/dq/executive-reports'
 import ComplianceAssessment from '@/components/dq/compliance-assessment'
@@ -124,6 +125,12 @@ export default function Home() {
           </div>
           <div className={view === 'issues' ? '' : 'hidden'} aria-hidden={view !== 'issues'}>
             <DqIssues active={view === 'issues'} />
+          </div>
+
+          {/* ศูนย์ ML — แดชบอร์ดสรุป ML ศูนย์กลาง + ปรับเกณฑ์ค่าคงที่ (v0.28.0)
+              คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลใหม่เมื่อ active */}
+          <div className={view === 'ml-center' ? '' : 'hidden'} aria-hidden={view !== 'ml-center'}>
+            <MlCenter active={view === 'ml-center'} />
           </div>
 
           {/* หน้าระดับผู้บริหาร — แดชบอร์ด + รายงานพิมพ์/PDF (v0.17.0) สิทธิ์ตรวจใน API */}
