@@ -1723,3 +1723,17 @@ Work Log:
 Stage Summary:
 - v0.31.0 ศูนย์ข้อมูลอ้างอิงครบ: จาก "ค่ามาตรฐานพิมพ์แปะกระจาย 3 จุด" → ทะเบียนเดียวแก้ที่ต้นทางจุดเดียว — กฎ IN_LIST/REFERENCE_MATCH โหมดทะเบียนใช้ค่าล่าสุดทันที · valueDomain ผูกทะเบียน (โครงสร้างแทนข้อความ) · Mapping LOOKUP อ้างทะเบียนได้ · สแกนค่านอกทะเบียน (orphan scan) เจอรหัสที่ระบบต้นทางใช้นอกมาตรฐาน · นำเข้า/ส่งออก CSV · workflow อนุมัติเดียวกับ Data Element (ผู้ส่ง MANAGE_DATASETS · ผู้อนุมัติ APPROVE_EXCEPTIONS · version +0.1 anti-drift ตาม Audit Trail) — ทุกการเปลี่ยนแปลง 15 action ใหม่ลง Audit Log ครบ
 - ไฟล์ใหม่ 11: src/lib/reference.ts · src/lib/reference-server.ts · src/app/api/reference/sets/route.ts · sets/[id]/route.ts · sets/[id]/values/route.ts · sets/[id]/import/route.ts · sets/[id]/export/route.ts · sets/[id]/scan/route.ts · src/components/reference-center.tsx + แก้ 12 ไฟล์เดิม (schema · dq.ts · run · run-domain · rules · elements ×2 · mappings · mappings-server · audit-actions · views.ts · page.tsx · core-features-console · data-domain-console · mapping-form · mapping-detail-dialog · types.ts)
+
+---
+Task ID: 52-result
+Agent: Z.ai Code (main orchestrator)
+Task: push v0.31.0 — ปิดวงจร ข้อมูลอ้างอิง บน GitHub (ต่อเนื่อง Task 52)
+
+Work Log:
+- ยืนยัน state ที่เครื่อง: commit b45bd43 (v0.31.0 feat ข้อมูลอ้างอิง) + tag v0.31.0 · tree สะอาด ตรงกับ worklog Task 52 ทุกจุด
+- ตรวจ PAT ก่อน push ตามวินัยมาตรฐาน (API /user + /repos) = **HTTP 401 ทั้งคู่** (PAT ที่ผู้ใช้ส่งในเซสชันก่อนหมดอายุ/ถูก revoke แล้ว — รูปแบบเดียวกับ Task 43–49 ทุกครั้ง)
+- ไม่พยายาม push — บันทึกสถานะ "รอ PAT ใหม่" แล้ว commit worklog นี้ (โครงสร้าง/โค้ด/E2E สมบูรณ์ 100% ที่เครื่อง)
+
+Stage Summary:
+- v0.31.0 (ข้อมูลอ้างอิง — ทะเบียนค่ามาตรฐานศูนย์กลางใต้ Data Asset: ทะเบียน+ค่า+workflow อนุมัติ+โหมดทะเบียนในกฎ IN_LIST/REFERENCE_MATCH+ผูก valueDomain/LOOKUP+สแกน orphan+CSV) ครบที่เครื่อง: commit b45bd43 + tag v0.31.0 (local) — **push ยังไม่ได้: PAT 401 รอ PAT ใหม่จากผู้ใช้**
+- ไทม์ไลน์รวม: v0.25.0 (①④) → v0.26.0 (②) → v0.27.0 (③) → v0.28.0 (ศูนย์ ML) → v0.29.0 (แยกหมวด ML) → v0.30.0 (ศูนย์บันทึกตรวจสอบ) → v0.31.0 (ข้อมูลอ้างอิง)
