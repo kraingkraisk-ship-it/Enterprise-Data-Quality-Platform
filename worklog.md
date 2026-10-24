@@ -1478,3 +1478,44 @@ Work Log:
 Stage Summary:
 - v0.26.0 (② Risk-based Sampling) ปิดวงจร 100% บน remote — main + tag ครบ ระบบ sync สมบูรณ์
 - ครบตามแผน ML ระลอกผ่านมาแล้ว: v0.25.0 (①+④) → v0.26.0 (②) — เหลือ ③ จาก 5 ข้อเสนอ (คลาสสิก ML ตัวสุดท้าย) รอออกแบบ
+
+---
+Task ID: 47-spec
+Agent: Z.ai Code (main session)
+Task: สเปก ③ Quality Trend Forecasting — พยากรณ์แนวโน้มคุณภาพข้อมูล (v0.27.0) — ข้อเสนอ ML ตัวสุดท้ายจาก 5 ข้อเดิม (คลาสสิกสถิติ ไม่ใช่ LLM — ผู้ใช้มอบอำนาจเลือกทิศทาง "เริ่มได้เลย")
+
+Work Log:
+- เลือกทิศทางเองจาก 3 ตัวเลือกที่เสนอผู้ใช้ (ทำนายแนวโน้ม / จัดลำดับสัญญาณ / ตรวจข้อมูลซ้ำ) — เลือก "พยากรณ์แนวโน้ม" เพราะ: ใช้คณิต linear regression (slope + R²) เดิมที่พิสูจน์แล้วใน ①, ต่อยอด sparkline ที่มีอยู่, อธิบายได้ทุกตัวเลข (ไม่ใช้กล่องดำ) ตรงปรัชญาโปรเจกต์
+- หลักการ: ต่อกฎ×ชุดข้อมูล — regress อัตราล้มเหลวจากหน้าต่าง 10 รอบล่าสุด "รวมรอบปัจจุบัน" เรียงเวลาจริงเก่า→ใหม่ (บทเรียน drift ทิศกลับ) → forecast(k) = clamp(รอบล่าสุด + slope×k, 0, 1) ที่ k = 1/3/5 รอบ
+- ค่าคงที่ (src/lib/forecast.ts — single source of truth): FORECAST_METHOD='LINEAR_TREND_FORECAST', FORECAST_HORIZONS=[1,3,5], F_R2_HIGH=0.8 (แม่นยำสูง), แม่นยำปานกลางใช้ DRIFT_R2_MIN=0.6 จาก ml.ts (ไม่ทำซ้ำค่า), F_MIN_SLOPE=0.01 (ต่ำกว่า 1pp/รอบ = ทรงตัว), F_MIN_SIGNAL_BAND=3 (ส่งสัญญาณเฉพาะเมื่อค่าคาดรอบถัดไปอยู่แถวโอกาส ≥ ปานกลาง = ≥10%)
+- ทิศทาง: slope ≥ F_MIN_SLOPE = แย่ลง (rose) · ≤ −F_MIN_SLOPE = ดีขึ้น (teal) · ระหว่างนี้ = ทรงตัว (slate) · ความเชื่อมั่น: R² ≥ 0.8 สูง / ≥ 0.6 ปานกลาง / ต่ำกว่า = ต่ำ · ประวัติ < 5 รอบ (ML_MIN_HISTORY) = INSUFFICIENT_HISTORY
+- สัญญาณ (kind='ML_FORECAST' เข้า DqSignal เดิม): เฉพาะทิศแย่ลง + R² ≥ 0.6 + แถวโอกาสของค่าคาดรอบถัดไป ≥ ปานกลาง — severity จากแถวโอกาสของ forecast1 (แถว 5 = CRITICAL / 4 = HIGH / 3 = MEDIUM) + dedup ตาม title แบบเดียวกับ ① — พยากรณ์เป็น "สัญญาณล่วงหน้า" ไม่ตัดสินแทน threshold
+- ตารางใหม่ DqForecast (unique batchId+ruleId+datasetId — idempotent เหมือน DqAnomaly): failRate, slope, r2, confidence, direction, forecast1/3/5, windowSize
+- API: GET /api/dq/ml/forecasts (?batchId= / batch ล่าสุด / โหมดสด LATEST_RUNS เมื่อไม่มี batch — แนวเดียวกับ anomalies) + hook หลัง /api/dq/run และ /api/dq/run-domain ใน try/catch แยกของตัวเอง (พยากรณ์ล้ม = การรันยังสำเร็จ)
+- UI: Dashboard > Risk — แผง "พยากรณ์แนวโน้มคุณภาพข้อมูล (ML)" ต่อจาก MlClusterCard ก่อน SamplingPanel — แถวรายกฎ: badge ทิศทาง + ความเชื่อมั่น + sparkline ประวัติ (เส้นทึบ) ต่อด้วยเส้น projection ประถึงจุดคาด 1/3/5 รอบ (สีตามทิศ) + ข้อความค่าคาด + slope/R² + footnote จากตารางค่าคงที่ + MlModeBadge โหมด BATCH/สด
+- ขอบเขตล็อก: ไม่แตะ DqRun.status / threshold / การตัดสินผ่าน-ไม่ผ่าน · คณิต reuse linearTrend จาก ml-engine (export ให้เรียกใช้ ไม่ทำซ้ำ) · เวอร์ชัน v0.27.0
+
+Stage Summary:
+- ครบ 4 ตัว ML คลาสสิกหลัง v0.27.0: ① anomaly (v0.25.0) · ④ cluster (v0.25.0) · ② risk-based sampling (v0.26.0) · ③ forecast (v0.27.0) — ⑤ LLM ตัดตามมติเดิม
+
+---
+Task ID: 47
+Agent: Z.ai Code (main session)
+Task: v0.27.0 — ③ Quality Trend Forecasting: พยากรณ์แนวโน้มคุณภาพข้อมูลรายกฎ 1/3/5 รอบข้างหน้า (ตามสเปก Task 47-spec — ผู้ใช้มอบอำนาจ "เริ่มได้เลย")
+
+Work Log:
+- prisma/schema.prisma: เพิ่ม DqForecast (unique batchId+ruleId+datasetId — idempotent เหมือน DqAnomaly · failRate/slope/r2/confidence/direction/forecast1/3/5/windowSize) + relations 3 ทาง — db:push ผ่าน
+- src/lib/forecast.ts (ใหม่): FORECAST_METHOD='LINEAR_TREND_FORECAST', FORECAST_HORIZONS=[1,3,5], F_R2_HIGH=0.8, F_MIN_SLOPE=0.01, F_MIN_SIGNAL_BAND=3, confidenceOf/directionOf (badgeClass+สี อ่านจากตาราง), FORECAST_FOOTNOTE_TH — reuse ML_WINDOW/ML_MIN_HISTORY/DRIFT_R2_MIN จาก ml.ts ไม่ทำซ้ำค่า
+- src/lib/ml-engine.ts: export linearTrend (คณิตเดียวกันทั้งระบบ)
+- src/lib/forecast-engine.ts (ใหม่): assessForecast (หน้าต่าง 10 รอบ "รวมรอบปัจจุบัน" เรียงเวลาจริงเก่า→ใหม่ — ป้องกัน drift ทิศกลับตามบทเรียน v0.25.0 · forecast(k)=clamp(last+slope×k,0,1) · เกณฑ์สัญญาณ: WORSE + R²≥0.6 + แถวโอกาสของ f1 ≥ ปานกลาง → severity จากแถวโอกาส 5=CRITICAL/4=HIGH/3=MEDIUM) · evaluateForecastBatch (upsert + สัญญาณ kind='ML_FORECAST' dedup ตาม title) · readForecastBatch (GET อ่านอย่างเดียว) · evaluateForecastLatest (โหมดสดไม่บันทึก)
+- API: GET /api/dq/ml/forecasts (?batchId= / batch ล่าสุด / LATEST_RUNS) — hook ใหม่หลัง /api/dq/run + /api/dq/run-domain ใน try/catch แยกของตัวเอง (พยากรณ์ล้ม = การรันยังสำเร็จ)
+- UI dq-dashboard.tsx (+~190 บรรทัด): ForecastPanel ต่อจาก MlClusterCard ก่อน SamplingPanel — chips สรุป (แย่ลง/ดีขึ้น/ทรงตัว/สัญญาณล่วงหน้า/ยังไม่พอ) + รายการ max-h-96 scroll (badge ทิศ TrendingUp/TrendingDown/Minus + ความเชื่อมั่น + R² + DimensionBadge + ข้อความ "รอบนี้ X% → คาดรอบถัดไป Y% · อีก 3/5 รอบ Z% · ความชัน ±N จุด%/รอบ" + badge สัญญาณเมื่อผ่านเกณฑ์) + ForecastSparkline (SVG 150px: ประวัติเส้นทึบ teal + projection เส้นประสีตามทิศ + จุดคาด 3 จุด · aria-label ครบ) + footnote จากตารางค่าคงที่ + MlModeBadge — จุดพลาด: MultiEdit ลำดับไม่ตรงทำ import ซ้ำครึ่งจาน (icons/forecast imports ใส่แล้ว) — ตรวจ grep แล้วเติมเฉพาะส่วนที่ขาด
+- views.ts APP_VERSION v0.27.0 · lint ผ่าน
+- แก้ระหว่างพัฒนา: dev server ยังถือ Prisma client เก่า (db.dqForecast undefined → 500) — restart dev server จบ (บทเรียนเดิม v0.25.0 ยืนยันซ้ำ)
+- E2E API: GET backfill จาก batch ล่าสุด = 8 forecasts (3 ยังไม่พอ w=3 · 5 พอ w=10) · POST run ใหม่ → batch ใหม่มี DqForecast 8 แถวทันที (auto-hook จริง) · ตรวจคณิตด้วยมือ phone: rates 10 จุด (15×4, 10×6) → slope −0.73pp R² 0.7273 f1 9.3% f3 7.8% f5 6.4% = ระบบเก็บตรงเป๊ะหลังปัด toFixed · |slope|<0.01 → ทรงตัว + R²≥0.6 → แม่นยำปานกลาง ตรงตาราง
+- E2E สัญญาณ (ข้อมูลจำลอง 15→40% 6 รอบ): slope +3.61pp R² 0.915 สูง · f1 43.6% (แถวโอกาส 4) → สัญญาณ ML_FORECAST severity HIGH ถูกสร้าง detail ครบ + dedup พิสูจน์จริง (backfill ซ้ำไม่สร้างซ้ำ) → ล้างข้อมูลจำลองคืนสถานะเดิม (signals 0/runs 200/batches 4/forecasts 16 ตรงก่อนทดสอบ)
+- E2E agent-browser: แท็บ Risk แสดงแผงครบ 4 ML (① anomaly / ④ cluster / ③ forecast ใหม่ / ② sampling) · แถวตรง API ทุกตัวเลข ("รอบนี้ 10.0% → คาดรอบถัดไป 9.3% · อีก 3 รอบ 7.8% · อีก 5 รอบ 6.4% · ความชัน -0.73 จุด% ต่อรอบ (หน้าต่าง 10 รอบ)") · sparkline 2 เส้น + จุดคาด 3 · aria-label "ประวัติอัตราล้มเหลว 10 จุด + จุดคาดอีก 3 จุด" · footnote เกณฑ์ครบ (10 รอบ / R² 0.8·0.6 / 1 จุด% / 5 รอบ) · ปุ่มโหลดใหม่ทำงาน · page error 0 · console มีแต่ recharts width warning เดิม · mobile 375px NO-OVERFLOW (scrollW=375, panel 351) · desktop 1280 NO-OVERFLOW · footer ติดล่าง (min-h-svh)
+
+Stage Summary:
+- v0.27.0 สมบูรณ์: ครบ 4 ตัว ML คลาสสิกทั้งแผน (① anomaly · ④ cluster · ② risk-based sampling · ③ forecast) — ⑤ LLM ตัดตามมติเดิม · พยากรณ์ใช้คณิต linear trend เดิม (slope+R²) reuse จาก ① ทั้งหมด อธิบายได้ทุกตัวเลข ส่งสัญญาณล่วงหน้าเมื่อแนวโน้มแย่ลงแบบมีนัยสำคัญเท่านั้น ไม่แตะการตัดสินเดิม
+- ไฟล์ใหม่: prisma/schema.prisma (+DqForecast), src/lib/forecast.ts, src/lib/forecast-engine.ts, src/app/api/dq/ml/forecasts/route.ts · แก้: ml-engine.ts (export linearTrend), run/route.ts, run-domain/route.ts, dq-dashboard.tsx, views.ts

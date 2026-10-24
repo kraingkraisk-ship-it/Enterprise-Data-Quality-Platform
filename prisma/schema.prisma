@@ -43,6 +43,7 @@ model Dataset {
   profileRuns DqProfileRun[]
   issues     DqIssue[]
   samplePlans DqSamplePlan[] @relation("samplePlans")
+  forecasts  DqForecast[]
   domain     DataDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
   @@index([status])
@@ -138,6 +139,7 @@ model DqRule {
   exceptions DqException[]
   anomalies  DqAnomaly[]
   samplePlans DqSamplePlan[] @relation("samplePlans")
+  forecasts  DqForecast[]
   element    DataElement? @relation(fields: [dataElementId], references: [id], onDelete: SetNull)
 
   @@index([dataElementId])
@@ -186,6 +188,7 @@ model DqValidationBatch {
   anomalies DqAnomaly[]
   failureClusters DqFailureCluster[]
   samplePlans DqSamplePlan[] @relation("samplePlans")
+  forecasts DqForecast[]
 
   @@index([datasetId, createdAt])
   @@index([groupRunId])
@@ -633,4 +636,34 @@ model DqSamplePlan {
 
   @@unique([batchId, ruleId, datasetId])
   @@index([batchId])
+}
+
+// พยากรณ์แนวโน้มคุณภาพข้อมูล (v0.27.0) — ข้อเสนอ ML ③ ต่อกฎ×ชุดข้อมูล
+// regress อัตราล้มเหลว 10 รอบล่าสุด (linear trend) → คาด 1/3/5 รอบข้างหน้า = รอบล่าสุด + slope×k (clamp 0–1)
+// ความเชื่อมั่นจาก R² · ส่งสัญญาณเฉพาะทิศแย่ลง + R² ≥ 0.6 + แถวโอกาสของค่าคาด ≥ ปานกลาง
+// เกณฑ์ทั้งหมดใน src/lib/forecast.ts (single source of truth) — เป็นสัญญาณล่วงหน้า ไม่ตัดสินแทน threshold เดิม
+model DqForecast {
+  id         String   @id @default(cuid())
+  batchId    String
+  ruleId     String
+  datasetId  String
+  method     String   @default("LINEAR_TREND_FORECAST")
+  failRate   Float // อัตราล้มเหลวรอบล่าสุด (จุดตั้งต้นของการพยากรณ์)
+  slope      Float // ความชันต่อรอบ (บวก = คาดว่าจะแย่ลง)
+  r2         Float // คุณภาพการพองามของเส้น trend (0–1)
+  confidence String   @default("LOW") // HIGH | MEDIUM | LOW (จาก R² — ตารางใน src/lib/forecast.ts)
+  direction  String   @default("STABLE") // WORSE | BETTER | STABLE (จาก slope เทียบ F_MIN_SLOPE)
+  forecast1  Float? // คาดรอบถัดไป (null เมื่อประวัติไม่พอ)
+  forecast3  Float? // คาดอีก 3 รอบ
+  forecast5  Float? // คาดอีก 5 รอบ
+  windowSize Int      @default(0) // จำนวนรอบในหน้าต่างที่ใช้จริง
+  createdAt  DateTime @default(now())
+
+  rule    DqRule            @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  dataset Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  batch   DqValidationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, ruleId, datasetId])
+  @@index([batchId])
+  @@index([direction])
 }

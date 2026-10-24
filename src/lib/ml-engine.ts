@@ -40,8 +40,8 @@ function median(values: number[]): number {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
 }
 
-/** linear regression แบบ least squares — คืนความชัน + R² (x = 1..n) */
-function linearTrend(values: number[]): { slope: number; r2: number } {
+/** linear regression แบบ least squares — คืนความชัน + R² (x = 1..n) — export ให้ forecast-engine (③) ใช้คณิตเดียวกัน */
+export function linearTrend(values: number[]): { slope: number; r2: number } {
   const n = values.length
   if (n < 2) return { slope: 0, r2: 0 }
   const meanX = (n + 1) / 2

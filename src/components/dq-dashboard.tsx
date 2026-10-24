@@ -21,12 +21,14 @@ import {
   EyeOff,
   LayoutDashboard,
   ListChecks,
+  Minus,
   Network,
   RefreshCw,
   Scale,
   ShieldCheck,
   Tags,
   TrendingDown,
+  TrendingUp,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,7 +42,9 @@ import { ROLE_LIST, type RoleKey } from '@/lib/rbac'
 import { SEVERITY_KEYS, SEVERITY_LABELS, rolesWithPermission, type DimensionKey, type SeverityKey } from '@/lib/dq'
 import { RISK_SCORE_MAX, SAMPLING_FOOTNOTE_TH, SAMPLING_METHOD, SAMPLING_POLICIES } from '@/lib/sampling'
 import type { SamplePlanView } from '@/lib/sampling-engine'
-import { CLUSTER_SHARE_MIN, ML_FOOTNOTE_TH, ML_MIN_HISTORY, Z_LEVELS } from '@/lib/ml'
+import { DRIFT_R2_MIN, CLUSTER_SHARE_MIN, ML_FOOTNOTE_TH, ML_MIN_HISTORY, Z_LEVELS } from '@/lib/ml'
+import { F_MIN_SIGNAL_BAND, FORECAST_FOOTNOTE_TH } from '@/lib/forecast'
+import type { ForecastEvaluation, ForecastHorizons, ForecastView } from '@/lib/forecast-engine'
 import type { AnomalyView, ClusterView, MlEvaluation } from '@/lib/ml-engine'
 import {
   classificationLabel,
@@ -1885,6 +1889,9 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
               {/* v0.25.0 — ④ ML Root Cause Clustering: สมมติฐานสาเหตุร่วมของรอบล่าสุด */}
               <MlClusterCard />
 
+              {/* v0.27.0 — ③ ML Quality Trend Forecasting: พยากรณ์แนวโน้มอัตราล้มเหลว 1/3/5 รอบข้างหน้า */}
+              <ForecastPanel />
+
               {/* v0.26.0 — ② Risk-based Sampling: จัดสรรงบการทบทวนตามความเสี่ยง */}
               <SamplingPanel users={users} />
             </div>
@@ -2395,6 +2402,196 @@ function MlClusterRow({ c }: { c: ClusterView }) {
         </p>
       )}
     </div>
+  )
+}
+
+/** ③ พยากรณ์แนวโน้มคุณภาพข้อมูล — linear trend ของอัตราล้มเหลว 10 รอบล่าสุด → คาด 1/3/5 รอบข้างหน้า (v0.27.0) */
+function useForecastData() {
+  const [data, setData] = useState<ForecastEvaluation | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const reload = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/dq/ml/forecasts')
+      const body = (await res.json().catch(() => ({}))) as ForecastEvaluation & { error?: string }
+      if (!res.ok) throw new Error(body.error ?? 'โหลดผลพยากรณ์ไม่สำเร็จ')
+      setData(body)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'โหลดผลพยากรณ์ไม่สำเร็จ')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+  useEffect(() => {
+    void reload()
+  }, [reload])
+  return { data, loading, error, reload }
+}
+
+function ForecastPanel() {
+  const { data, loading, error, reload } = useForecastData()
+  const rows = data?.forecasts ?? []
+  const counts = {
+    WORSE: rows.filter((f) => f.direction.key === 'WORSE').length,
+    BETTER: rows.filter((f) => f.direction.key === 'BETTER').length,
+    STABLE: rows.filter((f) => f.direction.key === 'STABLE' && f.windowSize >= ML_MIN_HISTORY).length,
+    SIGNAL: rows.filter((f) => f.signalLevel !== null).length,
+    INSUFFICIENT: rows.filter((f) => f.windowSize < ML_MIN_HISTORY).length,
+  }
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+              <TrendingUp className="h-4 w-4 text-teal-700" aria-hidden />
+              พยากรณ์แนวโน้มคุณภาพข้อมูล (Quality Trend Forecasting)
+            </CardTitle>
+            <CardDescription className="mt-1">
+              ต่อยอดเส้น trend เดิมของ ML — คาดอัตราล้มเหลวของแต่ละกฎในอีก 1/3/5 รอบข้างหน้าจากความชันของ 10 รอบล่าสุด
+              เพื่อให้มนุษย์ลงมือก่อนที่คุณภาพจะแย่ถึง threshold (พยากรณ์เป็นสัญญาณล่วงหน้า ไม่ตัดสินแทนเกณฑ์ผ่าน/ไม่ผ่าน)
+            </CardDescription>
+          </div>
+          <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1 text-xs" onClick={() => void reload()} aria-label="โหลดผลพยากรณ์ใหม่">
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />
+            โหลดใหม่
+          </Button>
+        </div>
+        {data && <div className="pt-1">{<MlModeBadge mode={data.mode} batchAt={data.batchAt} />}</div>}
+      </CardHeader>
+      <CardContent>
+        {loading && <p className="py-6 text-center text-sm text-muted-foreground">กำลังพยากรณ์แนวโน้มจากประวัติรัน…</p>}
+        {error && !loading && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800" role="alert">
+            {error}
+          </div>
+        )}
+        {!loading && !error && data && (
+          <>
+            <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px]" aria-label="สรุปจำนวนตามทิศทางของแนวโน้ม">
+              {counts.WORSE > 0 && <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-800">แย่ลง {counts.WORSE}</Badge>}
+              {counts.BETTER > 0 && <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-800">ดีขึ้น {counts.BETTER}</Badge>}
+              {counts.STABLE > 0 && <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">ทรงตัว {counts.STABLE}</Badge>}
+              {counts.SIGNAL > 0 && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">สัญญาณล่วงหน้า {counts.SIGNAL}</Badge>}
+              {counts.INSUFFICIENT > 0 && <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-500">ยังไม่พอประเมิน {counts.INSUFFICIENT}</Badge>}
+            </div>
+            {rows.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">ยังไม่มีผลรันในระบบ — รัน validation แล้วระบบจะพยากรณ์อัตโนมัติ</p>
+            ) : (
+              <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="รายการพยากรณ์แนวโน้มรายกฎ">
+                {rows.map((f) => (
+                  <ForecastRow key={`${f.ruleId}-${f.datasetId}`} f={f} />
+                ))}
+              </div>
+            )}
+            {/* เกณฑ์แสดงจากตารางค่าคงที่ src/lib/forecast.ts + ml.ts โดยตรง — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ */}
+            <div className="mt-3 space-y-1.5 rounded-md bg-slate-50 px-2.5 py-2">
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{FORECAST_FOOTNOTE_TH}</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                ส่งสัญญาณล่วงหน้า (kind <span className="font-mono">ML_FORECAST</span>) เฉพาะ: ทิศแย่ลง · R² ≥ {DRIFT_R2_MIN} · ค่าคาดรอบถัดไปอยู่แถวโอกาสขั้นต่ำ{' '}
+                {F_MIN_SIGNAL_BAND} (ปานกลาง = ≥ 10% ตาม LIKELIHOOD_BANDS) — ระดับสัญญาณจากแถวโอกาสของค่าคาด (แถว 5 = วิกฤต / 4 = สูง / 3 = ปานกลาง)
+              </p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                พยากรณ์อัตโนมัติหลังรัน validation ทุกครั้ง — นิยามอยู่ใน <span className="font-mono">src/lib/forecast.ts</span> +{' '}
+                <span className="font-mono">src/lib/forecast-engine.ts</span> ตรวจย้อนได้ทุกตัวเลข
+              </p>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ForecastRow({ f }: { f: ForecastView }) {
+  const insufficient = f.windowSize < ML_MIN_HISTORY
+  const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`)
+  const slopePct = (f.slope * 100).toFixed(2)
+  return (
+    <div role="listitem" className={`rounded-lg border p-3 ${insufficient ? 'opacity-70' : ''}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className={`text-[10.5px] ${f.direction.badgeClass}`}>
+            {f.direction.key === 'WORSE' ? (
+              <TrendingUp className="mr-1 h-3 w-3" aria-hidden />
+            ) : f.direction.key === 'BETTER' ? (
+              <TrendingDown className="mr-1 h-3 w-3" aria-hidden />
+            ) : (
+              <Minus className="mr-1 h-3 w-3" aria-hidden />
+            )}
+            {f.direction.label}
+          </Badge>
+          <Badge variant="outline" className={`text-[10.5px] ${f.confidence.badgeClass}`}>
+            {f.confidence.label} · R² {f.r2.toFixed(2)}
+          </Badge>
+          <DimensionBadge dimension={f.dimension as DimensionKey} />
+          <span className="truncate text-sm font-medium">{f.datasetName}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            · {f.column} — {f.conditionName}
+          </span>
+        </div>
+        {f.signalLevel && (
+          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-900">
+            <AlertTriangle className="mr-1 h-3 w-3" aria-hidden />
+            สัญญาณล่วงหน้า: {f.signalLevel === 'CRITICAL' ? 'วิกฤต' : f.signalLevel === 'HIGH' ? 'สูง' : 'ปานกลาง'}
+          </Badge>
+        )}
+      </div>
+      {insufficient ? (
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          ประวัติไม่พอ — มี {f.windowSize}/{ML_MIN_HISTORY} รอบ (ระบบจะเริ่มพยากรณ์เมื่อประวัติครบ {ML_MIN_HISTORY} รอบ เพื่อความน่าเชื่อถือของเส้น trend)
+        </p>
+      ) : (
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-600">
+            รอบนี้ <strong className="text-slate-900">{pct(f.failRate)}</strong> → คาดรอบถัดไป{' '}
+            <strong className={f.direction.key === 'WORSE' ? 'text-rose-700' : 'text-slate-900'}>{pct(f.forecasts[1])}</strong> · อีก 3 รอบ {pct(f.forecasts[3])} · อีก 5 รอบ{' '}
+            {pct(f.forecasts[5])} · ความชัน {f.slope >= 0 ? '+' : ''}
+            {slopePct} จุด% ต่อรอบ (หน้าต่าง {f.windowSize} รอบ)
+          </p>
+          <ForecastSparkline history={f.history} forecasts={f.forecasts} direction={f.direction.key} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** กราฟประวัติ + เส้น projection ถึงจุดคาด 1/3/5 รอบ (SVG บริสุทธิ์ — สีตามทิศทางของแนวโน้ม) */
+function ForecastSparkline({ history, forecasts, direction }: { history: Array<{ failRate: number }>; forecasts: ForecastHorizons; direction: string }) {
+  const w = 150
+  const h = 30
+  const pad = 2
+  const rates = history.map((p) => p.failRate)
+  const n = rates.length
+  const lastIndex = n - 1
+  const proj = [1, 3, 5]
+    .map((k) => ({ k, i: lastIndex + k, rate: forecasts[k as 1 | 3 | 5] }))
+    .filter((p): p is { k: number; i: number; rate: number } => p.rate !== null)
+  const maxI = lastIndex + 5
+  const max = Math.max(...rates, ...proj.map((p) => p.rate), 0.05)
+  const xOf = (i: number) => pad + (i * (w - 2 * pad)) / maxI
+  const yOf = (r: number) => h - pad - (r / max) * (h - 2 * pad)
+  const histPoints = rates.map((r, i) => `${xOf(i).toFixed(1)},${yOf(r).toFixed(1)}`).join(' ')
+  const projPoints = [...(n > 0 ? [{ i: lastIndex, rate: rates[lastIndex] }] : []), ...proj]
+    .map((p) => `${xOf(p.i).toFixed(1)},${yOf(p.rate).toFixed(1)}`)
+    .join(' ')
+  const color = direction === 'WORSE' ? '#e11d48' : direction === 'BETTER' ? '#0f766e' : '#64748b'
+  return (
+    <svg
+      width={w}
+      height={h}
+      role="img"
+      aria-label={`ประวัติอัตราล้มเหลว ${n} จุด + จุดคาดอีก ${proj.length} จุด (1/3/5 รอบ) — แนวโน้ม${direction === 'WORSE' ? 'แย่ลง' : direction === 'BETTER' ? 'ดีขึ้น' : 'ทรงตัว'}`}
+      className="shrink-0"
+    >
+      {histPoints && <polyline points={histPoints} fill="none" stroke="#0f766e" strokeWidth="1.5" strokeLinejoin="round" />}
+      {projPoints && <polyline points={projPoints} fill="none" stroke={color} strokeWidth="1.5" strokeDasharray="3 3" strokeLinejoin="round" />}
+      {proj.map((p) => (
+        <circle key={p.k} cx={xOf(p.i)} cy={yOf(p.rate)} r="2.5" fill={color} />
+      ))}
+    </svg>
   )
 }
 
