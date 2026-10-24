@@ -1581,12 +1581,16 @@ Stage Summary:
 ---
 Task ID: 48-result
 Agent: Z.ai Code (main session)
-Task: push v0.28.0 — ปิดวงจร ศูนย์ ML บน GitHub (สถานะ: รอ PAT ใหม่)
+Task: push v0.28.0 — ปิดวงจร ศูนย์ ML บน GitHub
 
 Work Log:
-- ตรวจสถานะก่อน push: local HEAD = b276c7d (v0.28.0) + tag v0.28.0 ที่ commit เดียวกัน, origin/main ยัง c89e3df (v0.27.0), unpushed 1 commit
-- PAT เดิมยืนยันด้วย API /user = **HTTP 401 "Bad credentials"** (หมดอายุ/ถูก revoke — token เดิมเคย 200 ในช่วง Task 47-result) → ไม่พยายาม push ด้วย token ไม่ผ่านการยืนยัน (วินัยเดิมจาก Task 43–46)
+- ตรวจสถานะก่อน push: local HEAD = f2db3f0 (worklog Task 48/48-result) บน commit b276c7d (v0.28.0) + tag v0.28.0, origin/main ยัง c89e3df (v0.27.0), unpushed 2 commits
+- รอบแรก: PAT เดิมยืนยันด้วย API /user = HTTP 401 "Bad credentials" (หมดอายุ/ถูก revoke) → ไม่พยายาม push (วินัยเดิม Task 43–46) — บันทึกสถานะ "รอ PAT ใหม่" แล้ว commit f2db3f0
+- ผู้ใช้ส่ง PAT ใหม่ → ยืนยันด้วย API /user = **HTTP 200** (บัญชี kraingkraisk-ship-it) ตามบทเรียนมาตรฐาน
+- push main + refs/tags/v0.28.0 → c89e3df..f2db3f0 + [new tag] v0.28.0 สำเร็จ
+- ls-remote ยืนยัน: remote main = f2db3f0 = local · remote tag v0.28.0 = b276c7d = local ตรงทุกตำแหน่ง
+- git fetch --update-head-ok ซิงก์ tracking ref (c89e3df..f2db3f0) → git status "main...origin/main" ไม่มี ahead/behind = **unpushed 0** · tree สะอาด
 
 Stage Summary:
-- v0.28.0 (ศูนย์ ML — แดชบอร์ดสรุป ML ศูนย์กลาง + ปรับเกณฑ์ค่าคงที่จากการใช้งานจริง) สมบูรณ์ 100% ที่เครื่อง: โค้ด + lint + E2E API + E2E agent-browser ผ่านครบ
-- push รอ PAT ใหม่จากผู้ใช้ — เมื่อได้ token: ยืนยัน GET /user = 200 → push main + refs/tags/v0.28.0 → ls-remote ยืนยัน → fetch --update-head-ok ซิงก์ tracking ref (แนวเดียวกับ Task 46-result/47-result)
+- v0.28.0 (ศูนย์ ML — แดชบอร์ดสรุป ML ศูนย์กลาง + ปรับเกณฑ์ค่าคงที่จากการใช้งานจริง) ปิดวงจร 100% บน remote — main + tag ครบ ระบบ sync สมบูรณ์
+- ไทม์ไลน์ ML ทั้งโครงการ: v0.25.0 (① anomaly + ④ cluster) → v0.26.0 (② risk-based sampling) → v0.27.0 (③ forecast) → **v0.28.0 (ศูนย์ ML — รวมทุกตัวในหน้าเดียว + เกณฑ์ปรับได้จากการใช้งานจริง)** · ⑤ LLM ตัดตามมติเดิม
