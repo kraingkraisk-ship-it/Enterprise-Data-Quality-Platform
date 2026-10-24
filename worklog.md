@@ -1519,3 +1519,16 @@ Work Log:
 Stage Summary:
 - v0.27.0 สมบูรณ์: ครบ 4 ตัว ML คลาสสิกทั้งแผน (① anomaly · ④ cluster · ② risk-based sampling · ③ forecast) — ⑤ LLM ตัดตามมติเดิม · พยากรณ์ใช้คณิต linear trend เดิม (slope+R²) reuse จาก ① ทั้งหมด อธิบายได้ทุกตัวเลข ส่งสัญญาณล่วงหน้าเมื่อแนวโน้มแย่ลงแบบมีนัยสำคัญเท่านั้น ไม่แตะการตัดสินเดิม
 - ไฟล์ใหม่: prisma/schema.prisma (+DqForecast), src/lib/forecast.ts, src/lib/forecast-engine.ts, src/app/api/dq/ml/forecasts/route.ts · แก้: ml-engine.ts (export linearTrend), run/route.ts, run-domain/route.ts, dq-dashboard.tsx, views.ts
+
+---
+Task ID: 47-result
+Agent: Z.ai Code (main session)
+Task: push v0.27.0 — ปิดวงจร ③ Quality Trend Forecasting บน GitHub (ครบ 4 ตัว ML คลาสสิก)
+
+Work Log:
+- PAT ยืนยันด้วย API /user = HTTP 200 ก่อน push (บทเรียนมาตรฐาน)
+- push main + refs/tags/v0.27.0 → fa52090..5e784db + [new tag] v0.27.0 สำเร็จ
+- ls-remote ยืนยัน remote = local ทุกตำแหน่ง · unpushed 0
+
+Stage Summary:
+- v0.27.0 ปิดวงจร 100% บน remote — แผน ML 5 ข้อเสนอจบสมบูรณ์: ① anomaly (v0.25.0) · ④ cluster (v0.25.0) · ② risk-based sampling (v0.26.0) · ③ forecast (v0.27.0) · ⑤ LLM ตัดตามมติ
