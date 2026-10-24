@@ -1,4 +1,5 @@
 import {
+  ClipboardCheck,
   ClipboardList,
   Crown,
   FileUp,
@@ -25,7 +26,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.23.0'
+export const APP_VERSION = 'v0.24.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -46,7 +47,7 @@ export type ExecViewKey = 'exec-dashboard' | 'exec-reports'
 export type DqViewKey = 'scorecard' | 'rule-library' | 'profiling' | 'validation-results' | 'failed-records' | 'issues'
 
 /** มุมมองทั้งหมดของแอป (รวม Data Asset, RBAC และหน้าแนะนำแพลตฟอร์ม) */
-export type ViewKey = CoreViewKey | AssetViewKey | DqViewKey | ExecViewKey | 'rbac' | 'about'
+export type ViewKey = CoreViewKey | AssetViewKey | DqViewKey | ExecViewKey | 'compliance-assessment' | 'rbac' | 'about'
 
 export interface ViewMeta {
   key: ViewKey
@@ -77,6 +78,13 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     en: 'Executive Reports',
     desc: 'พิมพ์/บันทึกรายงานแดชบอร์ดผู้บริหารเป็น PDF สำหรับประชุม — เลือกช่วงเวลาและสิทธิ์ตาม RBAC',
     icon: Printer,
+  },
+  'compliance-assessment': {
+    key: 'compliance-assessment',
+    th: 'ประเมินความสอดคล้อง',
+    en: 'Compliance Assessment',
+    desc: 'ประเมินความเสี่ยงและความสอดคล้องรายมาตรฐาน (Inherent → Residual) จากเกณฑ์ตรวจที่ทำงานได้จริงของแต่ละข้อกำหนด — เลือกมาตรฐาน ชุดข้อมูล และเจาะรายข้อพร้อมประวัติผลรัน',
+    icon: ClipboardCheck,
   },
   scorecard: {
     key: 'scorecard',
@@ -207,7 +215,7 @@ export interface NavGroup {
 }
 
 export const NAV_GROUPS: NavGroup[] = [
-  { labelTh: 'ภาพรวม', labelEn: 'Overview', items: ['dashboard', 'exec-dashboard', 'exec-reports'] },
+  { labelTh: 'ภาพรวม', labelEn: 'Overview', items: ['dashboard', 'exec-dashboard', 'exec-reports', 'compliance-assessment'] },
   {
     labelTh: 'Data Asset',
     labelEn: 'สินทรัพย์ข้อมูล',

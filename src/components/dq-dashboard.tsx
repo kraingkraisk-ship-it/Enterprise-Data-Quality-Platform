@@ -1106,6 +1106,54 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                     </dl>
                   </div>
 
+                  {/* v0.24.0 — ความเสี่ยงรายมาตรฐาน (Inherent → Residual) สรุปย่อ
+                      — ดูรายละเอียดรายข้อได้ที่เมนู ภาพรวม → ประเมินความสอดคล้อง */}
+                  {inherent && inherent.byFramework.length > 0 && (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                      <h4 className="text-xs font-semibold text-slate-800">
+                        ความเสี่ยงรายมาตรฐาน — ก่อนมีกฎ (Inherent) → หลังมีกฎ (Residual)
+                      </h4>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                        ค่าเฉลี่ยความเสี่ยง (เต็ม 25) ของกฎ DQ ที่แมปกับแต่ละมาตรฐาน — คลิกมาตรฐานด้านบนเพื่อดูรายละเอียด
+                      </p>
+                      <ul className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {inherent.byFramework.map((row) => (
+                          <li
+                            key={row.frameworkId}
+                            className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border bg-white px-2.5 py-1.5"
+                          >
+                            <div className="min-w-0 flex-1 basis-32">
+                              <p className="truncate text-xs font-medium text-slate-800" title={`${row.no} ${row.name}`}>
+                                {row.name}
+                              </p>
+                              <p className="truncate text-[10px] font-mono text-muted-foreground">{row.no}</p>
+                            </div>
+                            <div className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-slate-200" role="img" aria-label={`Inherent ${row.inherentAvg.toFixed(1)} → Residual ${row.residualAvg.toFixed(1)} (เต็ม 25)`}>
+                              <div className="h-full rounded-full bg-rose-300" style={{ width: `${Math.min(100, (row.inherentAvg / 25) * 100)}%` }}>
+                                <div
+                                  className="h-full rounded-full bg-emerald-600"
+                                  style={{ width: `${row.inherentAvg > 0 ? Math.min(100, (row.residualAvg / row.inherentAvg) * 100) : 0}%` }}
+                                />
+                              </div>
+                            </div>
+                            <p className="shrink-0 whitespace-nowrap text-[11px] tabular-nums">
+                              <span className="font-mono font-semibold text-rose-700">{row.inherentAvg.toFixed(1)}</span>
+                              <span className="mx-0.5 text-slate-400">→</span>
+                              <span className="font-mono font-bold text-emerald-700">{row.residualAvg.toFixed(1)}</span>
+                              <span className="text-[10px] text-slate-400">/25</span>
+                            </p>
+                            <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 font-mono text-[10px] text-emerald-800">
+                              ลดลง −{Math.round(row.reductionPct)}%
+                            </Badge>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                        ดูรายละเอียดรายข้อที่เมนู <span className="font-medium text-slate-700">ภาพรวม → ประเมินความสอดคล้อง</span>
+                      </p>
+                    </div>
+                  )}
+
                   {/* sub-tabs 2 มุมมอง: ชุดข้อมูล (default) / รายละเอียดข้อกำหนด */}
                   <div role="tablist" aria-label="มุมมองของมาตรฐานที่เลือก" className="inline-flex max-w-full overflow-x-auto rounded-lg border bg-slate-50 p-0.5">
                     <button

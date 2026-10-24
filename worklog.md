@@ -1270,3 +1270,60 @@ Stage Summary:
 - v0.23.0 ปิดงานสมบูรณ์: ผู้ใช้ได้ (1ข) คะแนนข้อมูลเดิม=0 เทียบหลังตั้งกฎ (2ก) Inherent=โอกาส 5×severity (3ข) ข้อไม่มีเกณฑ์ตรวจแยกหมวดไม่เข้าคะแนน (4) เมนูแยกมาตรฐาน + มุมชุดข้อมูลรายมาตรฐาน + รายละเอียดข้อกำหนด + บอกคะแนนเพิ่มขึ้น (5ข) น้ำหนักมิติรายมาตรฐาน (6ค) เสี่ยงครบ 3 ขอบเขต (7) seed เล่าเรื่องปรับปรุงตามเวลา
 - remote=local 100% SHA-for-SHA (main 2ac5e08 + tag v0.23.0)
 - ไฟล์แก้: src/lib/regulation.ts (weight+มิติใหม่ 12 ส่วนย่อย) · src/app/api/dq/analytics/route.ts (regulation.frameworks + risks.inherent) · scripts/seed.ts (RUN_START_RATES + progress 14 รอบ) · src/lib/views.ts (v0.23.0) · src/components/dq-dashboard.tsx (+601 บรรทัด) + agent-ctx 2 ไฟล์
+
+---
+Task ID: 42-a
+Agent: full-stack-developer
+Task: v0.24.0 Compliance Assessment API — /api/dq/compliance
+
+Work Log:
+- อ่าน worklog (41-a/41-b/41-result) + ศึกษา analytics route / regulation.ts / dq.ts / dama.ts / schema แล้ว probe ฐานข้อมูลก่อนเขียน (14 กฎ enabled / 168 runs / 7 ชุดข้อมูล ACTIVE / 12 คู่ล่าสุด / 11 กฎวัดได้ / 3 กฎยังไม่รัน — customer_id UNIQUE/REGEX/EXISTS_IN_DATASET / run.dimension ตรง template 100%)
+- สร้างไฟล์เดียว src/app/api/dq/compliance/route.ts (ไม่แตะไฟล์อื่น ไม่ commit ไม่ seed): GET only + try/catch → 500 แบบ analytics; คัดลอก conventions เป๊ะ — engineOf/nameOf/dimensionOf (มิติจาก condition template), latestMap key `ruleId|datasetId`, inherentStatsOf (1 กฎ = 1 คะแนน, inherent = 5×sevW, residual = เฉลี่ย likelihoodOf(failRate).level×sevW รายคู่ก่อนแล้วเฉลี่ยข้ามกฎ), คะแนนรายมิติ v0.23.0 (เฉลี่ย passRate×100 รายมิติก่อน แล้วเฉลี่ยข้ามมิติในข้อ → weightedScore Σscore×w/Σw เฉพาะข้อวัดได้ที่มี score)
+- Logic ใหม่ v0.24.0: สถานะรายชุดข้อมูลตัดสินด้วย threshold รายกฎ (ทุกตัว passRate×100 ≥ threshold → PASS / มีตัวใดต่ำกว่า → FAIL / ไม่มีกฎวัดได้ → NOT_ASSESSED แยก rulesCount>0 มีกฎยังไม่รัน vs =0 ยังไม่มีกฎ) · สถานะรวมข้อ FAIL→PASS→NOT_ASSESSED · perDataset ครบ 7 ชุดตามลำดับ datasets เสมอ · ข้อระดับกระบวนการ (dimensions []) rules=[] ค่า null ทั้งแถว · ClauseRuleView inherent=5×sevW มีค่าแม้ไม่เคยรัน, residual/passRate/meetsThreshold=null เมื่อไม่เคยรัน · ruleHistory ทุกรอบของกฎที่วัดได้ เรียงเก่า→ใหม่
+- ตรวจ: bun run lint ผ่าน 0 error · curl /api/dq/compliance 200 (dev compile อัตโนมัติ) · เทียบ sanity กับ /api/dq/analytics ด้วย script (diff tolerance 1e-9) ครบทุกข้อ · dev.log สะอาด
+- บันทึก agent-ctx/42-a-backend-compliance-api.md
+
+Stage Summary:
+- **v0.24.0 Compliance API ครบตาม contract เป๊ะ** — datasets 7 / frameworks 5 / clauses ตรง regulation.ts (DAMA 9 / 25012 15 / 8000 6 / 25024 10 / 11179 5) · ข้อไม่วัดได้ = 25012-CFD+25012-EFF, 25024-OTH (DAMA 9/9 measurable) · perDataset 7 ชุดทุกข้อ (pass+fail+na=7 เสมอ)
+- Sanity ตัวเลขตรง analytics 100% (diff=0): HERO inherent→residual DAMA 17.7273→8.8182 (−50.26%) / 25012 16.8750→8.1250 (−51.85%) / 8000 18.5000→9.1000 (−50.81%) / 25024 17.7273→8.8182 (−50.26%) / 11179 17.5000→6.2500 (−64.29%) · weightedScore 85.7407 / 87.3742 / 87.1173 / 89.3333 / 96.7500
+- หมายเหตุ: hero rulesCount นับเฉพาะ "กฎที่วัดได้" ตาม contract (11/8/10/11/4) ต่างจาก analytics rulesCount ที่นับกฎ enabled ทั้งขอบเขต (14/10/13/14/5) — ค่าเฉลี่ยเท่ากันเพราะสูตรคำนวณเฉพาะกฎที่มี run เหมือนกัน
+- สถานะสมเหตุผล: DAMA PASS 4 / FAIL 5 (TIMELINESS 20.0 < 95 → FAIL), "มีกฎยังไม่รัน" 5 จุด → NOT_ASSESSED ถูกกลุ่ม, ruleHistory 11 กฎ / 168 points เรียงเวลาถูกต้อง · lint 0 error · พร้อมให้ 42-b ต่อ frontend
+---
+Task ID: 42-b
+Agent: full-stack-developer
+Task: v0.24.0 Frontend — หน้าประเมินความสอดคล้อง + เมนู + strip Regulation
+
+Work Log:
+- อ่าน worklog (Task 41-a/41-b/41-result) + ศึกษา pattern เดิมจาก dq-dashboard.tsx ส่วน 3/4 (Card/Badge/ScoreBar/radiogroup/aria/สี) + lib/regulation.ts (FRAMEWORKS fallback) + pattern fetch-on-active ของ executive-dashboard.tsx
+- สร้าง src/components/dq/compliance-assessment.tsx (956 บรรทัด, client component props {active}): Header Card (chips กฎวัดได้ X = unique ruleId ข้ามมาตรฐาน / มาตรฐาน 5 / ชุดข้อมูล 7) → framework selector 5 ปุ่ม radiogroup (ชื่อ + weightedScore + ลดลง% + วัดได้ Y/Z ข้อ, active ring emerald) → hero 4 การ์ด grid 1→2→4 min-w-0 (Inherent rose /25 · ลดลง X% orange · Residual emerald /25 · ความสอดคล้อง teal + เกรด gradeOfClient + "ข้อวัดได้ X/Y ตรวจแล้ว Z") → Select ขอบเขตชุดข้อมูล ('ทุกชุดข้อมูล (ภาพรวม)' + 7 ชุด) → ตารางข้อกำหนด min-w-[760px] ใน overflow-x-auto (ข้อกำหนด th/en + น้ำหนัก ×w + category / เกณฑ์ตรวจรายกฎ "email · รูปแบบอีเมล ≥95%" แบบ union dedupe ราย ruleId เมื่อทุกชุด + "รวม N เกณฑ์" / คะแนน ScoreBar / สถานะ PASS-ผ่าน FAIL-ไม่ผ่าน NOT_ASSESSED-ยังไม่ได้ตรวจ / ความเสี่ยง Inherent→Residual + chip −X%)
+- แถวขยายได้ (tr onClick + ปุ่ม aria-expanded/aria-controls): เกณฑ์ตรวจรายกฎ — label + severity badge + เกณฑ์ ≥% + ผลล่าสุด % + meetsThreshold (fallback คำนวณจาก passRate×100 ≥ threshold เมื่อ API ไม่ส่ง) + inherent→residual รายกฎ + กราฟแท่งเล็กประวัติ 14 รอบจาก ruleHistory (แท่ง emerald/rose ตาม ≥ threshold) + "รอบแรก X% → ล่าสุด Y%" + ชื่อชุดข้อมูลที่กฎครอบคลุม · กลุ่มท้ายตาราง "ข้อกำหนดระดับกระบวนการ (ตรวจด้วยหลักฐาน — ไม่เข้าคะแนน)" amber + หมายเหตุ RBAC/PII/Audit (pattern v0.23.0)
+- States: loading Loader2+Skeleton (aria-busy) · error Alert destructive + ปุ่มลองใหม่ + FrameworkFallbackNotice โหมดออฟไลน์ (radiogroup 5 มาตรฐานจาก FRAMEWORKS) · fallback เมื่อ API ตอบแต่ไม่มี key → badge "ยังไม่เชื่อมต่อข้อมูล" + โครงมาตรฐานคะแนน '—' ไม่ crash (optional-tolerant types ทั้งหมด: !res.ok / json.error / frameworks ไม่ใช่ array ว่าง → fallback) · fetch เมื่อ active เปิด + รีเฟรชทุกครั้งที่เปิดซ้ำ + alive flag กัน race
+- views.ts: ViewKey + 'compliance-assessment' · VIEWS entry (ClipboardCheck, th/en/desc ตามสเปก) · NAV_GROUPS ภาพรวมเพิ่มต่อท้าย · APP_VERSION v0.24.0
+- page.tsx: import ComplianceAssessment + render block keep-mounted/hidden วางหลัง exec-reports (pattern เดิม) — ระหว่างตรวจ E2E พบบั๊กแฝงของแอป: desc ของ view ใหม่ยาวที่สุดในระบบ → truncate (white-space:nowrap) ใน header ดัน min-content ของ SidebarInset ล้นจอ 1280px (1535 vs 1280) → แก้โดยคลุม desc ด้วย <span className="line-clamp-1"> (หน้าตาเหมือนเดิม 1 บรรทัด + ellipsis, min-content เล็กลง) — ตรวจซ้ำ desktop 1280 = 1280 พอดี ทั้งแอปได้ประโยชน์
+- dq-dashboard.tsx (จุดเดียว +48 บรรทัด): แทรก Card compact ใน Section 3 หลังการ์ดสรุป 3 ใบ ก่อน sub-tabs — "ความเสี่ยงรายมาตรฐาน — ก่อนมีกฎ (Inherent) → หลังมีกฎ (Residual)" 5 แถวจาก inherent.byFramework (ชื่อ truncate · mini bar rose→emerald role=img · X→Y/25 · chip ลดลง −X%) + hint "ดูรายละเอียดรายข้อที่เมนู ภาพรวม → ประเมินความสอดคล้อง" — render เมื่อมีข้อมูลเท่านั้น ไม่แตะ sub-tabs/radiogroup เดิม
+- E2E agent-browser: API 42-a deploy มาระหว่างทาง → ทดสอบข้อมูลจริงครบ (เมนู 5 มาตรฐาน 85.7–96.8 + ลดลง 50–64% · ตาราง DAMA 9 ข้อ · ขยายมาตรา 4 = กฎ 3 ข้อ + กราฟ 14 รอบ รอบแรก 70% → ล่าสุด 85% · เลือกชุดเฉพาะ = ข้อไม่มีกฎในชุดแสดง empty state) + ทดสอบ fallback โดย route-block API → Alert + ลองใหม่ + โหมดออฟไลน์ ไม่ crash · strip ใน Section 3 แสดง 5 แถว + sub-tabs เดิมไม่เสีย
+- ปิดท้าย: bun run lint 0 error · tsc ไฟล์ที่แตะว่าง · mobile 375px scrollWidth=375 ทั้ง 2 หน้า · console error 0 · page error 0 · dev.log clean · บันทึก agent-ctx/42-b-compliance-assessment-frontend.md
+
+Stage Summary:
+- v0.24.0 frontend ครบ 4 ไฟล์: ใหม่ src/components/dq/compliance-assessment.tsx (956 บรรทัด) · แก้ src/lib/views.ts (+7), src/app/page.tsx (+13 รวมแก้บั๊ก header), src/components/dq-dashboard.tsx (+48)
+- การตัดสินใจสำคัญ: (1) types internal tolerant — field ตัวเลขของ framework รับ null ได้ทั้งที่ contract ส่ง number เพื่อ fallback สอดคล้อง (2) "กฎวัดได้ X" ใน chip นับ unique ruleId ข้ามมาตรฐานจาก perDataset (คำนวณฝั่ง client ไม่พึ่ง field ใหม่) (3) meetsThreshold fallback คำนวณเองเมื่อ API ส่ง null (4) พบว่า API 42-a พร้อมระหว่างทำ → E2E ด้วยข้อมูลจริง + พิสูจน์ fallback ด้วย network route-block ทั้งสองโหมด
+- แก้บั๊กแฝงแอป (นอกสเปก แต่จำเป็นเพื่อให้หน้าใหม่ไม่ล้นจอ 1280): header desc ใช้ line-clamp-1 แทน truncate — ล้นเกิดจาก min-content ของ nowrap text ที่ propagate ผ่าน SidebarInset (min-width:auto) ไม่เกี่ยวกับตาราง/กริดของหน้าใหม่
+- สถานะ: ไม่ commit ตามสั่ง — รอ agent 42-a ปิดงาน backend ให้สมบูรณ์ + ผู้ใช้ตรวจผ่าน Preview Panel
+---
+Task ID: 42-result
+Agent: Z.ai Code (main session)
+Task: v0.24.0 — ตรวจสอบอิสระ 42-a/42-b + E2E + commit + tag + push
+
+Work Log:
+- ตรวจ worklog 42-a + 42-b ครบ · git status: 4 ไฟล์แก้ + 3 ไฟล์ใหม่ (API route, component, agent-ctx 2)
+- bun run lint ผ่าน 0 error
+- ตรวจ API อิสระ: /api/dq/compliance — 7 datasets · ruleHistory 11 กฎ/168 points · frameworks 5 (clauses 9/15/6/10/5 = 45, วัดได้ 42, assessed 42) · hero รายกรอบตรง risks.inherent.byFramework ของ analytics เป๊ะ SHA-for-number: DAMA 17.7273→8.8182 (−50.26%) · 25012 16.8750→8.1250 (−51.85%) · 8000 18.50→9.10 (−50.81%) · 25024 17.7273→8.8182 (−50.26%) · 11179 17.50→6.25 (−64.29%) · weightedScore ตรง v0.23.0 (85.7/87.4/87.1/89.3/96.8)
+- E2E agent-browser ข้อมูลจริง: เมนูใหม่ "ประเมินความสอดคล้อง" ในกลุ่มภาพรวม ✓ · header + chips กฎวัดได้ 14/มาตรฐาน 5/ชุดข้อมูล 7 + v0.24.0 ✓ · radiogroup 5 กรอบ (score + ลดลง% + วัดได้ X/Y) ✓ · hero 4 การ์ด Inherent/ลดลง/Residual/ความสอดคล้อง ✓ · ตาราง 45 ข้อ — เกณฑ์ตรวจรายกฎพร้อม threshold จริง (email ≥95% ต่ำกว่าเกณฑ์ 85.0% ฯลฯ) สถานะ ผ่าน/ไม่ผ่าน/ยังไม่ได้ตรวจ + ความเสี่ยง 15.0→3.0 ลดลง −80% ✓ · ขยายแถว: รายกฎรายชุดข้อมูล + ประวัติ 14 รอบ "รอบแรก 70.0% → ล่าสุด 85.0%" (phone 28 รอบ 2 ชุดข้อมูล 80→100) ✓ · สลับ 25012: กลุ่ม "ข้อกำหนดระดับกระบวนการ (ตรวจด้วยหลักฐาน — ไม่เข้าคะแนน)" + สูตรอธิบายท้าย ✓ · เลือกชุดข้อมูล ลูกค้าองค์กร — Master: ข้อไม่มีกฎแสดง "ยังไม่มีเกณฑ์ตรวจในขอบเขตนี้" ตรงไปตรงมา ✓
+- ตรวจ strip ใหม่ใน Dashboard Section 3: เข้าใจผิดครั้งแรก (Section 3 เป็น internal Tab ต้องคลิก Regulation ก่อน — ไม่ใช่บั๊ก) คลิกแล้ว strip แสดง 5 แถว "DAMA-DMBOK 3.1 17.7→8.8/25 ลดลง −50%" ตรง API ✓ + hint ชี้เมนูใหม่
+- Mobile 375px: dashboard scrollW=375 · หน้าประเมิน scrollW=375 NO-OVERFLOW · console error 0 · page error 0 · dev.log clean
+- Commit + tag v0.24.0 + push ด้วย PAT ใหม่ — ตรวจ ls-remote ยืนยัน
+
+Stage Summary:
+- v0.24.0 ปิดงานสมบูรณ์: ไอเดีย 2 ของผู้ใช้ (Risk ตั้งต้น → เทียบรายมาตรฐาน → ความเสี่ยงลดลง) + ตัด AI/ML ตามมติ · ค่าแนะนำ 4 ข้อ: threshold รายกฎ · เช็กลิสต์กระบวนการไม่เข้าคะแนน · 7 ชุดข้อมูลครบ · dashboard ดึงสรุป
+- ไฟล์: src/app/api/dq/compliance/route.ts (ใหม่ ~430 บรรทัด) · src/components/dq/compliance-assessment.tsx (ใหม่ 956 บรรทัด) · views.ts (view+เมนู+v0.24.0) · page.tsx (render branch + แก้ overflow truncate→line-clamp-1 ใน header) · dq-dashboard.tsx (+48 strip)
+- ตัวเลข cross-check ระหว่าง 2 API = diff 0 ทุกกรอบ — ความน่าเชื่อถือระดับ audit

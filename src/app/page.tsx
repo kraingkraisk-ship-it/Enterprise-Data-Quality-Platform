@@ -19,6 +19,7 @@ import DqProfiling from '@/components/dq/profiling'
 import DqIssues from '@/components/dq/issues'
 import ExecutiveDashboard from '@/components/dq/executive-dashboard'
 import ExecutiveReports from '@/components/dq/executive-reports'
+import ComplianceAssessment from '@/components/dq/compliance-assessment'
 import { APP_VERSION, VIEWS, isConsoleView, type ViewKey } from '@/lib/views'
 
 /* ------------------------------------------------------------------ */
@@ -62,7 +63,11 @@ export default function Home() {
           <Separator orientation="vertical" className="h-5" />
           <div className="min-w-0 flex-1 leading-tight">
             <h1 className="truncate text-sm font-semibold tracking-tight sm:text-base">{meta.th}</h1>
-            <p className="hidden truncate text-xs text-muted-foreground md:block">{meta.desc}</p>
+            {/* line-clamp-1 แทน truncate — กัน min-content ของข้อความยาว (white-space:nowrap)
+                ดันความกว้างขั้นต่ำของ header จนล้นจอ 1280px (แก้บั๊กแฝงที่ view desc ยาวที่สุดของระบบ) */}
+            <p className="hidden text-xs text-muted-foreground md:block">
+              <span className="line-clamp-1">{meta.desc}</span>
+            </p>
           </div>
           <span className="hidden shrink-0 items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground lg:inline-flex">
             <span className="inline-block size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
@@ -127,6 +132,15 @@ export default function Home() {
           </div>
           <div className={view === 'exec-reports' ? '' : 'hidden'} aria-hidden={view !== 'exec-reports'}>
             <ExecutiveReports active={view === 'exec-reports'} />
+          </div>
+
+          {/* ประเมินความสอดคล้อง — Risk-first รายมาตรฐาน (v0.24.0)
+              คง mounted ไว้เสมอ สลับด้วย visibility — โหลด/รีเฟรชข้อมูลเมื่อ active */}
+          <div
+            className={view === 'compliance-assessment' ? '' : 'hidden'}
+            aria-hidden={view !== 'compliance-assessment'}
+          >
+            <ComplianceAssessment active={view === 'compliance-assessment'} />
           </div>
 
           {/* RBAC Console — คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
