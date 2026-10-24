@@ -1,13 +1,15 @@
 'use client'
 
 /**
- * DQ Dashboard — แดชบอร์ดคุณภาพข้อมูล 5 ส่วน (v0.10.0)
+ * DQ Dashboard — แดชบอร์ดคุณภาพข้อมูล 6 ส่วน (v0.10.0 · เพิ่มหมวด ML v0.29.0)
  * 1) ภาพรวมทั้งหมดของ Data Quality (คะแนนรวม + มาตรา 1–9 + ต่อชุดข้อมูล + PII masking)
  * 2) รายละเอียดการตรวจ Data Quality (ผลรันล่าสุดรายกฎ + คำตัดสินตามมาตรา + คำแนะนำ)
  * 3) Regulation — กรอบมาตรฐาน 5 กรอบ (DAMA-DMBOK / ISO/IEC 25012 / ISO 8000 / ISO/IEC 25024 / ISO/IEC 11179)
  *    เลือกแตกย่อยได้ และเลือก data source เพื่อประเมินสถานะจากข้อมูลจริงในระบบ
  * 4) Risk — ความเสี่ยงในมุม Data Quality Impact (โอกาส × ผลกระทบ + แผนที่ความเสี่ยง + ผลกระทบธุรกิจ)
- * 5) Data Classification — การจำแนกข้อมูล 11 ประเภท และ mapping กับมาตรฐาน (ธปท./BCBS 239/PDPA/PCI DSS/ฯลฯ)
+ * 5) ML · สัญญาณอัจฉริยะ — แผง ML ทั้ง 4 ตัว (① ผิดปกติข้ามรอบ · ④ สาเหตุร่วม · ③ พยากรณ์ · ② สุ่มตรวจตามความเสี่ยง)
+ *    (v0.29.0 — ย้ายจากหมวด Risk เพื่อแยก "สัญญาณรอมนุษย์ทบทวน" ออกจาก "วิธีประเมินความเสี่ยงขององค์กร")
+ * 6) Data Classification — การจำแนกข้อมูล 11 ประเภท และ mapping กับมาตรฐาน (ธปท./BCBS 239/PDPA/PCI DSS/ฯลฯ)
  * ข้อมูลทั้งหมดมาจาก /api/dq/analytics — คำนวณจากผลรันตรวจล่าสุดของทุกกฎที่เปิดใช้งาน
  */
 
@@ -375,13 +377,20 @@ function ClassificationEditor({
 
 /* ----------------------------- component --------------------------------- */
 
-export type DashboardSection = 'overview' | 'checks' | 'regulation' | 'risk' | 'classification'
+export type DashboardSection = 'overview' | 'checks' | 'regulation' | 'risk' | 'ml' | 'classification'
 
 const SECTIONS: Array<{ id: DashboardSection; th: string; en: string; icon: typeof LayoutDashboard; desc: string }> = [
   { id: 'overview', th: 'ภาพรวมทั้งหมด', en: 'Overall', icon: LayoutDashboard, desc: 'คะแนนรวม มาตรา 1–9 และคะแนนต่อชุดข้อมูล' },
   { id: 'checks', th: 'รายละเอียดการตรวจ', en: 'Check Details', icon: ClipboardList, desc: 'ผลตรวจล่าสุดรายกฎ พร้อมคำตัดสินตามมาตรา' },
   { id: 'regulation', th: 'Regulation', en: 'Regulatory Standards', icon: Scale, desc: 'มาตรฐานอ้างอิง 5 กรอบ แตกย่อยได้ อ้างอิงข้อมูลในระบบ' },
   { id: 'risk', th: 'Risk', en: 'DQ Impact', icon: AlertTriangle, desc: 'ความเสี่ยงในมุม Data Quality Impact' },
+  {
+    id: 'ml',
+    th: 'ML · สัญญาณอัจฉริยะ',
+    en: 'ML Signals',
+    icon: BrainCircuit,
+    desc: 'ความผิดปกติข้ามรอบ สาเหตุร่วม พยากรณ์แนวโน้ม และแผนสุ่มตรวจตามความเสี่ยง',
+  },
   { id: 'classification', th: 'Data Classification', en: 'Classification', icon: Tags, desc: 'จำแนกข้อมูล 11 ประเภท และ mapping มาตรฐาน' },
 ]
 
@@ -1884,22 +1893,87 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                 </Card>
               </Collapsible>
 
-              {/* v0.25.0 — ① ML Anomaly Detection: ความผิดปกติข้ามรอบ (เรียนรู้ baseline จากประวัติจริง) */}
+              {/* v0.29.0 — สัญญาณ ML ทั้ง 4 ตัวย้ายไปหมวด "ML · สัญญาณอัจฉริยะ" แล้ว
+                  (แยก "สัญญาณรอมนุษย์ทบทวน" ออกจาก "วิธีประเมินความเสี่ยงขององค์กร" —
+                   คณิต ML ยังใช้ LIKELIHOOD_BANDS/SEVERITY_WEIGHT ชุดเดียวกับหมวดนี้) */}
+              <Card className="border-teal-200 bg-teal-50/40">
+                <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-teal-200 bg-white text-teal-700">
+                      <BrainCircuit className="size-4.5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-teal-900">สัญญาณ ML ย้ายไปหมวด "ML · สัญญาณอัจฉริยะ" แล้ว (v0.29.0)</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-teal-800/90">
+                        ความผิดปกติข้ามรอบ · สาเหตุร่วม · พยากรณ์แนวโน้ม · แผนสุ่มตรวจตามความเสี่ยง — ML เป็นสัญญาณรอมนุษย์ทบทวน
+                        แยกจากวิธีประเมินความเสี่ยงขององค์กรในหมวดนี้ (คณิต ML ยังใช้เกณฑ์ LIKELIHOOD_BANDS/SEVERITY_WEIGHT ชุดเดียวกับหมวด Risk)
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="shrink-0 bg-teal-700 text-white hover:bg-teal-800"
+                    onClick={() => setSection('ml')}
+                    aria-label="ไปที่หมวด ML สัญญาณอัจฉริยะ"
+                  >
+                    ไปที่หมวด ML
+                    <ArrowRight className="ml-1 size-3.5" aria-hidden="true" />
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* ================================================================ */}
+          {/* ส่วนที่ 5 — ML · สัญญาณอัจฉริยะ (v0.29.0 — ย้ายจากหมวด Risk)          */}
+          {/* ================================================================ */}
+          {section === 'ml' && (
+            <div className="space-y-4">
+              {/* หัวหมวด — ความสัมพันธ์กับหมวด Risk และศูนย์ ML */}
+              <section
+                aria-label="หมวด ML สัญญาณอัจฉริยะ — ความผิดปกติ สาเหตุร่วม พยากรณ์ และแผนสุ่มตรวจ"
+                className="rounded-xl border border-teal-200 bg-teal-50/50 p-4"
+              >
+                <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-semibold text-teal-900">ML · สัญญาณอัจฉริยะ — ตรวจจับ → หาสาเหตุ → พยากรณ์ → จัดงบทบทวน</h2>
+                    <p className="mt-1 text-xs leading-relaxed text-teal-800/90">
+                      ML ทั้ง 4 ตัวเป็น <strong>"สัญญาณรอมนุษย์ทบทวน"</strong> — ไม่ตัดสินผ่าน/ไม่ผ่านแทนเกณฑ์เดิม และไม่แก้ข้อมูลต้นทาง ·
+                      คณิตความเสี่ยงใช้เกณฑ์เดียวกับหมวด Risk (LIKELIHOOD_BANDS · SEVERITY_WEIGHT ใน{' '}
+                      <span className="font-mono">src/lib/regulation.ts</span>) · ปรับเกณฑ์ค่าคงที่ 10 ค่าได้ที่ <strong>ศูนย์ ML</strong> ในเมนู คุณภาพข้อมูล
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 border-teal-300 bg-white text-teal-800 hover:bg-teal-50"
+                    onClick={() => setSection('risk')}
+                    aria-label="ไปที่หมวด Risk"
+                  >
+                    ไปที่หมวด Risk
+                    <ArrowRight className="ml-1 size-3.5" aria-hidden="true" />
+                  </Button>
+                </div>
+              </section>
+
+              {/* ① ML Anomaly Detection: ความผิดปกติข้ามรอบ (เรียนรู้ baseline จากประวัติจริง) */}
               <MlAnomalyPanel />
 
-              {/* v0.25.0 — ④ ML Root Cause Clustering: สมมติฐานสาเหตุร่วมของรอบล่าสุด */}
+              {/* ④ ML Root Cause Clustering: สมมติฐานสาเหตุร่วมของรอบล่าสุด */}
               <MlClusterCard />
 
-              {/* v0.27.0 — ③ ML Quality Trend Forecasting: พยากรณ์แนวโน้มอัตราล้มเหลว 1/3/5 รอบข้างหน้า */}
+              {/* ③ ML Quality Trend Forecasting: พยากรณ์แนวโน้มอัตราล้มเหลว 1/3/5 รอบข้างหน้า */}
               <ForecastPanel />
 
-              {/* v0.26.0 — ② Risk-based Sampling: จัดสรรงบการทบทวนตามความเสี่ยง */}
+              {/* ② Risk-based Sampling: จัดสรรงบการทบทวนตามความเสี่ยง */}
               <SamplingPanel users={users} />
             </div>
           )}
 
           {/* ================================================================ */}
-          {/* ส่วนที่ 5 — Data Classification (การจำแนกประเภทข้อมูล)               */}
+          {/* ส่วนที่ 6 — Data Classification (การจำแนกประเภทข้อมูล)               */}
           {/* ================================================================ */}
           {section === 'classification' && (
             <div className="space-y-4">

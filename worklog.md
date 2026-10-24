@@ -1594,3 +1594,27 @@ Work Log:
 Stage Summary:
 - v0.28.0 (ศูนย์ ML — แดชบอร์ดสรุป ML ศูนย์กลาง + ปรับเกณฑ์ค่าคงที่จากการใช้งานจริง) ปิดวงจร 100% บน remote — main + tag ครบ ระบบ sync สมบูรณ์
 - ไทม์ไลน์ ML ทั้งโครงการ: v0.25.0 (① anomaly + ④ cluster) → v0.26.0 (② risk-based sampling) → v0.27.0 (③ forecast) → **v0.28.0 (ศูนย์ ML — รวมทุกตัวในหน้าเดียว + เกณฑ์ปรับได้จากการใช้งานจริง)** · ⑤ LLM ตัดตามมติเดิม
+
+---
+Task ID: 49
+Agent: Z.ai Code (main orchestrator)
+Task: v0.29.0 — แยกแผง ML ทั้ง 4 ตัวออกจากหมวด Risk ไปหมวดใหม่ "ML · สัญญาณอัจฉริยะ" ใน DQ Dashboard (คำขอผู้ใช้: "ฉันคิดว่าใน แดชบอร์ด ควรแยก ML ออกจากใน Risk" → เห็นด้วย ผ่านการอภิปรายข้อดี-ข้อถกเถียง ② Sampling)
+
+Work Log:
+- อภิปรายกับผู้ใช้: เห็นด้วยกับการแยก เพราะ (1) หมวด Risk = "วิธีประเมินความเสี่ยงขององค์กร" ต่างแนวคิดจาก ML = "สัญญาณรอมนุษย์ทบทวน" (2) หมวด Risk ยาวเกิน (4 แผง ML ซ้อนอยู่) (3) ศูนย์ ML มีอยู่แล้วแต่ footnote ชี้ "แดชบอร์ด > Risk" — สองโมเดลความคิดสับสน (4) discoverability · ตัดสินใจ ② Sampling ย้ายไปด้วยทั้งหมด (เรื่องเล่า ML ต้องต่อเนื่อง คณิตผูก Risk จัดการด้วย footnote+ลิงก์ไขว้)
+- src/components/dq-dashboard.tsx: เพิ่ม 'ml' ใน DashboardSection + SECTIONS entry ใหม่ { id:'ml', th:'ML · สัญญาณอัจฉริยะ', en:'ML Signals', icon:BrainCircuit, desc:'ความผิดปกติข้ามรอบ สาเหตุร่วม พยากรณ์แนวโน้ม และแผนสุ่มตรวจตามความเสี่ยง' } (แทรกระหว่าง risk กับ classification — ลำดับเมนู 6 ส่วน)
+- ย้าย <MlAnomalyPanel/> + <MlClusterCard/> + <ForecastPanel/> + <SamplingPanel users={users}/> จากหมวด risk ไปบล็อกหมวด ml ใหม่ (เรียงเรื่องเล่า: ตรวจจับ ① → สาเหตุ ④ → พยากรณ์ ③ → จัดงบ ②) — คอมโพเนนต์/state/engine ไม่แตะ
+- หัวหมวด ML ใหม่: aria-label region + หัวเรื่อง "ตรวจจับ → หาสาเหตุ → พยากรณ์ → จัดงบทบทวน" + อธิบายหลักการล็อก (สัญญาณรอมนุษย์ทบทวน · คณิตใช้ LIKELIHOOD_BANDS/SEVERITY_WEIGHT ชุดเดียวกับหมวด Risk · ปรับเกณฑ์ 10 ค่าที่ศูนย์ ML) + ปุ่ม "ไปที่หมวด Risk" (setSection('risk'))
+- หมวด Risk เหลือวิธีการความเสี่ยงล้วน + การ์ดแจ้งย้ายสี teal: "สัญญาณ ML ย้ายไปหมวด \"ML · สัญญาณอัจฉริยะ\" แล้ว (v0.29.0)" + ปุ่ม "ไปที่หมวด ML" (setSection('ml')) — ลิงก์ไขว้ 2 ทางครบ
+- แก้คอมเมนต์ docstring หัวไฟล์ 5 ส่วน → 6 ส่วน + คอมเมนต์ "ส่วนที่ 5" classification → "ส่วนที่ 6"
+- src/components/dq/ml-center.tsx: แก้ footnote 6 จุด "แดชบอร์ด > Risk" → "แดชบอร์ด > ML · สัญญาณอัจฉริยะ" (head description + 3 การ์ดสรุป + sampling chip + settings footnote)
+- src/lib/views.ts: APP_VERSION v0.28.0 → v0.29.0
+- lint ผ่านสะอาด (eslint . ไม่มี error/warning)
+- E2E agent-browser: แท็บ "ML · สัญญาณอัจฉริยะ" แสดงในแถบหมวด (icon BrainCircuit) · กดเข้าเห็นหัวหมวด + แผงครบ 4 ตัว (① แสดง z 0.7 ดีขึ้นผิดปกติ/ปกติ + sparkline จริง · ④ กลุ่มสาเหตุร่วม + เกณฑ์ ≥ 40% · ③ พยากรณ์ + footnote R² 0.8/0.6 · ② กด "โหลดแผนสุ่มตรวจใหม่" ได้งบทบทวนจริง) · ปุ่มไขว้ 2 ทาง Risk↔ML ทำงานครบ (round trip) · การ์ดแจ้งย้ายในหมวด Risk ยืนยันข้อความ "สัญญาณ ML ย้ายไปหมวด ... แล้ว (v0.29.0)" · ศูนย์ ML โชว์ footnote ใหม่ 5 จุด · mobile 375px ทั้งสองหมวด scrollWidth=375 NO-OVERFLOW · desktop 1280px เรนเดอร์ถูกต้อง · console error 0 · page error 0 · badge v0.29.0 บน header/footer
+- ตรวจ PAT เดิมก่อน push: HTTP 401 ทั้งรูปแบบ Bearer และ token (token รูปเดียวกับที่ใช้สำเร็จ v0.28.0) → ตามขั้นตอนเดิม commit+tag ที่เครื่องก่อน push รอ PAT ใหม่จากผู้ใช้
+
+Stage Summary:
+- v0.29.0 ครบที่เครื่อง: หมวดใหม่ "ML · สัญญาณอัจฉริยะ" (ลำดับที่ 5 ใน 6 หมวด) รวมแผง ML ①④③② พร้อมหัวหมวดอธิบายหลักการ + ลิงก์ไขว้ Risk↔ML 2 ทาง · หมวด Risk กลับเป็นวิธีประเมินความเสี่ยงล้วน + การ์ดแจ้งย้าย · ศูนย์ ML footnote ตรงเป้าหมายใหม่
+- ขอบเขตที่ไม่แตะ: engines/APIs/ค่าคงที่/DqMlSettings/พฤติกรรมคำนวณทั้งหมด — เป็นการจัดวาง UI ล้วน (ไฟล์แก้ 3 ไฟล์)
+- ไฟล์แก้: src/components/dq-dashboard.tsx (type+SECTIONS+บล็อกหมวด) · src/components/dq/ml-center.tsx (footnote 6 จุด) · src/lib/views.ts (APP_VERSION)
+- Commit ที่เครื่อง: <pending> · Tag: v0.29.0 (local) · Push: รอ PAT ใหม่ (PAT ปัจจุบัน 401)

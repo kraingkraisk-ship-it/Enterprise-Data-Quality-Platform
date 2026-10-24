@@ -359,7 +359,7 @@ export default function MlCenter({ active }: { active: boolean }) {
               </CardTitle>
               <CardDescription className="mt-1">
                 สรุปทั้ง 4 ตัว ML ในหน้าเดียว (① ความผิดปกติข้ามรอบ · ④ สาเหตุร่วม · ③ พยากรณ์แนวโน้ม · ② แผนสุ่มตรวจ)
-                พร้อมปรับเกณฑ์ค่าคงที่จากการใช้งานจริง — รายละเอียดเต็มของแต่ละตัวอยู่ที่ แดชบอร์ด &gt; Risk
+                พร้อมปรับเกณฑ์ค่าคงที่จากการใช้งานจริง — รายละเอียดเต็มของแต่ละตัวอยู่ที่ แดชบอร์ด &gt; ML · สัญญาณอัจฉริยะ
               </CardDescription>
             </div>
             <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1 text-xs" onClick={() => void load()} aria-label="โหลดภาพรวม ML ใหม่">
@@ -398,7 +398,7 @@ export default function MlCenter({ active }: { active: boolean }) {
                   ...(a && a.better > 0 ? [{ label: `ดีขึ้นผิดปกติ ${a.better}`, className: 'border-teal-200 bg-teal-50 text-teal-800' }] : []),
                   { label: `แนวโน้มแย่ลง ${a?.drift ?? 0}`, className: 'border-slate-200 bg-slate-50 text-slate-700' },
                 ]}
-                footnote={`รวม ${a?.total ?? 0} คู่กฎ×ชุดข้อมูล · ยังไม่ประเมิน ${a?.insufficient ?? 0} · ดูรายละเอียด: แดชบอร์ด > Risk`}
+                footnote={`รวม ${a?.total ?? 0} คู่กฎ×ชุดข้อมูล · ยังไม่ประเมิน ${a?.insufficient ?? 0} · ดูรายละเอียด: แดชบอร์ด > ML · สัญญาณอัจฉริยะ`}
               />
             </div>
             {/* ④ Cluster */}
@@ -415,7 +415,7 @@ export default function MlCenter({ active }: { active: boolean }) {
                     ? [{ label: `ใหญ่สุด ${c.topSharePct.toFixed(0)}%`, className: 'border-rose-200 bg-rose-50 text-rose-800' }]
                     : []),
                 ]}
-                footnote={c?.topLabel ? `กลุ่มใหญ่สุด: ${c.topLabel} · ดูรายละเอียด: แดชบอร์ด > Risk` : 'ยังไม่มีความล้มเหลวในรอบล่าสุด (ผลดี)'}
+                footnote={c?.topLabel ? `กลุ่มใหญ่สุด: ${c.topLabel} · ดูรายละเอียด: แดชบอร์ด > ML · สัญญาณอัจฉริยะ` : 'ยังไม่มีความล้มเหลวในรอบล่าสุด (ผลดี)'}
               />
             </div>
             {/* ③ Forecast */}
@@ -432,7 +432,7 @@ export default function MlCenter({ active }: { active: boolean }) {
                   { label: `ทรงตัว ${f?.stable ?? 0}`, className: 'border-slate-200 bg-slate-50 text-slate-700' },
                   { label: `สัญญาณ ${f?.signals ?? 0}`, className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
                 ]}
-                footnote={`รวม ${f?.total ?? 0} คู่กฎ×ชุดข้อมูล · ประวัติยังไม่พอ ${f?.insufficient ?? 0} · ดูรายละเอียด: แดชบอร์ด > Risk`}
+                footnote={`รวม ${f?.total ?? 0} คู่กฎ×ชุดข้อมูล · ประวัติยังไม่พอ ${f?.insufficient ?? 0} · ดูรายละเอียด: แดชบอร์ด > ML · สัญญาณอัจฉริยะ`}
               />
             </div>
             {/* ② Sampling */}
@@ -449,7 +449,7 @@ export default function MlCenter({ active }: { active: boolean }) {
                         { label: `กลุ่ม ${sp.includedGroups}/${sp.totalGroups}`, className: 'border-slate-200 bg-slate-50 text-slate-700' },
                         { label: `ครอบคลุมความเสี่ยง ${sp.riskCoveragePct}%`, className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
                       ]
-                    : [{ label: 'สร้างแผนที่ แดชบอร์ด > Risk', className: 'border-amber-200 bg-amber-50 text-amber-900' }]
+                    : [{ label: 'สร้างแผนที่ แดชบอร์ด > ML · สัญญาณอัจฉริยะ', className: 'border-amber-200 bg-amber-50 text-amber-900' }]
                 }
                 footnote={sp ? `ฐานจริง ${sp.reviewableRows} แถว · สร้างเมื่อ ${fmtTime(sp.createdAt)}` : 'แผนถูกสร้างเมื่อผู้มีสิทธิ์กดสร้างเท่านั้น (ไม่สร้างอัตโนมัติ)'}
               />
@@ -681,7 +681,7 @@ export default function MlCenter({ active }: { active: boolean }) {
 
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 ทุกการบันทึกลง Audit Trail (ผู้บันทึก + เวลา + ค่าที่เปลี่ยน) ตรวจย้อนได้ในหน้าบทบาทและสิทธิ์ ·
-                แผนสุ่มตรวจ (②) ที่บันทึกไว้คงเดิมเพราะเก็บปัจจัยตอนสร้าง — กดสร้างแผนใหม่ที่ แดชบอร์ด &gt; Risk เพื่อใช้เกณฑ์ใหม่ ·
+                แผนสุ่มตรวจ (②) ที่บันทึกไว้คงเดิมเพราะเก็บปัจจัยตอนสร้าง — กดสร้างแผนใหม่ที่ แดชบอร์ด &gt; ML · สัญญาณอัจฉริยะ เพื่อใช้เกณฑ์ใหม่ ·
                 เกณฑ์ที่แสดงคือค่าเดียวกับที่ engine ใช้คำนวณจริง (แหล่งเดียว: ตาราง DqMlSettings + ค่าคงที่ใน <span className="font-mono">src/lib/ml.ts</span> / <span className="font-mono">forecast.ts</span>)
               </p>
             </>
