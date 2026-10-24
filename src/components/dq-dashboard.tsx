@@ -15,10 +15,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
+  BrainCircuit,
   ChevronDown,
   ClipboardList,
   EyeOff,
   LayoutDashboard,
+  Network,
   RefreshCw,
   Scale,
   ShieldCheck,
@@ -34,6 +36,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast'
 import { DIMENSION_ICONS, DimensionBadge } from '@/components/dimension-picker'
 import { SEVERITY_KEYS, SEVERITY_LABELS, type DimensionKey, type SeverityKey } from '@/lib/dq'
+import { CLUSTER_SHARE_MIN, ML_FOOTNOTE_TH, ML_MIN_HISTORY, Z_LEVELS } from '@/lib/ml'
+import type { AnomalyView, ClusterView, MlEvaluation } from '@/lib/ml-engine'
 import { ROLE_LIST, type RoleKey } from '@/lib/rbac'
 import {
   classificationLabel,
@@ -1871,6 +1875,12 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                   </CollapsibleContent>
                 </Card>
               </Collapsible>
+
+              {/* v0.25.0 — ① ML Anomaly Detection: ความผิดปกติข้ามรอบ (เรียนรู้ baseline จากประวัติจริง) */}
+              <MlAnomalyPanel />
+
+              {/* v0.25.0 — ④ ML Root Cause Clustering: สมมติฐานสาเหตุร่วมของรอบล่าสุด */}
+              <MlClusterCard />
             </div>
           )}
 
@@ -2087,4 +2097,297 @@ function gradeOfClient(score: number | null): { band: string; label: string; bad
   if (score >= 85) return { band: 'GOOD', label: 'ดี', badgeClass: 'bg-teal-50 text-teal-800 border-teal-200', textClass: 'text-teal-700' }
   if (score >= 70) return { band: 'FAIR', label: 'ต้องปรับปรุง', badgeClass: 'bg-amber-50 text-amber-900 border-amber-200', textClass: 'text-amber-700' }
   return { band: 'POOR', label: 'วิกฤต', badgeClass: 'bg-rose-50 text-rose-800 border-rose-200', textClass: 'text-rose-700' }
+}
+
+/* ==========================================================================
+   ML Panels (v0.25.0) — ① Anomaly Detection + ④ Root Cause Clustering
+   อ่านจาก /api/dq/ml/* — เกณฑ์ทุกตัวแสดงจากตารางค่าคงที่ src/lib/ml.ts โดยตรง
+   (single source of truth เดียวกับที่ engine ใช้คำนวณ — anti-drift ต่อยอด v0.24.1)
+   ========================================================================== */
+
+/** โหลดผล ML แบบอิสระต่อแผง — loading/error จัดการในแผงของตัวเอง ไม่กระทบส่วนอื่นของแดชบอร์ด */
+function useMlEvaluation(endpoint: 'anomalies' | 'clusters') {
+  const [data, setData] = useState<MlEvaluation | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const reload = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/dq/ml/${endpoint}`)
+      const body = (await res.json().catch(() => ({}))) as MlEvaluation & { error?: string }
+      if (!res.ok) throw new Error(body.error ?? 'โหลดผล ML ไม่สำเร็จ')
+      setData(body)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'โหลดผล ML ไม่สำเร็จ')
+    } finally {
+      setLoading(false)
+    }
+  }, [endpoint])
+  useEffect(() => {
+    void reload()
+  }, [reload])
+  return { data, loading, error, reload }
+}
+
+/** ป้ายโหมดการประเมิน — โปร่งใสว่าตัวเลขมาจาก batch ที่บันทึกหรือโหมดสด */
+function MlModeBadge({ mode, batchAt }: { mode: string; batchAt: string | null }) {
+  if (mode === 'BATCH') {
+    return (
+      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800">
+        บันทึกจาก batch ล่าสุด · {fmtTime(batchAt)}
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] text-amber-900">
+      โหมดสด — ยังไม่มี batch (ประเมินจากผลรันล่าสุดรายกฎ ไม่บันทึก)
+    </Badge>
+  )
+}
+
+/** กราฟประวัติอัตราล้มเหลว (SVG บริสุทธิ์ — ไม่พึ่งไลบรารีกราฟ) + เส้น baseline ประ */
+function MlSparkline({ history, baseline }: { history: Array<{ failRate: number }>; baseline: number }) {
+  const w = 120
+  const h = 30
+  const pad = 2
+  const rates = history.map((p) => p.failRate)
+  const max = Math.max(...rates, baseline, 0.05)
+  const xOf = (i: number) => (rates.length > 1 ? pad + (i * (w - 2 * pad)) / (rates.length - 1) : w / 2)
+  const yOf = (r: number) => h - pad - (r / max) * (h - 2 * pad)
+  const points = rates.map((r, i) => `${xOf(i).toFixed(1)},${yOf(r).toFixed(1)}`).join(' ')
+  const baseY = yOf(baseline).toFixed(1)
+  const last = rates.length > 0 ? rates[rates.length - 1] : null
+  return (
+    <svg
+      width={w}
+      height={h}
+      role="img"
+      aria-label={`ประวัติอัตราล้มเหลว ${rates.length} จุด เทียบ baseline ${(baseline * 100).toFixed(1)}%`}
+      className="shrink-0"
+    >
+      <line x1={pad} x2={w - pad} y1={baseY} y2={baseY} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
+      {points && <polyline points={points} fill="none" stroke="#0f766e" strokeWidth="1.5" strokeLinejoin="round" />}
+      {last !== null && <circle cx={xOf(rates.length - 1)} cy={yOf(last)} r="2.5" fill={last > baseline ? '#e11d48' : '#0f766e'} />}
+    </svg>
+  )
+}
+
+/** ① ความผิดปกติข้ามรอบ — เรียนรู้ baseline รายกฎจากประวัติจริง (v0.25.0) */
+function MlAnomalyPanel() {
+  const { data, loading, error, reload } = useMlEvaluation('anomalies')
+  const anomalies = data?.anomalies ?? []
+  const counts = {
+    CRITICAL: anomalies.filter((a) => a.level === 'CRITICAL').length,
+    HIGH: anomalies.filter((a) => a.level === 'HIGH').length,
+    MEDIUM: anomalies.filter((a) => a.level === 'MEDIUM').length,
+    BETTER: anomalies.filter((a) => a.better).length,
+    NORMAL: anomalies.filter((a) => a.level === 'NORMAL' && !a.better).length,
+    INSUFFICIENT: anomalies.filter((a) => a.level === 'INSUFFICIENT_HISTORY').length,
+  }
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+              <BrainCircuit className="h-4 w-4 text-teal-700" aria-hidden />
+              ความผิดปกติข้ามรอบที่ ML ตรวจพบ (Anomaly Detection)
+            </CardTitle>
+            <CardDescription className="mt-1">
+              เรียนรู้ baseline ของแต่ละกฎจากประวัติรันจริง — รอบที่อัตราล้มเหลวห่างจาก baseline เกินเกณฑ์จะถูกแจ้งเตือน
+              แม้ยังไม่ทะลุ threshold เดิม (ML เป็นสัญญาณรอทบทวน ไม่ตัดสินแทนเกณฑ์ผ่าน/ไม่ผ่าน)
+            </CardDescription>
+          </div>
+          <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1 text-xs" onClick={() => void reload()} aria-label="โหลดผลประเมิน ML ใหม่">
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />
+            โหลดใหม่
+          </Button>
+        </div>
+        {data && <div className="pt-1">{<MlModeBadge mode={data.mode} batchAt={data.batchAt} />}</div>}
+      </CardHeader>
+      <CardContent>
+        {loading && <p className="py-6 text-center text-sm text-muted-foreground">กำลังประเมินความผิดปกติจากประวัติรัน…</p>}
+        {error && !loading && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800" role="alert">
+            {error}
+          </div>
+        )}
+        {!loading && !error && data && (
+          <>
+            <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px]" aria-label="สรุปจำนวนตามระดับ">
+              <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-800">สูงมาก {counts.CRITICAL}</Badge>
+              <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-800">สูง {counts.HIGH}</Badge>
+              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">ปานกลาง {counts.MEDIUM}</Badge>
+              {counts.BETTER > 0 && (
+                <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-800">ดีขึ้นผิดปกติ {counts.BETTER}</Badge>
+              )}
+              <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">ปกติ {counts.NORMAL}</Badge>
+              {counts.INSUFFICIENT > 0 && (
+                <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-500">ยังไม่ประเมิน {counts.INSUFFICIENT}</Badge>
+              )}
+            </div>
+            {anomalies.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">ยังไม่มีผลรันในระบบ — รัน validation แล้ว ML จะประเมินอัตโนมัติ</p>
+            ) : (
+              <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="รายการความผิดปกติรายกฎ">
+                {anomalies.map((a) => (
+                  <MlAnomalyRow key={`${a.ruleId}-${a.datasetId}`} a={a} />
+                ))}
+              </div>
+            )}
+            {/* เกณฑ์แสดงจากตารางค่าคงที่ src/lib/ml.ts โดยตรง — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ */}
+            <div className="mt-3 space-y-1.5 rounded-md bg-slate-50 px-2.5 py-2">
+              <p className="text-[11px] font-medium text-slate-700">
+                เกณฑ์ระดับจากคะแนน z:{' '}
+                {Z_LEVELS.slice()
+                  .reverse()
+                  .map((z) => `z ≥ ${z.minZ} = ${z.label}`)
+                  .join(' · ')}{' '}
+                · ต่ำกว่า {Z_LEVELS[Z_LEVELS.length - 1].minZ} = ปกติ
+              </p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{ML_FOOTNOTE_TH}</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                ประเมินอัตโนมัติหลังรัน validation ทุกครั้ง — ระดับ สูง/สูงมาก ถูกส่งเข้ากล่องสัญญาณ (รอมนุษย์ทบทวน) ·
+                นิยามอยู่ใน <span className="font-mono">src/lib/ml.ts</span> + <span className="font-mono">src/lib/ml-engine.ts</span> ตรวจย้อนได้ทุกตัวเลข
+              </p>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function MlAnomalyRow({ a }: { a: AnomalyView }) {
+  const insufficient = a.level === 'INSUFFICIENT_HISTORY'
+  return (
+    <div role="listitem" className={`rounded-lg border p-3 ${insufficient ? 'opacity-70' : ''}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className={`text-[10.5px] ${a.badgeClass}`}>
+            {insufficient ? 'ยังไม่ประเมิน' : `${a.label} · z ${a.zScore.toFixed(1)}`}
+          </Badge>
+          <DimensionBadge dimension={a.dimension as DimensionKey} />
+          <span className="truncate text-sm font-medium">{a.datasetName}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            · {a.column} — {a.conditionName}
+          </span>
+        </div>
+        {a.drift && (
+          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-900">
+            <TrendingDown className="mr-1 h-3 w-3 rotate-180" aria-hidden />
+            แนวโน้มแย่ลงต่อเนื่อง
+          </Badge>
+        )}
+      </div>
+      {insufficient ? (
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          ประวัติไม่พอ — มี {a.windowSize}/{ML_MIN_HISTORY} รอบ (ระบบจะเริ่มประเมินเมื่อประวัติครบ {ML_MIN_HISTORY} รอบ เพื่อความน่าเชื่อถือของ baseline)
+        </p>
+      ) : (
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-600">
+            รอบนี้ <strong className="text-slate-900">{(a.failRate * 100).toFixed(1)}%</strong> · baseline {(a.baseline * 100).toFixed(1)}% (มัธยฐาน{' '}
+            {a.windowSize} รอบ) · MAD {(a.mad * 100).toFixed(2)}%
+            {a.better && (
+              <span className="text-teal-700"> — อัตราล้มเหลวลดต่ำกว่ารูปแบบเดิมมาก (ไม่นับเป็นความเสี่ยง แต่แนะให้ตรวจว่าไม่ใช่ข้อมูลหาย)</span>
+            )}
+          </p>
+          <MlSparkline history={a.history} baseline={a.baseline} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** ④ สมมติฐานสาเหตุร่วม — จัดกลุ่ม exact-match ตามลายเซ็น (v0.25.0) */
+function MlClusterCard() {
+  const { data, loading, error, reload } = useMlEvaluation('clusters')
+  const clusters = data?.clusters ?? []
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+              <Network className="h-4 w-4 text-teal-700" aria-hidden />
+              สมมติฐานสาเหตุร่วมของรอบล่าสุด (Root Cause Clustering)
+            </CardTitle>
+            <CardDescription className="mt-1">
+              รวมความล้มเหลวของรอบด้วยลายเซ็น &quot;แหล่งข้อมูล · ชุดข้อมูล · มิติ&quot; แบบ exact-match — ทุกกลุ่มระบุสมาชิกได้ครบ
+              (ตั้งใจไม่ใช้โมเดลกล่องดำ เพื่อให้ตรวจสอบย้อนได้ทุกกลุ่ม)
+            </CardDescription>
+          </div>
+          <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1 text-xs" onClick={() => void reload()} aria-label="โหลดกลุ่มสาเหตุร่วมใหม่">
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />
+            โหลดใหม่
+          </Button>
+        </div>
+        {data && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <MlModeBadge mode={data.mode} batchAt={data.batchAt} />
+            {data.totalFailedRows > 0 && (
+              <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-700">
+                แถวล้มรวมรอบล่าสุด {data.totalFailedRows}
+              </Badge>
+            )}
+          </div>
+        )}
+      </CardHeader>
+      <CardContent>
+        {loading && <p className="py-6 text-center text-sm text-muted-foreground">กำลังจัดกลุ่มสาเหตุร่วม…</p>}
+        {error && !loading && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800" role="alert">
+            {error}
+          </div>
+        )}
+        {!loading && !error && data && (
+          <>
+            {clusters.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">ไม่มีความล้มเหลวในรอบล่าสุด — ไม่มีอะไรให้จัดกลุ่ม (ผลดี)</p>
+            ) : (
+              <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="กลุ่มสาเหตุร่วม">
+                {clusters.map((c) => (
+                  <MlClusterRow key={c.signatureKey} c={c} />
+                ))}
+              </div>
+            )}
+            <p className="mt-3 rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              เกณฑ์เสนอสมมติฐาน: กลุ่มครอบ ≥ {Math.round(CLUSTER_SHARE_MIN * 100)}% ของความล้มเหลวทั้งรอบ (CLUSTER_SHARE_MIN ใน src/lib/ml.ts) ·
+              นับแถวจากผลรันจริงรายกฎ — เป็นข้อเสนอให้มนุษย์เริ่มตรวจจุดที่ใช่ที่สุดก่อนเสมอ ไม่ใช่การสรุปสาเหตุแทนผู้เชี่ยวชาญ
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function MlClusterRow({ c }: { c: ClusterView }) {
+  return (
+    <div role="listitem" className="rounded-lg border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10.5px] text-slate-700">
+            {c.sourceType || 'ไม่ระบุแหล่ง'}
+          </Badge>
+          <span className="truncate text-sm font-medium">{c.datasetName}</span>
+          <span className="text-xs text-muted-foreground">· มิติ {c.dimensionTh}</span>
+        </div>
+        <span className="shrink-0 font-mono text-sm font-bold text-rose-700">{c.sharePct.toFixed(0)}%</span>
+      </div>
+      <ScoreBar score={c.sharePct} className="mt-2" />
+      <p className="mt-1.5 text-xs text-slate-600">
+        แถวล้ม {c.groupFailedRows} จาก {c.totalFailedRows} ทั้งรอบ · สมาชิก {c.members.length} กฎ:{' '}
+        {c.members.slice(0, 4).map((m) => `${m.column} (${m.failedRows} แถว)`).join(' · ')}
+        {c.members.length > 4 ? ` · +${c.members.length - 4} กฎ` : ''}
+      </p>
+      {c.hypothesis && (
+        <p className="mt-1.5 rounded-md border border-emerald-200 bg-emerald-50/60 px-2 py-1.5 text-[11px] leading-relaxed text-emerald-900">
+          {c.hypothesis}
+        </p>
+      )}
+    </div>
+  )
 }

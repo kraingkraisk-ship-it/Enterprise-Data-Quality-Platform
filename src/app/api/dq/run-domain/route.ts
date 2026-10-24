@@ -14,6 +14,7 @@ import {
 import { buildRuleVerdict, DAMA_STANDARDS, ENGINE_FAILURE_REASONS, fixHintFor, gradeOf } from '@/lib/dama'
 import { resolveOperator } from '@/lib/operator'
 import { aggregateRollups, rollupByElement, type RollupRunInput } from '@/lib/elements'
+import { evaluateBatch } from '@/lib/ml-engine'
 
 /** จำกัดจำนวนแถวล้มเหลวที่เก็บ snapshot ต่อกฎต่อรอบ (เช่นเดียวกับ /api/dq/run) */
 const MAX_FAILURE_ROWS_PER_RULE = 200
@@ -506,6 +507,13 @@ export async function POST(req: NextRequest) {
           skippedRules: skipped,
         },
       })
+
+      // ---------- ML ประเมินอัตโนมัติราย batch (v0.25.0) — try/catch แยก ไม่กระทบการรัน ----------
+      try {
+        await evaluateBatch(batch.id)
+      } catch (mlErr) {
+        console.error('ML evaluation failed (non-blocking)', mlErr)
+      }
     }
 
     const rollup = buildRollup(

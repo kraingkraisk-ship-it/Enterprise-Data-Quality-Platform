@@ -39,6 +39,7 @@ model Dataset {
   signals    DqSignal[]
   exceptions DqException[]
   batches    DqValidationBatch[]
+  anomalies  DqAnomaly[]
   profileRuns DqProfileRun[]
   issues     DqIssue[]
   domain     DataDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
@@ -134,6 +135,7 @@ model DqRule {
   datasets   RuleDataset[]
   runs       DqRun[]
   exceptions DqException[]
+  anomalies  DqAnomaly[]
   element    DataElement? @relation(fields: [dataElementId], references: [id], onDelete: SetNull)
 
   @@index([dataElementId])
@@ -179,6 +181,8 @@ model DqValidationBatch {
 
   dataset  Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
   failures DqFailureRecord[]
+  anomalies DqAnomaly[]
+  failureClusters DqFailureCluster[]
 
   @@index([datasetId, createdAt])
   @@index([groupRunId])
@@ -541,4 +545,59 @@ model DataAssetRecord {
 
   @@unique([assetId, rowNo])
   @@index([assetId])
+}
+
+// ---------------------------------------------------------------------------
+// ML Evaluations (v0.25.0) — ① Anomaly Detection + ④ Root Cause Clustering
+// ผล ML เป็น "สัญญาณรอทบทวน" เท่านั้น — ไม่แตะการตัดสินผ่าน/ไม่ผ่าน (DqRun.status) เดิมเด็ดขาด
+// คำนวณอัตโนมัติหลังรัน validation จบแต่ละ batch (try/catch แยก — ML ล้มเหลว = การรันยังสำเร็จ)
+// ค่าคงที่ทั้งหมดอยู่ที่ src/lib/ml.ts (single source of truth — UI แสดงจากตารางเดียวกัน)
+// ---------------------------------------------------------------------------
+
+// ผลประเมินความผิดปกติรายกฎรายชุดข้อมูลรายรอบ — baseline = มัธยฐาน W รอบก่อนหน้า + MAD
+model DqAnomaly {
+  id         String   @id @default(cuid())
+  batchId    String // batch รอบปัจจุบันที่ประเมิน
+  ruleId     String
+  datasetId  String
+  method     String   @default("MEDIAN_MAD_Z") // วิธีคำนวณ (โชว์บนหน้าจอเพื่อตรวจย้อน)
+  failRate   Float // อัตราล้มเหลวรอบปัจจุบัน (0–1)
+  baseline   Float // มัธยฐานอัตราล้มเหลว W รอบก่อนหน้า
+  mad        Float // Median Absolute Deviation × 1.4826 (≈ SD) — มีค่าพื้นฐาน MIN_MAD กันหารศูนย์
+  zScore     Float // |failRate − baseline| / mad
+  level      String   @default("NORMAL") // CRITICAL | HIGH | MEDIUM | NORMAL | INSUFFICIENT_HISTORY
+  driftSlope Float? // ความชัน linear regression ของ W รอบ (บวก = แนวโน้มแย่ลง)
+  driftR2    Float? // คุณภาพเส้น drift — R² ≥ DRIFT_R2_MIN จึงถือว่ามีนัยสำคัญ
+  windowSize Int      @default(0) // จำนวนรอบประวัติที่ใช้จริง
+  createdAt  DateTime @default(now())
+
+  rule    DqRule            @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  dataset Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  batch   DqValidationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, ruleId, datasetId])
+  @@index([batchId])
+  @@index([level])
+}
+
+// กลุ่มสาเหตุร่วมรายรอบ — จัดกลุ่มแบบ exact-match ด้วยลายเซ็น (แหล่งข้อมูล, ชุดข้อมูล, มิติ)
+// ทุกกลุ่มอธิบายสมาชิกได้ครบ (ตั้งใจไม่ใช้ k-means — เลี่ยงกล่องดำ)
+model DqFailureCluster {
+  id              String   @id @default(cuid())
+  batchId         String
+  signatureKey    String // "{sourceType}|{datasetId}|{dimension}" — ลายเซ็นกลุ่ม
+  sourceType      String   @default("") // แหล่งข้อมูลของชุดข้อมูล (Dataset.sourceType)
+  datasetId       String
+  dimension       String
+  memberRunsJson  String   @default("[]") // JSON [{ruleId, column, conditionName, dimension, failedRows, totalRows}]
+  groupFailedRows Int      @default(0) // แถวล้มรวมของกลุ่ม (จาก DqRun.failedRows — ไม่ติด cap 200)
+  totalFailedRows Int      @default(0) // แถวล้มรวมทั้งรอบ (ฐานคำนวณ sharePct)
+  sharePct        Float    @default(0) // สัดส่วนความล้มเหลวที่กลุ่มนี้อธิบาย (0–100)
+  hypothesis      String   @default("") // สมมติฐานสาเหตุ (ภาษาคน) — แสดงเมื่อ sharePct ≥ CLUSTER_SHARE_MIN×100
+  createdAt       DateTime @default(now())
+
+  batch DqValidationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, signatureKey])
+  @@index([batchId])
 }

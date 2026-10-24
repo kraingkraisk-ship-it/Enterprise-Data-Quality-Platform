@@ -1385,3 +1385,57 @@ Stage Summary:
 - การตัดสินใจสำคัญ: (1) ใช้ riskBandOf/RISK_BANDS จาก lib/regulation.ts โดยตรง — chip ที่แสดงคือเกณฑ์เดียวกับที่ engine คำนวณ (anti-drift ต่อยอดแนวคิด v0.24.1) (2) แถวมาตรฐานกลายเป็นปุ่มเลือกกรอบ — ลดขั้นตอนคลิกซ้ำ (3) รักษาข้อมูลคะแนนรวม /100 ด้วย Badge ในหัวการ์ด ไม่ใช่การลบทิ้ง (4) กัน edge case reductionPct ติดลบ (เพิ่มขึ้น +X%)
 - ไฟล์: src/components/dq-dashboard.tsx (ลด ~40 บรรทัดสุทธิ: ลบการ์ด 3 ใบ + ปรับ strip/ตาราง/การ์ดมาตรา) · src/lib/views.ts (version bump)
 - สถานะ git: commit 703bc72 + tag v0.24.2 อยู่ที่เครื่องเท่านั้น — โค้ด/E2E สมบูรณ์ 100% รอ push เมื่อผู้ใช้ส่ง PAT ใหม่ (remote ยังเป็น a3e4d2e = v0.24.1)
+
+---
+Task ID: 44-result (recovered)
+Agent: Z.ai Code (main session)
+Task: บันทึกซ้ำ — push v0.24.2 สำเร็จด้วย PAT ใหม่ (รายการเดิมหายจากการ reset ของ workspace)
+
+Work Log:
+- PAT ใหม่ยืนยันด้วย API /user = HTTP 200 → push main + tag v0.24.2 สำเร็จ (a3e4d2e..add622b) → ls-remote ตรง local ทุกตำแหน่ง
+
+Stage Summary:
+- v0.24.2 ปิดวงจร 100% บน remote (add622b)
+
+---
+Task ID: 45-spec (recovered)
+Agent: Z.ai Code (main session)
+Task: สเปก ML ระลอก 1 (ล็อกแล้วโดยผู้ใช้) — ① Anomaly Detection + ④ Root Cause Clustering (v0.25.0)
+
+Work Log:
+- ผู้ใช้ตัดสินใจ 4 จุด: (1) คำนวณอัตโนมัติหลังรัน validation จบแต่ละ batch (2) anomaly สูง/สูงมาก หยอด DqSignal พร้อมกันซ้ำ (3) ระลอก 1 = ①+④ (4) นโยบายสุ่มระลอก 2 = เต็ม/10%/5%/1%
+- ตารางใหม่: DqAnomaly (unique batchId+ruleId+datasetId) · DqFailureCluster (unique batchId+signatureKey)
+- src/lib/ml.ts ค่าคงที่: ML_WINDOW=10, ML_MIN_HISTORY=5, Z_LEVELS (≥3 สูงมาก/≥2 สูง/≥1 ปานกลาง), DRIFT_R2_MIN=0.6, CLUSTER_SHARE_MIN=0.40, MIN_MAD
+- ①: baseline=มัธยฐาน W รอบ (ตัดรอบปัจจุบัน) + MAD×1.4826 + z=|current−baseline|/mad + drift (slope>0 & R²≥0.6) · ประวัติ<5 รอบ = INSUFFICIENT_HISTORY · ML ไม่แตะ DqRun.status
+- ④: ต่อ batch รวมผลรัน → ลายเซ็น (dataset.sourceType, datasetId, dimension) exact-match → sharePct≥40% = สมมติฐานสาเหตุ
+- API hook: /api/dq/run + /api/dq/run-domain หลัง batch update ห่อ try/catch (ML ล้มไม่กระทบการรัน) · GET /api/dq/ml/anomalies + /api/dq/ml/clusters
+- โหมดสด (LATEST_RUNS): เมื่อยังไม่มี batch (ข้อมูล seed) คำนวณจากผลรันล่าสุดรายกฎแบบไม่บันทึก แสดง badge ชัดเจน — เดิมพันกับคณิตเดียวกัน
+- UI: Dashboard > Risk — แผง "ความผิดปกติข้ามรอบ (ML)" chip ระดับ + sparkline SVG + เส้น baseline + footnote ค่าคงที่จาก lib/ml.ts · การ์ด "สมมติฐานสาเหตุร่วม" · ศัพท์ระดับจาก Z_LEVELS/RISK_BANDS · สี rose/orange/amber/slate
+- เวอร์ชัน v0.25.0 → lint → E2E agent-browser → tag → push (เช็ก /user ก่อน)
+
+Stage Summary:
+- บทเรียนใหม่สำคัญ: workspace sandbox กลับสแนปช็อตเก่าได้ข้าม turn — ต้อง git fetch + reset --hard origin/main ตรวจสถานะก่อนทำงานทุกครั้ง (remote = source of truth เดียว)
+- db ว่างหลัง reset → db:push + bun run scripts/seed.ts แล้ว (rules 14 / runs 168 / datasets 7 / signals 11 / batches 0)
+
+---
+Task ID: 45
+Agent: Z.ai Code (main session)
+Task: v0.25.0 — ML ระลอก 1: ① Anomaly Detection ข้ามรอบ + ④ Root Cause Clustering (ตามสเปก Task 45-spec ที่ผู้ใช้ล็อก)
+
+Work Log:
+- กู้คืน workspace ก่อนลงมือ: พบว่า sandbox กลับสแนปช็อตเก่า (v0.21.0) ข้าม turn — git fetch + reset --hard origin/main (= add622b v0.24.2) + คืน tags ทั้งหมด + db:push + seed ใหม่ (บทเรียนบันทึกใน 45-spec)
+- prisma/schema.prisma: เพิ่ม DqAnomaly (unique batchId+ruleId+datasetId — idempotent) + DqFailureCluster (unique batchId+signatureKey) + relations — db:push ผ่าน
+- src/lib/ml.ts (ใหม่): ค่าคงที่ทั้งหมดเป็นตาราง export — ML_WINDOW=10, ML_MIN_HISTORY=5, ANOMALY_METHOD=MEDIAN_MAD_Z, MAD_TO_SD=1.4826, MIN_MAD=0.005, Z_LEVELS (≥3 สูงมาก/≥2 สูง/≥1 ปานกลาง), Z_MIN_ANOMALY=1, DRIFT_R2_MIN=0.6, CLUSTER_SHARE_MIN=0.4, SIGNAL_LEVELS=[CRITICAL,HIGH], ML_FOOTNOTE_TH (UI แสดงจากตารางนี้โดยตรง — anti-drift)
+- src/lib/ml-engine.ts (ใหม่): assessAnomaly (มัธยฐาน+MAD+z+linear trend) · buildClusters (exact-match ลายเซ็น sourceType|datasetId|dimension นับจาก DqRun.failedRows ไม่ติด cap 200) · evaluateBatch (บันทึก+upsert+แจ้ง DqSignal เมื่อ worse+HIGH/CRITICAL พร้อม dedup ตาม pending title) · readBatchEvaluation (GET อ่านอย่างเดียว) · evaluateLatest (โหมดสดเมื่อไม่มี batch — คณิตเดียวกัน ไม่บันทึก)
+- แก้บั๊กระหว่างพัฒนา 2 จุด: (1) drift ทิศกลับ — ประวัติ query แบบ desc ต้อง reverse เป็นเวลาจริงก่อน regression ไม่งั้นข้อมูลที่ดีขึ้นถูกตีเป็น "แย่ลง" (2) การดีขึ้นเร็ว (failRate ต่ำกว่า baseline มาก) เดิมโดนแฟล็กระดับความเสี่ยง — แยกทิศทางเป็น better=true แสดง "ดีขึ้นผิดปกติ" (teal) ไม่นับความเสี่ยง ไม่ส่งสัญญาณ
+- API hook: /api/dq/run + /api/dq/run-domain หลัง batch update → evaluateBatch ใน try/catch — **พิสูจน์จริงตอน dev server ยังถือ Prisma client เก่า: ML ล้มเหลวแต่ POST คืน 200 ปกติ (isolation ทำงาน)** · API ใหม่ GET /api/dq/ml/anomalies + /api/dq/ml/clusters (?batchId= หรือ batch ล่าสุด หรือโหมดสด)
+- UI dq-dashboard.tsx: MlAnomalyPanel (สรุป chip ระดับ + รายการ max-h-96 scroll + badge ระดับ/ดีขึ้นผิดปกติ + MlSparkline SVG พร้อมเส้น baseline ประ + aria-label + drift badge + เกณฑ์ z จาก Z_LEVELS + ML_FOOTNOTE_TH + source note) · MlClusterCard (sharePct bar + สมาชิกรายกฎ + hypothesis กล่อง emerald เมื่อ ≥40% + เกณฑ์ CLUSTER_SHARE_MIN) · ปุ่มโหลดใหม่ + loading/error state แยกต่อแผง
+- views.ts APP_VERSION v0.25.0 · lint ผ่าน (รันซ้ำหลังทุกแก้)
+- ทดสอบ golden path จริง: POST /api/dq/run (somchai.owner) → batch cmvmai8op… → ml {anomalies: 8, clusters: 2} → DqAnomaly 8 แถว + DqFailureCluster 2 แถว บันทึกถาวร → API โหมด BATCH อ่านกลับถูก (history 14 จุด, ระดับตามคณิต)
+- ความถูกต้องทางคณิตที่ตรวจสอบแล้วจากข้อมูลจริง: baseline มัธยฐาน 10 รอบ ตรงมือ · z=|current−baseline|/MAD · drift slope ติดลบ (ดีขึ้น) → drift=false · cluster 71.4% ≥ 40% มี hypothesis, 28.6% ไม่มี — เกณฑ์ทำงานครบ
+- E2E agent-browser: Risk section แสดงแผง ML ครบ (โหมด BATCH + badge วันที่ batch, แถว anomaly "ปกติ · z 0.7" + sparkline "ประวัติอัตราล้มเหลว 14 จุด เทียบ baseline 20.0%", cluster "แถวล้ม 5 จาก 7 · email (3) · phone (2)" + กล่องสมมติฐาน "ความล้มเหลว 71.4% ของทั้งรอบมาจากแหล่งข้อมูล POSTGRESQL…") · page error 0 · console error 0 · mobile 375px NO-OVERFLOW (panel right 338 ≤ 375) · desktop 1280 ปกติ
+
+Stage Summary:
+- v0.25.0 สมบูรณ์: ML ประเมินอัตโนมัติหลังรัน validation ทุกครั้ง (ผ่าน try/catch — ML ล้มไม่กระทบการรัน พิสูจน์จริง) · anomaly รายกฎเทียบ baseline มัธยฐาน+MAD พร้อม drift · สมมติฐานสาเหตุร่วม exact-match เกณฑ์ 40% · สัญญาณเฉพาะ worse+สูง/สูงมาก · เกณฑ์ทุกตัวเป็นตารางใน src/lib/ml.ts ที่ UI แสดงตรงกับ engine · โหมดสดรองรับข้อมูล seed ที่ยังไม่มี batch
+- ไฟล์ใหม่: prisma/schema.prisma (+2 models), src/lib/ml.ts, src/lib/ml-engine.ts, src/app/api/dq/ml/{anomalies,clusters}/route.ts · แก้: dq-dashboard.tsx, run/route.ts, run-domain/route.ts, views.ts
+- ข้อจำกัดที่รู้ตัว: ข้อมูล seed ปัจจุบันนิ่ง/ดีขึ้น จึงยังไม่มีแถว worse-anomaly ให้เห็น chip สูง/สูงมากบนจอ (กลไกสร้าง+dedup สัญญาณตรวจสอบด้วยโค้ดและใช้ flow เดียวกับ RULE_VIOLATION ที่ E2E มาแล้ว) — จะแสดงทันทีเมื่อข้อมูลจริงแย่ลง
