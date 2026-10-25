@@ -1753,3 +1753,21 @@ Stage Summary:
 - **v0.31.0 (ข้อมูลอ้างอิง — Reference Data Center) ปิดวงจรสมบูรณ์บน remote**: commit b45bd43 + tag v0.31.0 อยู่บน GitHub แล้ว ไม่มีงานค้าง push เหลืออยู่
 - ไทม์ไลน์รวม (ทุกเวอร์ชันอยู่บน remote แล้ว): v0.25.0 (①④) → v0.26.0 (②) → v0.27.0 (③) → v0.28.0 (ศูนย์ ML) → v0.29.0 (แยกหมวด ML) → v0.30.0 (ศูนย์บันทึกตรวจสอบ) → v0.31.0 (ข้อมูลอ้างอิง)
 - ข้อจำกัดเดิมคงอยู่: PAT หมดอายุ/ถูก revoke เป็นระยะ (รูปแบบเดียวกับ Task 43–52) — เซสชันถัดไปตรวจ PAT ก่อน push เสมอ
+
+---
+Task ID: 54
+Agent: Z.ai Code (main orchestrator)
+Task: รับ PAT ใหม่ → push v0.31.0 สำเร็จ → พบ sandbox rollback เป็น v0.21.0 → กู้คืนจาก remote ครบ
+
+Work Log:
+- ผู้ใช้ส่ง PAT ใหม่ (ตัวที่ 2 ของเซสชัน) → ตรวจ = HTTP 200 ผ่าน → push main 67d7325..7ab8bfb + tag v0.31.0 สำเร็จ → ยืนยันบน GitHub API (head ba5cdd1 หลัง commit worklog Task 53, tag v0.31.0 = b45bd43) → sanity check หน้า reference-center ผ่าน agent-browser (ทะเบียน RD-0001/0002 ใช้งานได้ console 0 error)
+- **พบเหตุการณ์ร้ายแรง**: กลางเซสชัน filesystem ถูก rollback กลับ snapshot ยุค v0.21.0 (HEAD = f5e61b8, views.ts = v0.21.0, ไม่มีไฟล์ reference-*, โค้ด v0.22–v0.31 หายจากดิสก์ทั้งหมด) — สาเหตุจากระบบ sandbox ไม่ใช่ git ผู้ใช้/agent · dev server เดิมยังเสิร์ฟ cache เก่าจึงสับสนชั่วขณะ (ตรวจพบจาก APP_VERSION ไม่ตรงกับที่แสดง + git show b45bd43 = unknown revision)
+- ตรวจ remote: GitHub สมบูรณ์ 100% (main ba5cdd1 + tag ครบ + reference-center.tsx อยู่จริง) → กู้คืน: git fetch (PAT inline) + git reset --hard origin/main → โค้ด v0.31.0 กลับครบ
+- DB (db/custom.db ไม่ได้ track ใน git) ถูก rollback เหลือ 24 ตาราง (ไม่มี Reference*/ML/AuditPolicy) + ข้อมูล v0.28–v0.31 ใน page cache ของ Prisma engine ถูก invalidate จริง (API ตอบ error สด ๆ) → bun run db:push คืน 33 ตาราง
+- dev server ตายเมื่อ restart ด้วย nohup ธรรมดา (sandbox เก็บ process group) → แก้ด้วย bash -c 'setsid nohup bun run dev … & disown' อยู่รอดข้าม tool call
+- รัน scripts/seed.ts คืนข้อมูลหลัก (users/datasets/domains 12/elements 18/mappings 4/records 16) · สร้างทะเบียนคืนผ่าน API: RD-0001 สกุลเงิน ISO 4217 (6 ค่า) + RD-0002 กลุ่มลูกค้าองค์กร (4 ค่า) → SUBMIT_APPROVAL → APPROVE โดย kanya.compliance = ACTIVE ทั้งคู่ (stats: total 2 active 2 values 10) · ML center ทำงาน (โหมด LATEST_RUNS อิง batch จาก seed) · Audit Trail บันทึกครบ
+
+Stage Summary:
+- **v0.31.0 กลับมาสมบูรณ์ทั้งโค้ด + DB + ข้อมูลตัวอย่าง** (local = ba5cdd1 = remote) — สิ่งที่สูญหายถาวร: ข้อมูลทดลองยุค v0.28–v0.31 บางส่วน (ผลสแกน orphan เก่า, การตั้งค่า ML ที่ปรับเอง) ซึ่งเป็นข้อมูล demo ไม่กระทบโค้ด
+- บทเรียน: (1) sandbox อาจ rollback กลางเซสชัน — ตรวจ git HEAD + ไฟล์สำคัญก่อนทำงานทุกเซสชัน (2) push ทันทีเมื่องานเสร็จ = ประกันภัยที่ดีที่สุด (3) restart dev server ต้องใช้ setsid + disown
+- PAT ใช้งานได้: ยืนยันแล้ว 2 ครั้งในเซสชันนี้ (จะใช้ push งานถัดไปในเซสชันเดียวกัน)
