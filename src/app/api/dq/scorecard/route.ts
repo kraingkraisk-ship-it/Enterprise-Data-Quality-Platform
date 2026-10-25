@@ -69,8 +69,10 @@ export async function GET(req: NextRequest) {
 
     const rows = datasets.map((d) => {
       const latestRuns = [...latestMap.values()].filter((r) => r.datasetId === d.id)
+      // v0.32.0 — ผลรันที่ชุดข้อมูลว่าง (NO_DATA) ไม่ถูกนับเป็นคะแนน/กฎล้มเหลว
+      const scoredRuns = latestRuns.filter((r) => r.status !== 'NO_DATA')
       const byDim = new Map<DimensionKey, { rates: number[]; rules: number; fails: number }>()
-      for (const run of latestRuns) {
+      for (const run of scoredRuns) {
         const dim = isDimensionKey(run.dimension) ? run.dimension : 'VALIDITY'
         const cell = byDim.get(dim) ?? { rates: [], rules: 0, fails: 0 }
         cell.rates.push(run.passRate * 100)

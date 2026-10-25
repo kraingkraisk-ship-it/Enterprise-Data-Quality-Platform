@@ -208,7 +208,7 @@ export function fixHintFor(engineType: string, dimension: DimensionKey): string 
 /* ------------------------- คำตัดสินรายกฎ (verdict) ------------------------- */
 
 export interface RuleVerdictInput {
-  status: 'PASSED' | 'FAILED'
+  status: 'PASSED' | 'FAILED' | 'NO_DATA'
   totalRows: number
   failedRows: number
   dimension: DimensionKey
@@ -224,6 +224,10 @@ export function buildRuleVerdict(input: RuleVerdictInput): string {
   const meta = DIMENSION_LABELS[input.dimension]
   const clause = DAMA_STANDARDS[input.dimension]?.clauseNo
   const head = `มาตราที่ ${clause} ${meta.th} (${meta.en})`
+  // v0.32.0 — ชุดข้อมูลว่าง (0 แถว) = ไม่ตัดสินผ่าน/ไม่ผ่าน (ไม่มีหลักฐานให้ตรวจ)
+  if (input.status === 'NO_DATA') {
+    return `ไม่สามารถตัดสิน${head} — ชุดข้อมูลไม่มีแถวให้ตรวจ (0 แถว) จึงไม่ถือเป็นหลักฐานคุณภาพ ให้นำเข้าข้อมูลก่อนแล้วรันใหม่`
+  }
   if (input.status === 'PASSED') {
     return `ผ่าน${head} — ข้อมูลเป็นไปตามมาตราทุกแถว (${input.totalRows}/${input.totalRows})`
   }
@@ -240,6 +244,7 @@ export function buildRunSummary(args: {
   rulesCount: number
   passedRules: number
   failedRules: number
+  noDataRules?: number
   overallScore: number | null
 }): string {
   const { rowsCount, rulesCount, passedRules, failedRules, overallScore } = args
@@ -248,7 +253,8 @@ export function buildRunSummary(args: {
   }
   const grade = gradeOf(overallScore)
   const tail = grade ? ` — คะแนนรวม ${overallScore?.toFixed(1)}/100 เกรด "${grade.label}"` : ''
-  return `ประเมินตามมาตรา DAMA-DMBOK 9 มิติ ด้วยกฎที่เปิดใช้งาน ${rulesCount} ข้อ (ผ่าน ${passedRules} · ไม่ผ่าน ${failedRules}) บนข้อมูลตัวอย่าง ${rowsCount} แถว${tail}`
+  const noDataPart = args.noDataRules ? ` · ไม่มีข้อมูลให้ตรวจ ${args.noDataRules}` : ''
+  return `ประเมินตามมาตรา DAMA-DMBOK 9 มิติ ด้วยกฎที่เปิดใช้งาน ${rulesCount} ข้อ (ผ่าน ${passedRules} · ไม่ผ่าน ${failedRules}${noDataPart}) บนข้อมูลตัวอย่าง ${rowsCount} แถว${tail}`
 }
 
 /* ----------------------- ชนิดผลลัพธ์รายมิติ (API) -------------------------- */

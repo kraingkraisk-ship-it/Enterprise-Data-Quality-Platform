@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Eye, Info, Play, RefreshCw, ScanSearch, ShieldAlert } from 'lucide-react'
+import { Eye, Info, Play, RefreshCw, ScanSearch, ShieldAlert, UserRound } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,20 +9,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
+import { useCurrentUser } from '@/components/user-context'
 import { DATA_TYPE_LABELS } from '@/lib/profiling'
 
 /* ------------------------------------------------------------------ */
 /* Data Profiling — สำรวจลักษณะข้อมูลจริงรายคอลัมน์                     */
 /* READ-ONLY · ทำงานบน snapshot sandbox · PII mask ตามบทบาท (PDPA)      */
 /* ------------------------------------------------------------------ */
-
-interface ApiUser {
-  id: string
-  email: string
-  name: string
-  role: string
-  status: 'ACTIVE' | 'SUSPENDED'
-}
 
 interface ApiDataset {
   id: string
@@ -80,28 +73,21 @@ function completenessColor(pct: number | null): string {
 export default function DqProfiling({ active }: { active: boolean }) {
   const { toast } = useToast()
 
-  const [users, setUsers] = useState<ApiUser[]>([])
   const [datasets, setDatasets] = useState<ApiDataset[]>([])
   const [datasetId, setDatasetId] = useState('')
-  const [operatorEmail, setOperatorEmail] = useState('malee.steward@company.co.th')
 
   const [runs, setRuns] = useState<ProfileRunSummary[] | null>(null)
   const [current, setCurrent] = useState<{ run: ProfileRunSummary; columns: ProfileColumn[]; piiMasked: boolean } | null>(null)
   const [loadingColumns, setLoadingColumns] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
 
-  // ผู้ชม — PII ตามบทบาท (PDPA)
-  const [viewerEmail, setViewerEmail] = useState('')
+  // ผู้ชม/ผู้ดำเนินการ = ผู้ใช้ปัจจุบันของระบบจาก header (v0.32.0 — identity ศูนย์กลาง)
+  const { user } = useCurrentUser()
 
   useEffect(() => {
     ;(async () => {
       try {
-        const [u, d] = await Promise.all([
-          fetch('/api/rbac/users').then((r) => r.json()),
-          fetch('/api/rbac/datasets').then((r) => r.json()),
-        ])
-        const activeUsers = (u.users ?? []).filter((x: ApiUser) => x.status === 'ACTIVE')
-        setUsers(activeUsers)
+        const d = await fetch('/api/rbac/datasets').then((r) => r.json())
         setDatasets(d.datasets ?? [])
       } catch {
         /* คงค่าว่าง */
@@ -137,7 +123,7 @@ export default function DqProfiling({ active }: { active: boolean }) {
   async function openRun(id: string) {
     setLoadingColumns(true)
     try {
-      const qs = viewerEmail ? `?operatorEmail=${encodeURIComponent(viewerEmail)}` : ''
+      const qs = user ? `?operatorEmail=${encodeURIComponent(user.email)}` : ''
       const res = await fetch(`/api/dq/profile/${id}${qs}`)
       const data = await res.json()
       if (data.error) {
@@ -152,10 +138,10 @@ export default function DqProfiling({ active }: { active: boolean }) {
     }
   }
 
-  // เปลี่ยนผู้ชม → โหลดผลล่าสุดใหม่ด้วยบทบาทใหม่
+  // เปลี่ยนผู้ใช้ปัจจุบัน (header) → โหลดผลล่าสุดใหม่ด้วยบทบาทใหม่ (v0.32.0)
   useEffect(() => {
     if (current?.run.id) void openRun(current.run.id)
-  }, [viewerEmail])
+  }, [user?.email, current?.run.id])
 
   async function runProfile() {
     if (!datasetId) {
@@ -167,7 +153,7 @@ export default function DqProfiling({ active }: { active: boolean }) {
       const res = await fetch('/api/dq/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datasetId, operatorEmail }),
+        body: JSON.stringify({ datasetId, operatorEmail: user?.email ?? '' }),
       })
       const data = await res.json()
       if (!res.ok || !data.ok) {
@@ -239,20 +225,12 @@ export default function DqProfiling({ active }: { active: boolean }) {
               </select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="pf-operator">ผู้ดำเนินการ</Label>
-              <select
-                id="pf-operator"
-                aria-label="เลือกผู้ดำเนินการ (ต้องมีสิทธิ์รันโปรไฟล์)"
-                value={operatorEmail}
-                onChange={(e) => setOperatorEmail(e.target.value)}
-                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-              >
-                {users.map((u) => (
-                  <option key={u.id} value={u.email}>
-                    {u.name} ({u.role})
-                  </option>
-                ))}
-              </select>
+              {/* v0.32.0 — ผู้ดำเนินการรันโปรไฟล์ = ผู้ใช้ปัจจุบันจาก header */}
+              <Label>ผู้ดำเนินการ</Label>
+              <div className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-sm text-muted-foreground">
+                <UserRound className="size-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+                <span className="min-w-0 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+              </div>
             </div>
             <div className="flex items-end gap-2">
               <Button
@@ -271,24 +249,15 @@ export default function DqProfiling({ active }: { active: boolean }) {
 
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="space-y-1">
-              <Label htmlFor="pf-viewer" className="flex items-center gap-1 text-xs">
+              {/* v0.32.0 — ผู้ชม (PII ตามบทบาท) = ผู้ใช้ปัจจุบันจาก header */}
+              <Label className="flex items-center gap-1 text-xs">
                 <Eye className="size-3" aria-hidden="true" />
                 ผู้ชม (PII ตามบทบาท)
               </Label>
-              <select
-                id="pf-viewer"
-                aria-label="เลือกผู้ชมเพื่อดูค่าที่พบบ่อยตามสิทธิ์บทบาท"
-                value={viewerEmail}
-                onChange={(e) => setViewerEmail(e.target.value)}
-                className="h-9 w-full rounded-md border bg-background px-2 text-xs"
-              >
-                <option value="">ปิดบังเข้มสุด (แนะนำ)</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.email}>
-                    {u.name} ({u.role})
-                  </option>
-                ))}
-              </select>
+              <div className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-xs text-muted-foreground">
+                <UserRound className="size-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+                <span className="min-w-0 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+              </div>
             </div>
           </div>
         </CardContent>

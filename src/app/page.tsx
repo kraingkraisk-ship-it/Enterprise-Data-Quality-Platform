@@ -21,8 +21,8 @@ import DqProfiling from '@/components/dq/profiling'
 import DqIssues from '@/components/dq/issues'
 import MlCenter from '@/components/dq/ml-center'
 import ExecutiveDashboard from '@/components/dq/executive-dashboard'
-import ExecutiveReports from '@/components/dq/executive-reports'
 import ComplianceAssessment from '@/components/dq/compliance-assessment'
+import { CurrentUserProvider, UserSwitcher } from '@/components/user-context'
 import { APP_VERSION, VIEWS, isConsoleView, type ViewKey } from '@/lib/views'
 
 /* ------------------------------------------------------------------ */
@@ -49,7 +49,8 @@ export default function Home() {
   const meta = VIEWS[view]
 
   return (
-    <SidebarProvider>
+    <CurrentUserProvider>
+      <SidebarProvider>
       <AppSidebar activeView={view} onViewChange={setView} />
       <SidebarInset className="flex min-h-svh flex-col bg-background">
         {/* skip link — ผู้ใช้คีย์บอร์ด/โปรแกรมอ่านหน้าจอ */}
@@ -76,6 +77,8 @@ export default function Home() {
             <span className="inline-block size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
             {meta.en}
           </span>
+          {/* ผู้ใช้ปัจจุบัน (v0.32.0) — ตัวเลือกเดียวของทั้งระบบ: มุมมอง/สิทธิ์/ผู้ดำเนินการตามผู้ใช้นี้ */}
+          <UserSwitcher />
           <Badge
             variant="outline"
             className="shrink-0 border-emerald-300 bg-emerald-50 font-mono text-xs text-emerald-800"
@@ -141,12 +144,9 @@ export default function Home() {
             <MlCenter active={view === 'ml-center'} />
           </div>
 
-          {/* หน้าระดับผู้บริหาร — แดชบอร์ด + รายงานพิมพ์/PDF (v0.17.0) สิทธิ์ตรวจใน API */}
+          {/* หน้าระดับผู้บริหาร — แดชบอร์ด (พิมพ์/PDF จากปุ่มในหน้า) สิทธิ์ตรวจใน API (v0.32.0 ยุบ exec-reports) */}
           <div className={view === 'exec-dashboard' ? '' : 'hidden'} aria-hidden={view !== 'exec-dashboard'}>
             <ExecutiveDashboard active={view === 'exec-dashboard'} />
-          </div>
-          <div className={view === 'exec-reports' ? '' : 'hidden'} aria-hidden={view !== 'exec-reports'}>
-            <ExecutiveReports active={view === 'exec-reports'} />
           </div>
 
           {/* ประเมินความสอดคล้อง — Risk-first รายมาตรฐาน (v0.24.0)
@@ -207,5 +207,6 @@ export default function Home() {
         </footer>
       </SidebarInset>
     </SidebarProvider>
+    </CurrentUserProvider>
   )
 }

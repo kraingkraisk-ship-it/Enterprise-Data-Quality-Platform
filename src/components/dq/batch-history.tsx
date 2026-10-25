@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, ClipboardList, Eye, FileWarning, Layers, Play, RefreshCw, XCircle } from 'lucide-react'
+import { CheckCircle2, CircleMinus, ClipboardList, Eye, FileWarning, Layers, Play, RefreshCw, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -52,7 +52,7 @@ interface BatchResultItem {
   sentence: string
   verdict: string
   advice: string | null
-  status: 'PASSED' | 'FAILED'
+  status: 'PASSED' | 'FAILED' | 'NO_DATA'
   totalRows: number
   failedRows: number
   passRate: number
@@ -244,6 +244,8 @@ export default function BatchHistory({ reloadKey, datasets, onGoFailedRecords }:
                       <div className="mb-1 flex flex-wrap items-center gap-1.5">
                         {r.status === 'PASSED' ? (
                           <CheckCircle2 className="size-4 text-emerald-600" aria-label="ผ่าน" />
+                        ) : r.status === 'NO_DATA' ? (
+                          <CircleMinus className="size-4 text-amber-600" aria-label="ไม่มีข้อมูลให้ตรวจ" />
                         ) : (
                           <XCircle className="size-4 text-rose-600" aria-label="ล้มเหลว" />
                         )}
@@ -252,8 +254,20 @@ export default function BatchHistory({ reloadKey, datasets, onGoFailedRecords }:
                         </Badge>
                         <DimensionBadge dimension={r.dimension} />
                         <Badge variant="outline" className="text-[11px]">{r.conditionName}</Badge>
-                        <span className={`text-xs font-semibold ${r.status === 'PASSED' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                          {r.status === 'PASSED' ? 'ผ่าน' : `ล้มเหลว ${r.failedRows}/${r.totalRows} แถว (${Math.round(r.passRate * 100)}%)`}
+                        <span
+                          className={`text-xs font-semibold ${
+                            r.status === 'PASSED'
+                              ? 'text-emerald-700'
+                              : r.status === 'NO_DATA'
+                                ? 'text-amber-700'
+                                : 'text-rose-700'
+                          }`}
+                        >
+                          {r.status === 'PASSED'
+                            ? 'ผ่าน'
+                            : r.status === 'NO_DATA'
+                              ? 'ไม่มีข้อมูลให้ตรวจ (0 แถว)'
+                              : `ล้มเหลว ${r.failedRows}/${r.totalRows} แถว (${Math.round(r.passRate * 100)}%)`}
                         </span>
                         {r.failuresCount > 0 && (
                           <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[10px] text-rose-800">
@@ -263,7 +277,12 @@ export default function BatchHistory({ reloadKey, datasets, onGoFailedRecords }:
                         )}
                       </div>
                       <p className="font-mono text-[12px] text-slate-700">{r.sentence}</p>
-                      <p className={`mt-1 text-[12.5px] leading-relaxed ${r.status === 'PASSED' ? 'text-emerald-800' : 'text-rose-800'}`} role="note">
+                      <p
+                        className={`mt-1 text-[12.5px] leading-relaxed ${
+                          r.status === 'PASSED' ? 'text-emerald-800' : r.status === 'NO_DATA' ? 'text-amber-800' : 'text-rose-800'
+                        }`}
+                        role="note"
+                      >
                         {r.verdict}
                       </p>
                     </div>

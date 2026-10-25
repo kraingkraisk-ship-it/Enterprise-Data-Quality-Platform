@@ -195,7 +195,11 @@ function RuleRow({ rule }: { rule: MappingRuleItem }) {
       <p className="mt-0.5 text-[10px] text-muted-foreground">
         มิติ: {rule.dimension}
         {rule.lastRun
-          ? ` · ผลรันล่าสุด: ${rule.lastRun.status === 'PASSED' ? 'ผ่าน' : 'ไม่ผ่าน'} ${Math.round(rule.lastRun.passRate * 100)}% (${formatWhen(rule.lastRun.createdAt)})`
+          ? ` · ผลรันล่าสุด: ${
+              rule.lastRun.status === 'NO_DATA'
+                ? 'ไม่มีข้อมูล (0 แถว)'
+                : `${rule.lastRun.status === 'PASSED' ? 'ผ่าน' : 'ไม่ผ่าน'} ${Math.round(rule.lastRun.passRate * 100)}%`
+            } (${formatWhen(rule.lastRun.createdAt)})`
           : ' · ยังไม่เคยรัน'}
       </p>
       {rule.exceptionActionNote && <p className="mt-0.5 text-[11px] text-foreground/80">{rule.exceptionActionNote}</p>}

@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
+  UserRound,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,11 +29,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
+import { useCurrentUser } from '@/components/user-context'
 import { DimensionBadge } from '@/components/dimension-picker'
 import ExceptionsPanel from '@/components/dq/exceptions-panel'
 import { SEVERITY_KEYS, SEVERITY_LABELS, DIMENSION_KEYS, DIMENSION_LABELS, type DimensionKey } from '@/lib/dq'
 import { ISSUE_SOURCE_LABELS, ISSUE_STATUS_META, ISSUE_TRANSITIONS } from '@/lib/issues'
-import { ROLES } from '@/lib/rbac'
 
 /* ------------------------------------------------------------------ */
 /* DQ Issues — ทะเบียนปัญหาคุณภาพข้อมูล พร้อม lifecycle                  */
@@ -109,6 +110,8 @@ function daysOverdueOf(it: IssueItem): number | null {
 
 export default function DqIssues({ active }: { active: boolean }) {
   const { toast } = useToast()
+  // v0.32.0 — ผู้รายงาน/ผู้ดำเนินการ = ผู้ใช้ปัจจุบันจาก header (identity ศูนย์กลาง)
+  const { user } = useCurrentUser()
 
   const [items, setItems] = useState<IssueItem[] | null>(null)
   const [stats, setStats] = useState<IssueStats | null>(null)
@@ -136,16 +139,13 @@ export default function DqIssues({ active }: { active: boolean }) {
   const [crDesc, setCrDesc] = useState('')
   const [crDimension, setCrDimension] = useState<DimensionKey>('COMPLETENESS')
   const [crSeverity, setCrSeverity] = useState('MEDIUM')
-  const [crReporter, setCrReporter] = useState('somchai.owner@company.co.th')
 
   // detail dialog
   const [detail, setDetail] = useState<IssueItem | null>(null)
   const [resolveNote, setResolveNote] = useState('')
   const [assignee, setAssignee] = useState('')
   const [dueInput, setDueInput] = useState('')
-  const [operatorEmail, setOperatorEmail] = useState('somchai.owner@company.co.th')
 
-  const reporters = users.filter((u) => u.status === 'ACTIVE' && (ROLES[u.role as keyof typeof ROLES]?.permissions ?? []).includes('MANAGE_ISSUES'))
   const activeUsers = users.filter((u) => u.status === 'ACTIVE')
 
   useEffect(() => {
@@ -204,7 +204,7 @@ export default function DqIssues({ active }: { active: boolean }) {
           dimension: crDimension,
           severity: crSeverity,
           source: 'MANUAL',
-          reportedByEmail: crReporter,
+          reportedByEmail: user?.email ?? '',
         }),
       })
       const data = await res.json()
@@ -230,7 +230,7 @@ export default function DqIssues({ active }: { active: boolean }) {
       const res = await fetch(`/api/dq/issues/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, operatorEmail, note }),
+        body: JSON.stringify({ action, operatorEmail: user?.email ?? '', note }),
       })
       const data = await res.json()
       if (!res.ok || !data.ok) {
@@ -258,7 +258,7 @@ export default function DqIssues({ active }: { active: boolean }) {
       const res = await fetch(`/api/dq/issues/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ASSIGN', operatorEmail, assignedTo: assignee }),
+        body: JSON.stringify({ action: 'ASSIGN', operatorEmail: user?.email ?? '', assignedTo: assignee }),
       })
       const data = await res.json()
       if (!res.ok || !data.ok) {
@@ -282,7 +282,7 @@ export default function DqIssues({ active }: { active: boolean }) {
       const res = await fetch(`/api/dq/issues/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'SET_DUE', operatorEmail, dueAt: dueInput }),
+        body: JSON.stringify({ action: 'SET_DUE', operatorEmail: user?.email ?? '', dueAt: dueInput }),
       })
       const data = await res.json()
       if (!res.ok || !data.ok) {
@@ -667,20 +667,12 @@ export default function DqIssues({ active }: { active: boolean }) {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="cr-reporter">ผู้รายงาน (ต้องมีสิทธิ์ MANAGE_ISSUES)</Label>
-              <select
-                id="cr-reporter"
-                aria-label="เลือกผู้รายงาน"
-                value={crReporter}
-                onChange={(e) => setCrReporter(e.target.value)}
-                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-              >
-                {reporters.map((u) => (
-                  <option key={u.id} value={u.email}>
-                    {u.name} — {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                  </option>
-                ))}
-              </select>
+              {/* v0.32.0 — ผู้รายงาน = ผู้ใช้ปัจจุบันจาก header (สิทธิ์ MANAGE_ISSUES ตรวจที่ API) */}
+              <Label>ผู้รายงาน (ต้องมีสิทธิ์ MANAGE_ISSUES)</Label>
+              <div className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-sm text-muted-foreground">
+                <UserRound className="size-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+                <span className="min-w-0 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+              </div>
             </div>
             <Button
               className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
@@ -756,20 +748,12 @@ export default function DqIssues({ active }: { active: boolean }) {
                     ดำเนินการต่อ (ตาม lifecycle — ต้องมีสิทธิ์ตามขั้นตอน)
                   </p>
                   <div className="space-y-1">
-                    <Label htmlFor="is-operator" className="text-[10.5px] text-emerald-900">ผู้ดำเนินการ</Label>
-                    <select
-                      id="is-operator"
-                      aria-label="เลือกผู้ดำเนินการเปลี่ยนสถานะ"
-                      value={operatorEmail}
-                      onChange={(e) => setOperatorEmail(e.target.value)}
-                      className="h-8 w-full rounded-md border bg-background px-2 text-[11px]"
-                    >
-                      {activeUsers.map((u) => (
-                        <option key={u.id} value={u.email}>
-                          {u.name} — {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                        </option>
-                      ))}
-                    </select>
+                    {/* v0.32.0 — ผู้ดำเนินการเปลี่ยนสถานะ = ผู้ใช้ปัจจุบันจาก header */}
+                    <Label className="text-[10.5px] text-emerald-900">ผู้ดำเนินการ (ผู้ใช้ปัจจุบัน)</Label>
+                    <div className="flex h-8 items-center gap-1.5 rounded-md border bg-muted/40 px-2 text-[11px] text-muted-foreground">
+                      <UserRound className="size-3 shrink-0 text-emerald-700" aria-hidden="true" />
+                      <span className="min-w-0 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+                    </div>
                   </div>
                   {detail.status === 'OPEN' && (
                     <Button

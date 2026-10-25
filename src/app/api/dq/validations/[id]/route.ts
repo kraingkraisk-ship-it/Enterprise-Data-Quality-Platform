@@ -40,7 +40,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       const dimension = isDimensionKey(run.dimension) ? run.dimension : 'VALIDITY'
       const template = templateMap.get(run.rule.condition)
       const engineType = template?.engineType ?? (isConditionKey(run.rule.condition) ? run.rule.condition : null)
-      const status = run.status === 'PASSED' ? 'PASSED' : 'FAILED'
+      // v0.32.0 — คงสถานะ NO_DATA (ชุดข้อมูล 0 แถว) ไม่บังคับเป็น FAILED
+      const status = run.status === 'NO_DATA' ? ('NO_DATA' as const) : run.status === 'PASSED' ? ('PASSED' as const) : ('FAILED' as const)
       const verdict = buildRuleVerdict({
         status,
         totalRows: run.totalRows,

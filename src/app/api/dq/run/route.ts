@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
       verdict: string
       /** คำแนะนำการแก้ไข (เฉพาะเมื่อล้มเหลว) — เป็นข้อแนะนำ ไม่ใช่การแก้ข้อมูลแทนผู้ใช้ */
       advice: string | null
-      status: 'PASSED' | 'FAILED'
+      status: 'PASSED' | 'FAILED' | 'NO_DATA'
       totalRows: number
       failedRows: number
       passRate: number
@@ -227,7 +227,9 @@ export async function POST(req: NextRequest) {
       }
 
       const evaluation = evaluateRule({ column: rule.column, engineType, parameters: rule.parameters }, rows, evalContext)
-      const status = evaluation.failedRows === 0 ? 'PASSED' : 'FAILED'
+      // v0.32.0 — ชุดข้อมูลไม่มีแถวเลย (0 แถว) = สถานะ NO_DATA ไม่ใช่ "ผ่านโดยปริยาย"
+      // (ผ่านแบบไม่มีหลักฐานทำให้คะแนนสูม — แยกสถานะเพื่อไม่นับเป็นทั้งผ่านและไม่ผ่าน)
+      const status = evaluation.totalRows === 0 ? 'NO_DATA' : evaluation.failedRows === 0 ? 'PASSED' : 'FAILED'
       const passRate = evaluation.totalRows > 0 ? (evaluation.totalRows - evaluation.failedRows) / evaluation.totalRows : 1
 
       // คำตัดสินตามมาตรา — อ่านง่าย: ผ่าน/ไม่ผ่านมาตราใด เพราะอะไร
@@ -274,7 +276,10 @@ export async function POST(req: NextRequest) {
       })
 
       const arr = byDimension.get(dimensionKey) ?? []
-      arr.push(passRate * 100)
+      // v0.32.0 — NO_DATA (0 แถว) ไม่ถูกนับเป็นคะแนนมิติ (ไม่มีหลักฐาน)
+      if (status !== 'NO_DATA') {
+        arr.push(passRate * 100)
+      }
       byDimension.set(dimensionKey, arr)
       rulesCountByDimension.set(dimensionKey, (rulesCountByDimension.get(dimensionKey) ?? 0) + 1)
       if (status === 'FAILED') {
@@ -391,12 +396,14 @@ export async function POST(req: NextRequest) {
     const overallScore = scored.length > 0 ? scored.reduce((a, b) => a + b.score, 0) / scored.length : null
 
     const passedCount = results.filter((r) => r.status === 'PASSED').length
-    const failedCount = results.length - passedCount
+    const noDataCount = results.filter((r) => r.status === 'NO_DATA').length
+    const failedCount = results.length - passedCount - noDataCount
     const summary = buildRunSummary({
       rowsCount: rows.length,
       rulesCount: rulesForDataset.length,
       passedRules: passedCount,
       failedRules: failedCount,
+      noDataRules: noDataCount,
       overallScore,
     })
     const overallGrade = gradeOf(overallScore)
@@ -408,7 +415,7 @@ export async function POST(req: NextRequest) {
         totalRules: results.length,
         passedRules: passedCount,
         failedRules: failedCount,
-        skippedRules: skipped,
+        skippedRules: skipped + noDataCount,
         overallScore,
       },
     })
@@ -437,7 +444,7 @@ export async function POST(req: NextRequest) {
         action: 'RUN_VALIDATION',
         actor: op.ctx.email,
         target: dataset.name,
-        detail: `รันตรวจสอบ ${rulesForDataset.length} กฎ บน ${rows.length} แถว (sandbox) — ผ่าน ${passedCount}, ล้มเหลว ${results.length - passedCount}, สัญญาณใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
+        detail: `รันตรวจสอบ ${rulesForDataset.length} กฎ บน ${rows.length} แถว (sandbox) — ผ่าน ${passedCount}, ล้มเหลว ${failedCount}${noDataCount > 0 ? `, ไม่มีข้อมูลให้ตรวจ ${noDataCount}` : ''}, สัญญาณใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 

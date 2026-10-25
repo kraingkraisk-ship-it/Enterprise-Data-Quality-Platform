@@ -10,20 +10,21 @@ import {
   Gauge,
   LineChart as LineChartIcon,
   Loader2,
+  Printer,
   RefreshCw,
   ShieldAlert,
   Split,
   Star,
   TrendingDown,
+  UserRound,
 } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { ROLES, type RoleKey } from '@/lib/rbac'
+import { useCurrentUser } from '@/components/user-context'
 import { domainColor } from '@/lib/domains'
 
 /* ------------------------------------------------------------------ */
@@ -39,14 +40,6 @@ import { domainColor } from '@/lib/domains'
 /* สิทธิ์: VIEW_EXEC_DASHBOARD — ตรวจจาก viewer ใน API (deny-by-default) */
 /* ------------------------------------------------------------------ */
 
-interface ApiUser {
-  id: string
-  email: string
-  name: string
-  role: RoleKey
-  status: string
-}
-
 interface ExecSummary {
   viewer: { name: string; role: string; roleTh: string }
   generatedAt: string
@@ -59,7 +52,7 @@ interface ExecSummary {
     datasetsWithRun: number
     datasetsNeverRun: number
   }
-  rules: { passed: number; failed: number; total: number }
+  rules: { passed: number; failed: number; noData: number; total: number }
   byDomain: {
     method: string
     groups: Array<{ id: string; name: string; color: string; parentName: string | null; elementCount: number; elementsMeasured: number; cdeTotal: number; cdeMeasured: number; cdeBelow: number; finTotal: number; finBelow: number; score: number }>
@@ -118,32 +111,17 @@ function scoreBar(score: number | null): string {
 
 export default function ExecutiveDashboard({ active }: { active?: boolean }) {
   const { toast } = useToast()
+  /* v0.32.0 — ผู้เข้าชม = ผู้ใช้ปัจจุบันจาก header (UserSwitcher) — สิทธิ์ VIEW_EXEC_DASHBOARD
+     ตรวจทั้งฝั่งจอ (แสดงการ์ดปฏิเสธทันที) และฝั่ง API (deny-by-default เหมือนเดิม) */
+  const { user, hasPermission, loading: userLoading } = useCurrentUser()
+  const viewer = user?.email ?? ''
+  const canViewDashboard = hasPermission('VIEW_EXEC_DASHBOARD')
 
-  const [users, setUsers] = useState<ApiUser[]>([])
-  const [viewer, setViewer] = useState('')
   const [days, setDays] = useState<(typeof PERIODS)[number]>(30)
   const [issuesMode, setIssuesMode] = useState<'open' | 'all'>('open')
   const [data, setData] = useState<ExecSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState<string | null>(null)
-
-  /* โหลดรายชื่อผู้เข้าชม — เฉพาะบทบาทที่มีสิทธิ์ VIEW_EXEC_DASHBOARD */
-  useEffect(() => {
-    let alive = true
-    fetch('/api/rbac/users')
-      .then((r) => r.json())
-      .then((d) => {
-        if (!alive) return
-        const all: ApiUser[] = d?.users ?? []
-        const canView = all.filter((u) => u.status === 'ACTIVE' && (ROLES[u.role]?.permissions ?? []).includes('VIEW_EXEC_DASHBOARD'))
-        setUsers(canView)
-        setViewer((prev) => prev || (canView.find((u) => u.role === 'EXECUTIVE') ?? canView[0])?.email || '')
-      })
-      .catch(() => undefined)
-    return () => {
-      alive = false
-    }
-  }, [])
 
   const load = useCallback(async () => {
     if (!viewer) return
@@ -171,8 +149,8 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
 
   // เปิดหน้าเมื่อไหร่ก็รีเฟรช
   useEffect(() => {
-    if (active) void load()
-  }, [active, load])
+    if (active && viewer && canViewDashboard) void load()
+  }, [active, load, viewer, canViewDashboard])
 
   const passRate = useMemo(() => {
     if (!data || data.rules.total === 0) return null
@@ -185,6 +163,29 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
   }, [data, passRate])
 
   /* ------------------------- RBAC gate ------------------------- */
+  if (userLoading || (!user && !denied)) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
+        <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลดผู้ใช้ปัจจุบัน…
+      </div>
+    )
+  }
+  if (user && !canViewDashboard) {
+    return (
+      <Card className="mx-auto max-w-xl">
+        <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+          <ShieldAlert className="size-10 text-rose-500" aria-hidden="true" />
+          <p className="text-base font-semibold">ไม่มีสิทธิ์เข้าถึงแดชบอร์ดผู้บริหาร</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            ผู้ใช้ปัจจุบัน: {user.name} ({user.roleTh}) — ต้องมีสิทธิ์ VIEW_EXEC_DASHBOARD
+          </p>
+          <p className="rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
+            เปลี่ยนไปใช้บัญชีที่มีสิทธิ์ได้ที่ตัวเลือก “ผู้ใช้งาน” มุมขวาบนของระบบ · หลัก deny-by-default — สิทธิ์ถูกบังคับที่ API เสมอ
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
   if (denied) {
     return (
       <Card className="mx-auto max-w-xl">
@@ -202,22 +203,18 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
 
   return (
     <div className="space-y-5">
-      {/* ตัวเลือกผู้เข้าชม + ช่วงเวลา */}
+      {/* ผู้เข้าชม (ผู้ใช้ปัจจุบันจาก header — v0.32.0) + ช่วงเวลา + พิมพ์ */}
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={viewer} onValueChange={setViewer}>
-          <SelectTrigger className="h-9 w-full sm:w-72" aria-label="ผู้เข้าชมแดชบอร์ด (ตรวจสิทธิ์ RBAC)">
-            <SelectValue placeholder="— เลือกผู้เข้าชม —" />
-          </SelectTrigger>
-          <SelectContent>
-            {users.map((u) => (
-              <SelectItem key={u.email} value={u.email}>
-                {u.name} · {ROLES[u.role]?.th ?? u.role}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground" aria-label="ผู้เข้าชมแดชบอร์ด (ผู้ใช้ปัจจุบัน)">
+          <UserRound className="size-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+          <span className="max-w-64 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+        </div>
         <Button variant="outline" size="icon" className="size-9 print:hidden" onClick={() => void load()} aria-label="โหลดข้อมูลใหม่">
           <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+        </Button>
+        {/* v0.32.0 — ยุบหน้า "รายงานผู้บริหาร" มาเป็นปุ่มพิมพ์/PDF บนแดชบอร์ด (ลดหน้าซ้ำซ้อนในเมนู) */}
+        <Button variant="outline" size="icon" className="size-9 print:hidden" onClick={() => window.print()} aria-label="พิมพ์ / บันทึกเป็น PDF">
+          <Printer className="size-4" aria-hidden="true" />
         </Button>
         {data && (
           <span className="ml-auto text-xs text-muted-foreground">
@@ -236,21 +233,21 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
         <>
           {/* ------------------------- แถว KPI หลัก ------------------------- */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {/* 1) Overall DQ Score */}
+            {/* 1) Overall DQ Score — v0.32.0 แสดงสองฐานให้ตรงกับหน้าบัตรคะแนน (วัดเท่านั้น) + มุมบริหาร (รวมทุกชุด) */}
             <Card>
               <CardContent className="p-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Gauge className="size-3.5" aria-hidden="true" /> Overall DQ Score
                 </p>
-                <p className={`mt-1 text-4xl font-bold tabular-nums ${scoreColor(data.overall.score)}`}>
-                  {data.overall.score === null ? '—' : data.overall.score.toFixed(1)}
+                <p className={`mt-1 text-4xl font-bold tabular-nums ${scoreColor(data.overall.measuredScore)}`}>
+                  {data.overall.measuredScore === null ? '—' : data.overall.measuredScore.toFixed(1)}
                   <span className="ml-1 text-base font-medium text-muted-foreground">/ 100</span>
                 </p>
                 {data.overall.grade && <Badge variant="outline" className={`mt-1.5 text-[10px] ${data.overall.grade.badgeClass}`}>{data.overall.grade.label}</Badge>}
                 <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                  รวม {data.overall.datasetsTotal} ชุดข้อมูล · ตรวจแล้ว {data.overall.datasetsWithRun}
+                  เฉลี่ยเฉพาะ <span className="font-medium text-slate-700">{data.overall.datasetsWithRun} ชุดที่เคยตรวจ</span> จาก {data.overall.datasetsTotal} ชุด (ฐานเดียวกับบัตรคะแนน DQ)
                   {data.overall.datasetsNeverRun > 0 && (
-                    <span className="font-medium text-amber-700"> · ยังไม่เคยรัน {data.overall.datasetsNeverRun} ชุด (นับคะแนน 0)</span>
+                    <> · <span className="font-medium text-amber-700">รวมทุกชุด (ไม่เคยตรวจนับ 0) = {data.overall.score === null ? '—' : data.overall.score.toFixed(1)}</span></>
                   )}
                 </p>
               </CardContent>
@@ -274,6 +271,7 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   ผ่าน {passRate ?? '—'}% · ไม่ผ่าน {failRate}%
+                  {data.rules.noData > 0 && <span className="font-medium text-amber-700"> · ไม่มีข้อมูลให้ตรวจ {data.rules.noData} กฎ (นับแยก — ไม่ถือเป็นผ่าน)</span>}
                 </p>
               </CardContent>
             </Card>

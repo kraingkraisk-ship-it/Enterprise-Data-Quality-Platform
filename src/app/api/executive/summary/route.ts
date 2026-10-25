@@ -110,19 +110,27 @@ export async function GET(req: NextRequest) {
     let measuredCount = 0
     let rulesPassed = 0
     let rulesFailed = 0
+    let rulesNoData = 0 // กฎที่รันแล้วแต่ชุดข้อมูลไม่มีแถว (v0.32.0 — นับแยก ไม่ถือเป็นหลักฐานคุณภาพ)
 
     for (const d of datasets) {
       const latestRuns = [...latestMap.values()].filter((r) => r.datasetId === d.id)
       let sum = 0
+      let measured = 0
       for (const run of latestRuns) {
+        if (run.status === 'NO_DATA') {
+          // ชุดข้อมูลว่าง (0 แถว) — ไม่นับเป็นกฎผ่าน ไม่นับเป็นคะแนน (v0.32.0)
+          rulesNoData += 1
+          continue
+        }
         sum += run.passRate * 100
+        measured += 1
         if (run.status === 'FAILED') rulesFailed += 1
         else rulesPassed += 1
       }
-      const score = latestRuns.length > 0 ? sum / latestRuns.length : 0 // ไม่เคยรัน = 0
+      const score = measured > 0 ? sum / measured : 0 // ไม่เคยรัน (หรือมีแต่ NO_DATA) = 0
       datasetScores.set(d.id, score)
       sumAll += score
-      if (latestRuns.length > 0) {
+      if (measured > 0) {
         sumMeasured += score
         measuredCount += 1
       }
@@ -131,6 +139,8 @@ export async function GET(req: NextRequest) {
     const overallScore = datasets.length > 0 ? sumAll / datasets.length : null
     const measuredScore = measuredCount > 0 ? sumMeasured / measuredCount : null
     const overallGrade = gradeOf(overallScore)
+    // v0.32.0 — เกรดของ "คะแนนชุดที่เคยตรวจ" (ตัวเลขหลักที่แสดงบนการ์ด — ฐานเดียวกับบัตรคะแนน)
+    const measuredGrade = gradeOf(measuredScore)
 
     /* ------------------- แนวโน้ม (ทุกผลรันในหน้าต่างเวลา) ------------------- */
     const weekly = days > 90
@@ -337,12 +347,12 @@ export async function GET(req: NextRequest) {
       overall: {
         score: overallScore === null ? null : Math.round(overallScore * 10) / 10,
         measuredScore: measuredScore === null ? null : Math.round(measuredScore * 10) / 10,
-        grade: overallGrade ? { band: overallGrade.band, label: overallGrade.label, badgeClass: overallGrade.badgeClass, textClass: overallGrade.textClass } : null,
+        grade: measuredGrade ? { band: measuredGrade.band, label: measuredGrade.label, badgeClass: measuredGrade.badgeClass, textClass: measuredGrade.textClass } : null,
         datasetsTotal: datasets.length,
         datasetsWithRun: measuredCount,
         datasetsNeverRun: datasets.length - measuredCount,
       },
-      rules: { passed: rulesPassed, failed: rulesFailed, total: rulesPassed + rulesFailed },
+      rules: { passed: rulesPassed, failed: rulesFailed, noData: rulesNoData, total: rulesPassed + rulesFailed + rulesNoData },
       byDomain: {
         method: 'ELEMENT_ROLLUP',
         groups: byDomain,

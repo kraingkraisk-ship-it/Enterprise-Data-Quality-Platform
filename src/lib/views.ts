@@ -14,7 +14,6 @@ import {
   ListChecks,
   PackageSearch,
   Play,
-  Printer,
   ScanSearch,
   ScrollText,
   ShieldCheck,
@@ -29,7 +28,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.31.0'
+export const APP_VERSION = 'v0.32.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -43,8 +42,9 @@ export type CoreViewKey = 'rules' | 'conditions' | 'run' | 'dashboard'
 /** มุมมองของโมดูล Data Asset (v0.21.0 เพิ่ม data-mapping · v0.31.0 เพิ่ม asset-reference) */
 export type AssetViewKey = 'asset-import' | 'asset-inventory' | 'asset-domain' | 'asset-reference' | 'data-mapping'
 
-/** มุมมองระดับผู้บริหาร (v0.17.0) — จำกัดสิทธิ์ตาม VIEW_EXEC_DASHBOARD */
-export type ExecViewKey = 'exec-dashboard' | 'exec-reports'
+/** มุมมองระดับผู้บริหาร (v0.17.0) — จำกัดสิทธิ์ตาม VIEW_EXEC_DASHBOARD
+ *  v0.32.0 — 'exec-reports' ถูกยุบรวมเป็นปุ่ม "พิมพ์/PDF" บนแดชบอร์ดผู้บริหาร (ลดหน้าซ้ำซ้อน) */
+export type ExecViewKey = 'exec-dashboard'
 
 /** มุมมองหน้าใหม่ของโมดูล Data Quality */
 export type DqViewKey = 'scorecard' | 'rule-library' | 'profiling' | 'validation-results' | 'failed-records' | 'issues' | 'ml-center'
@@ -77,13 +77,6 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     en: 'Executive Dashboard',
     desc: 'ภาพรวมระดับบริหาร 7 ส่วน: คะแนนรวม · คะแนนราย Data Domain (Element Rollup 4 ระดับ) · กฎผ่าน/ไม่ผ่าน · Critical Issues · แนวโน้ม 30/90/180/365 วัน · กฎต่ำกว่าเกณฑ์ · ปัญหาเกินกำหนด',
     icon: Crown,
-  },
-  'exec-reports': {
-    key: 'exec-reports',
-    th: 'รายงานผู้บริหาร',
-    en: 'Executive Reports',
-    desc: 'พิมพ์/บันทึกรายงานแดชบอร์ดผู้บริหารเป็น PDF สำหรับประชุม — เลือกช่วงเวลาและสิทธิ์ตาม RBAC',
-    icon: Printer,
   },
   'compliance-assessment': {
     key: 'compliance-assessment',
@@ -242,10 +235,10 @@ export interface NavGroup {
 }
 
 export const NAV_GROUPS: NavGroup[] = [
-  { labelTh: 'ภาพรวม', labelEn: 'Overview', items: ['dashboard', 'exec-dashboard', 'exec-reports', 'compliance-assessment'] },
+  { labelTh: 'ภาพรวม', labelEn: 'Overview', items: ['dashboard', 'exec-dashboard', 'compliance-assessment'] },
   {
-    labelTh: 'Data Asset',
-    labelEn: 'สินทรัพย์ข้อมูล',
+    labelTh: 'สินทรัพย์ข้อมูล',
+    labelEn: 'Data Asset',
     items: ['asset-import', 'asset-inventory', 'asset-domain', 'asset-reference', 'data-mapping'],
   },
   {
@@ -256,6 +249,10 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     labelTh: 'การกำกับดูแล',
     labelEn: 'Governance',
-    items: ['rbac', 'audit-center', 'about'],
+    items: ['rbac', 'audit-center'],
   },
 ]
+
+/** ลิงก์สากลท้าย sidebar — ไม่อยู่ในกลุ่มเมนูธุรกิจ (v0.32.0 ย้าย 'about' ออกจากกลุ่ม Governance
+ *  เพราะเป็นข้อมูลเกี่ยวกับตัวแพลตฟอร์ม ไม่ใช่เครื่องมือกำกับดูแลข้อมูล) */
+export const SIDEBAR_FOOTER_LINKS: ViewKey[] = ['about']

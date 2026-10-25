@@ -159,6 +159,10 @@ export default function DqScorecard({ active, onGoValidations }: ScorecardProps)
               </Badge>
             )}
           </div>
+          {/* v0.32.0 — ระบุฐานการคำนวณให้ชัด เพราะหน้าอื่น (เช่น แดชบอร์ดผู้บริหาร) อาจนับรวมชุดที่ยังไม่เคยตรวจด้วย */}
+          <p className="mt-1 text-[10.5px] leading-relaxed text-muted-foreground">
+            เฉลี่ยเฉพาะชุดที่เคยตรวจ ({kpis?.datasetsWithRun ?? 0} จาก {kpis?.datasetsTotal ?? 0} ชุด) — ผลรันบนชุดข้อมูลว่าง (0 แถว) ไม่ถูกนับ
+          </p>
         </Card>
         <Card className="p-4">
           <p className="text-xs text-muted-foreground">ชุดข้อมูลที่ตรวจแล้ว</p>

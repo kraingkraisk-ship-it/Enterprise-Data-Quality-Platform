@@ -21,6 +21,7 @@ import {
   RefreshCw,
   SlidersHorizontal,
   TrendingUp,
+  UserRound,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -29,8 +30,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { rolesWithPermission } from '@/lib/dq'
-import { type RoleKey } from '@/lib/rbac'
+import { useCurrentUser } from '@/components/user-context'
 import { likelihoodOf } from '@/lib/regulation'
 import {
   DEFAULT_ML_SETTINGS,
@@ -82,13 +82,6 @@ interface SettingsResponse {
   isDefault: boolean
   updatedAt: string | null
   updatedBy: string | null
-}
-
-interface DashUser {
-  email: string
-  name: string
-  role: string
-  status?: string
 }
 
 function fmtTime(iso: string | null): string {
@@ -224,17 +217,12 @@ export default function MlCenter({ active }: { active: boolean }) {
   const [center, setCenter] = useState<CenterResponse | null>(null)
   const [settingsRes, setSettingsRes] = useState<SettingsResponse | null>(null)
   const [draft, setDraft] = useState<MlSettings | null>(null)
-  const [users, setUsers] = useState<DashUser[]>([])
-  const [operator, setOperator] = useState('')
+  // v0.32.0 — ผู้ดำเนินการปรับเกณฑ์ = ผู้ใช้ปัจจุบันจาก header (identity ศูนย์กลาง)
+  const { user, hasPermission } = useCurrentUser()
+  const canReview = hasPermission('REVIEW_SIGNALS')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-
-  const reviewRoles = useMemo(() => rolesWithPermission('REVIEW_SIGNALS').map((r) => r.key), [])
-  const operators = useMemo(
-    () => users.filter((u) => u.status !== 'SUSPENDED' && reviewRoles.includes(u.role as RoleKey)),
-    [users, reviewRoles],
-  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -260,27 +248,6 @@ export default function MlCenter({ active }: { active: boolean }) {
     if (active) void load()
   }, [active, load])
 
-  useEffect(() => {
-    if (!active || users.length > 0) return
-    let live = true
-    fetch('/api/rbac/users')
-      .then((r) => r.json())
-      .then((b: { users?: DashUser[] }) => {
-        if (live && Array.isArray(b.users)) setUsers(b.users)
-      })
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [active, users.length])
-
-  // ผู้ดำเนินการเริ่มต้น — บัญชีแรกที่ ACTIVE และมีสิทธิ์ REVIEW_SIGNALS
-  useEffect(() => {
-    if (operator) return
-    const first = operators[0]
-    if (first) setOperator(first.email)
-  }, [operators, operator])
-
   const cur = settingsRes?.settings ?? DEFAULT_ML_SETTINGS
   const dirty = draft !== null && TUNABLE_DEFS.some((d) => draft[d.key] !== cur[d.key])
 
@@ -292,7 +259,7 @@ export default function MlCenter({ active }: { active: boolean }) {
   }
 
   async function save(reset: boolean) {
-    if (!operator) {
+    if (!user) {
       toast({ title: 'กรุณาเลือกผู้ดำเนินการ (ต้องมีสิทธิ์ทบทวนสัญญาณ AI)', variant: 'destructive' })
       return
     }
@@ -302,7 +269,7 @@ export default function MlCenter({ active }: { active: boolean }) {
       const res = await fetch('/api/dq/ml/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operatorEmail: operator, reset, values: reset ? undefined : draft }),
+        body: JSON.stringify({ operatorEmail: user?.email ?? '', reset, values: reset ? undefined : draft }),
       })
       const body = (await res.json().catch(() => ({}))) as {
         ok?: boolean
@@ -642,18 +609,17 @@ export default function MlCenter({ active }: { active: boolean }) {
 
               {/* บันทึก — ผู้ดำเนินการต้องมีสิทธิ์ REVIEW_SIGNALS (RBAC บังคับทั้งฝั่งจอและเซิร์ฟเวอร์) */}
               <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-slate-50/60 p-3">
-                <Select value={operator} onValueChange={setOperator}>
-                  <SelectTrigger aria-label="ผู้ดำเนินการปรับเกณฑ์ (ต้องมีสิทธิ์ทบทวนสัญญาณ AI)" className="h-9 w-[280px] text-xs">
-                    <SelectValue placeholder="เลือกผู้ดำเนินการ" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {operators.map((u) => (
-                      <SelectItem key={u.email} value={u.email}>
-                        {u.name} ({rolesWithPermission('REVIEW_SIGNALS').find((r) => r.key === u.role)?.th ?? u.role})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* v0.32.0 — ผู้ดำเนินการ = ผู้ใช้ปัจจุบันจาก header (สิทธิ์ REVIEW_SIGNALS ตรวจที่ API เสมอ) */}
+                <div
+                  className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-xs text-muted-foreground"
+                  aria-label="ผู้ดำเนินการปรับเกณฑ์ (ต้องมีสิทธิ์ทบทวนสัญญาณ AI)"
+                >
+                  <UserRound className="size-3.5 shrink-0 text-teal-700" aria-hidden="true" />
+                  <span className="max-w-64 truncate font-medium text-slate-800">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+                  <Badge variant="outline" className={`shrink-0 text-[10px] ${canReview ? 'border-teal-200 bg-teal-50 text-teal-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                    {canReview ? 'มีสิทธิ์ทบทวนสัญญาณ' : 'ไม่มีสิทธิ์ทบทวนสัญญาณ'}
+                  </Badge>
+                </div>
                 <Button
                   size="sm"
                   className="h-9 gap-1 bg-teal-700 text-xs text-white hover:bg-teal-800"
@@ -673,9 +639,9 @@ export default function MlCenter({ active }: { active: boolean }) {
                 )}
               </div>
 
-              {operators.length === 0 && (
+              {!canReview && (
                 <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="note">
-                  ยังไม่มีบัญชีที่มีสิทธิ์ทบทวนสัญญาณ AI (REVIEW_SIGNALS) — ดูได้เท่านั้น ปรับเกณฑ์ไม่ได้จนกว่าจะมอบสิทธิ์ในหน้าบทบาทและสิทธิ์
+                  ผู้ใช้ปัจจุบันไม่มีสิทธิ์ทบทวนสัญญาณ AI (REVIEW_SIGNALS) — ดูได้เท่านั้น เปลี่ยนไปใช้บัญชีที่มีสิทธิ์ที่ตัวเลือก “ผู้ใช้งาน” มุมขวาบน หรือมอบสิทธิ์ในหน้าบทบาทและสิทธิ์
                 </p>
               )}
 

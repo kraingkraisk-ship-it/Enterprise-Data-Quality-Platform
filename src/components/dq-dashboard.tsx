@@ -1,16 +1,16 @@
 'use client'
 
 /**
- * DQ Dashboard — แดชบอร์ดคุณภาพข้อมูล 6 ส่วน (v0.10.0 · เพิ่มหมวด ML v0.29.0)
+ * DQ Dashboard — แดชบอร์ดคุณภาพข้อมูล 5 ส่วน (v0.10.0 · v0.32.0 ยุบหมวด ML ไปที่ศูนย์ ML จุดเดียว)
  * 1) ภาพรวมทั้งหมดของ Data Quality (คะแนนรวม + มาตรา 1–9 + ต่อชุดข้อมูล + PII masking)
  * 2) รายละเอียดการตรวจ Data Quality (ผลรันล่าสุดรายกฎ + คำตัดสินตามมาตรา + คำแนะนำ)
  * 3) Regulation — กรอบมาตรฐาน 5 กรอบ (DAMA-DMBOK / ISO/IEC 25012 / ISO 8000 / ISO/IEC 25024 / ISO/IEC 11179)
  *    เลือกแตกย่อยได้ และเลือก data source เพื่อประเมินสถานะจากข้อมูลจริงในระบบ
  * 4) Risk — ความเสี่ยงในมุม Data Quality Impact (โอกาส × ผลกระทบ + แผนที่ความเสี่ยง + ผลกระทบธุรกิจ)
- * 5) ML · สัญญาณอัจฉริยะ — แผง ML ทั้ง 4 ตัว (① ผิดปกติข้ามรอบ · ④ สาเหตุร่วม · ③ พยากรณ์ · ② สุ่มตรวจตามความเสี่ยง)
- *    (v0.29.0 — ย้ายจากหมวด Risk เพื่อแยก "สัญญาณรอมนุษย์ทบทวน" ออกจาก "วิธีประเมินความเสี่ยงขององค์กร")
- * 6) Data Classification — การจำแนกข้อมูล 11 ประเภท และ mapping กับมาตรฐาน (ธปท./BCBS 239/PDPA/PCI DSS/ฯลฯ)
+ *    + การ์ดลิงก์ไป "ศูนย์ ML" (สัญญาณ ML ทั้ง 4 ตัว + ปรับเกณฑ์ อยู่ที่นั่นจุดเดียว — v0.32.0)
+ * 5) Data Classification — การจำแนกข้อมูล 11 ประเภท และ mapping กับมาตรฐาน (ธปท./BCBS 239/PDPA/PCI DSS/ฯลฯ)
  * ข้อมูลทั้งหมดมาจาก /api/dq/analytics — คำนวณจากผลรันตรวจล่าสุดของทุกกฎที่เปิดใช้งาน
+ * มุมมองบทบาท/ผู้ดำเนินการ = ผู้ใช้ปัจจุบันจาก UserSwitcher บน header (v0.32.0 — identity ศูนย์กลาง)
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -31,6 +31,7 @@ import {
   Tags,
   TrendingDown,
   TrendingUp,
+  UserRound,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,16 +40,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { useCurrentUser } from '@/components/user-context'
 import { DIMENSION_ICONS, DimensionBadge } from '@/components/dimension-picker'
-import { ROLE_LIST, type RoleKey } from '@/lib/rbac'
+import { type RoleKey } from '@/lib/rbac'
 import { SEVERITY_KEYS, SEVERITY_LABELS, rolesWithPermission, type DimensionKey, type SeverityKey } from '@/lib/dq'
-import { RISK_SCORE_MAX, SAMPLING_FOOTNOTE_TH, SAMPLING_METHOD, SAMPLING_POLICIES } from '@/lib/sampling'
-import type { SamplePlanView } from '@/lib/sampling-engine'
-import { mlFootnoteTh, zBandsOf } from '@/lib/ml'
-import { forecastFootnoteTh } from '@/lib/forecast'
-import { DEFAULT_ML_SETTINGS, type MlSettings } from '@/lib/ml-settings'
-import type { ForecastEvaluation, ForecastHorizons, ForecastView } from '@/lib/forecast-engine'
-import type { AnomalyView, ClusterView, MlEvaluation } from '@/lib/ml-engine'
 import {
   classificationLabel,
   DATA_CLASSIFICATIONS,
@@ -68,13 +63,6 @@ export interface DashboardDataset {
   sourceType: string
   piiEnabled: boolean
   classification: string
-}
-
-interface DashUser {
-  email: string
-  name: string
-  role: string
-  status?: string
 }
 
 interface DimScore {
@@ -105,7 +93,7 @@ interface RunRow {
   severity: string
   dimension: string
   clauseNo: number
-  status: 'PASSED' | 'FAILED'
+  status: 'PASSED' | 'FAILED' | 'NO_DATA'
   totalRows: number
   failedRows: number
   passRate: number
@@ -329,12 +317,10 @@ function ScoreBar({ score, className }: { score: number | null; className?: stri
 const STATUS_BADGE: Record<string, string> = {
   PASSED: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   FAILED: 'bg-rose-50 text-rose-800 border-rose-200',
+  NO_DATA: 'bg-amber-50 text-amber-800 border-amber-200',
 }
 
-const STATUS_LABEL: Record<string, string> = { PASSED: 'ผ่าน', FAILED: 'ไม่ผ่าน' }
-
-/** บทบาทที่มีสิทธิ์ MANAGE_DATASETS — ใช้กรอกผู้ดำเนินการจำแนกประเภทข้อมูล */
-const MANAGE_DATASETS_ROLES: RoleKey[] = ['DATA_OWNER', 'DATA_STEWARD', 'DATA_ENGINEER', 'SYS_ADMIN']
+const STATUS_LABEL: Record<string, string> = { PASSED: 'ผ่าน', FAILED: 'ไม่ผ่าน', NO_DATA: 'ไม่มีข้อมูล (0 แถว)' }
 
 /* ------------------------- classification editor -------------------------- */
 
@@ -377,32 +363,27 @@ function ClassificationEditor({
 
 /* ----------------------------- component --------------------------------- */
 
-export type DashboardSection = 'overview' | 'checks' | 'regulation' | 'risk' | 'ml' | 'classification'
+export type DashboardSection = 'overview' | 'checks' | 'regulation' | 'risk' | 'classification'
 
 const SECTIONS: Array<{ id: DashboardSection; th: string; en: string; icon: typeof LayoutDashboard; desc: string }> = [
   { id: 'overview', th: 'ภาพรวมทั้งหมด', en: 'Overall', icon: LayoutDashboard, desc: 'คะแนนรวม มาตรา 1–9 และคะแนนต่อชุดข้อมูล' },
   { id: 'checks', th: 'รายละเอียดการตรวจ', en: 'Check Details', icon: ClipboardList, desc: 'ผลตรวจล่าสุดรายกฎ พร้อมคำตัดสินตามมาตรา' },
   { id: 'regulation', th: 'Regulation', en: 'Regulatory Standards', icon: Scale, desc: 'มาตรฐานอ้างอิง 5 กรอบ แตกย่อยได้ อ้างอิงข้อมูลในระบบ' },
   { id: 'risk', th: 'Risk', en: 'DQ Impact', icon: AlertTriangle, desc: 'ความเสี่ยงในมุม Data Quality Impact' },
-  {
-    id: 'ml',
-    th: 'ML · สัญญาณอัจฉริยะ',
-    en: 'ML Signals',
-    icon: BrainCircuit,
-    desc: 'ความผิดปกติข้ามรอบ สาเหตุร่วม พยากรณ์แนวโน้ม และแผนสุ่มตรวจตามความเสี่ยง',
-  },
   { id: 'classification', th: 'Data Classification', en: 'Classification', icon: Tags, desc: 'จำแนกข้อมูล 11 ประเภท และ mapping มาตรฐาน' },
 ]
 
 interface DqDashboardProps {
   datasets: DashboardDataset[]
-  users: DashUser[]
   reloadTick: number
   onRefetch: () => void
+  /** v0.32.0 — ลิงก์ไปศูนย์ ML (ML ทั้ง 4 ตัวอยู่ที่นั่นจุดเดียว — ลดความซ้ำซ้อน) */
+  onGoMlCenter: () => void
 }
 
-export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: DqDashboardProps) {
+export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCenter }: DqDashboardProps) {
   const { toast } = useToast()
+  const { user, roleKey } = useCurrentUser()
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [section, setSection] = useState<DashboardSection>('overview')
@@ -421,14 +402,12 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
   const [matrixView, setMatrixView] = useState<'residual' | 'inherent'>('residual')
   const [methodologyOpen, setMethodologyOpen] = useState(true)
 
-  // section 5 — classification
+  // section 5 — classification (ผู้ดำเนินการ = ผู้ใช้ปัจจุบันของระบบ — v0.32.0)
   const [selectedCls, setSelectedCls] = useState(DATA_CLASSIFICATIONS[0]?.id ?? 'DATA_GOVERNANCE')
-  const [clsOperator, setClsOperator] = useState('somchai.owner@company.co.th')
   const [clsBusy, setClsBusy] = useState(false)
 
-  // PII masking demo (ส่วนภาพรวม)
+  // PII masking demo (ส่วนภาพรวม) — บทบาทผู้ชม = ผู้ใช้ปัจจุบัน (v0.32.0)
   const [previewDataset, setPreviewDataset] = useState('')
-  const [previewRole, setPreviewRole] = useState<RoleKey>('BUSINESS_USER')
   const [preview, setPreview] = useState<{ datasetName: string; columns: string[]; rows: Record<string, unknown>[]; piiMasked: boolean } | null>(null)
 
   /* ---------------------------- data load -------------------------------- */
@@ -450,13 +429,13 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
     void loadAnalytics()
   }, [loadAnalytics, reloadTick])
 
-  // PII preview (ภาพรวม)
+  // PII preview (ภาพรวม) — ใช้บทบาทผู้ใช้ปัจจุบันจาก header (v0.32.0)
   useEffect(() => {
-    if (!previewDataset) return
+    if (!previewDataset || !user) return
     let alive = true
     ;(async () => {
       try {
-        const res = await fetch(`/api/dq/sample-preview?datasetId=${encodeURIComponent(previewDataset)}&role=${previewRole}`)
+        const res = await fetch(`/api/dq/sample-preview?datasetId=${encodeURIComponent(previewDataset)}&role=${roleKey}`)
         const json = await res.json()
         if (!alive) return
         setPreview(json.error ? null : json)
@@ -467,7 +446,7 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
     return () => {
       alive = false
     }
-  }, [previewDataset, previewRole])
+  }, [previewDataset, roleKey, user])
 
   /* ------------------------------ actions -------------------------------- */
 
@@ -477,7 +456,7 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
       const res = await fetch('/api/dq/classification', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datasetId, classification: value, operatorEmail: clsOperator }),
+        body: JSON.stringify({ datasetId, classification: value, operatorEmail: user?.email ?? '' }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -495,11 +474,6 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
   }
 
   /* ------------------------------ derived -------------------------------- */
-
-  const operators = useMemo(
-    () => users.filter((u) => u.status !== 'SUSPENDED' && MANAGE_DATASETS_ROLES.includes(u.role as RoleKey)),
-    [users],
-  )
 
   const filteredRuns = useMemo(() => {
     if (!data) return []
@@ -843,19 +817,20 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="pv-role">สวมบทบาท</Label>
-                      <Select value={previewRole} onValueChange={(v) => setPreviewRole(v as RoleKey)}>
-                        <SelectTrigger id="pv-role">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ROLE_LIST.map((r) => (
-                            <SelectItem key={r.key} value={r.key}>
-                              {r.th}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {/* v0.32.0 — บทบาทผู้ชม PII ใช้ผู้ใช้ปัจจุบันจาก header จุดเดียว (เดิมมี selector แยกในหน้า) */}
+                      <Label htmlFor="pv-role">มุมมองผู้ใช้ปัจจุบัน</Label>
+                      <div
+                        id="pv-role"
+                        className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground"
+                      >
+                        <UserRound className="size-3.5 text-emerald-700" aria-hidden="true" />
+                        <span className="truncate">
+                          {user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลดผู้ใช้…'}
+                        </span>
+                      </div>
+                      <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+                        เปลี่ยนมุมมองบทบาทได้ที่ตัวเลือก “ผู้ใช้งาน” มุมขวาบนของระบบ — ข้อมูลส่วนบุคคลจะถูกปิดบังตามสิทธิ์ของผู้ใช้นั้น
+                      </p>
                     </div>
                   </div>
                   {preview && (
@@ -961,6 +936,11 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                     <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-800">
                       ไม่ผ่าน {data.latestRuns.filter((r) => r.status === 'FAILED').length}
                     </Badge>
+                    {data.latestRuns.some((r) => r.status === 'NO_DATA') && (
+                      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+                        ไม่มีข้อมูล {data.latestRuns.filter((r) => r.status === 'NO_DATA').length}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </CardHeader>
@@ -990,20 +970,20 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                           <span className="shrink-0 text-[11px] text-muted-foreground">{fmtTime(r.at)}</span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                          <ScoreBar score={r.passRate * 100} className="max-w-48" />
-                          <span className={`font-mono font-semibold ${scoreColor(r.passRate * 100)}`}>
-                            {(r.passRate * 100).toFixed(0)}%
-                          </span>
-                          <span className="text-muted-foreground">
-                            ล้มเหลว {r.failedRows} จาก {r.totalRows} แถว
-                          </span>
+                          {r.status !== 'NO_DATA' && <ScoreBar score={r.passRate * 100} className="max-w-48" />}
+                          {r.status !== 'NO_DATA' && (
+                            <span className={`font-mono font-semibold ${scoreColor(r.passRate * 100)}`}>
+                              {(r.passRate * 100).toFixed(0)}%
+                            </span>
+                          )}
+                          <span className="text-muted-foreground">ล้มเหลว {r.failedRows} จาก {r.totalRows} แถว</span>
                           {r.status === 'FAILED' && (
                             <Badge variant="outline" className={`text-[10.5px] ${SEVERITY_BADGE_SMALL[r.riskBand] ?? 'border-slate-200 bg-slate-50 text-slate-600'}`}>
                               ความเสี่ยง {r.riskScore} ({r.riskBand === 'CRITICAL' ? 'สูงมาก' : r.riskBand === 'HIGH' ? 'สูง' : r.riskBand === 'MEDIUM' ? 'ปานกลาง' : 'ต่ำ'})
                             </Badge>
                           )}
                         </div>
-                        <p className={`mt-1.5 text-xs leading-relaxed ${r.status === 'FAILED' ? 'text-rose-800' : 'text-emerald-800'}`}>
+                        <p className={`mt-1.5 text-xs leading-relaxed ${r.status === 'FAILED' ? 'text-rose-800' : r.status === 'NO_DATA' ? 'text-amber-800' : 'text-emerald-800'}`}>
                           {r.verdict}
                         </p>
                         {r.advice && (
@@ -1893,9 +1873,8 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                 </Card>
               </Collapsible>
 
-              {/* v0.29.0 — สัญญาณ ML ทั้ง 4 ตัวย้ายไปหมวด "ML · สัญญาณอัจฉริยะ" แล้ว
-                  (แยก "สัญญาณรอมนุษย์ทบทวน" ออกจาก "วิธีประเมินความเสี่ยงขององค์กร" —
-                   คณิต ML ยังใช้ LIKELIHOOD_BANDS/SEVERITY_WEIGHT ชุดเดียวกับหมวดนี้) */}
+              {/* v0.32.0 — สัญญาณ ML ทั้ง 4 ตัวอยู่ที่ "ศูนย์ ML" (เมนู คุณภาพข้อมูล) จุดเดียว
+                  — ลดความซ้ำซ้อนเดิม (แดชบอร์ด + ศูนย์ ML) ที่เคยโหลด ML API สองที่ */}
               <Card className="border-teal-200 bg-teal-50/40">
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
                   <div className="flex min-w-0 items-start gap-3">
@@ -1903,10 +1882,10 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                       <BrainCircuit className="size-4.5" aria-hidden="true" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-teal-900">สัญญาณ ML ย้ายไปหมวด "ML · สัญญาณอัจฉริยะ" แล้ว (v0.29.0)</p>
+                      <p className="text-sm font-semibold text-teal-900">สัญญาณ ML ทั้ง 4 ตัวอยู่ที่ "ศูนย์ ML" (v0.32.0)</p>
                       <p className="mt-0.5 text-xs leading-relaxed text-teal-800/90">
-                        ความผิดปกติข้ามรอบ · สาเหตุร่วม · พยากรณ์แนวโน้ม · แผนสุ่มตรวจตามความเสี่ยง — ML เป็นสัญญาณรอมนุษย์ทบทวน
-                        แยกจากวิธีประเมินความเสี่ยงขององค์กรในหมวดนี้ (คณิต ML ยังใช้เกณฑ์ LIKELIHOOD_BANDS/SEVERITY_WEIGHT ชุดเดียวกับหมวด Risk)
+                        ความผิดปกติข้ามรอบ · สาเหตุร่วม · พยากรณ์แนวโน้ม · แผนสุ่มตรวจตามความเสี่ยง และปรับเกณฑ์ค่าคงที่ — รวมอยู่หน้าเดียว
+                        (ML เป็นสัญญาณรอมนุษย์ทบทวน ใช้เกณฑ์ LIKELIHOOD_BANDS/SEVERITY_WEIGHT ชุดเดียวกับหมวด Risk)
                       </p>
                     </div>
                   </div>
@@ -1914,61 +1893,14 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
                     type="button"
                     size="sm"
                     className="shrink-0 bg-teal-700 text-white hover:bg-teal-800"
-                    onClick={() => setSection('ml')}
-                    aria-label="ไปที่หมวด ML สัญญาณอัจฉริยะ"
+                    onClick={() => onGoMlCenter()}
+                    aria-label="ไปที่ศูนย์ ML"
                   >
-                    ไปที่หมวด ML
+                    เปิดศูนย์ ML
                     <ArrowRight className="ml-1 size-3.5" aria-hidden="true" />
                   </Button>
                 </CardContent>
               </Card>
-            </div>
-          )}
-
-          {/* ================================================================ */}
-          {/* ส่วนที่ 5 — ML · สัญญาณอัจฉริยะ (v0.29.0 — ย้ายจากหมวด Risk)          */}
-          {/* ================================================================ */}
-          {section === 'ml' && (
-            <div className="space-y-4">
-              {/* หัวหมวด — ความสัมพันธ์กับหมวด Risk และศูนย์ ML */}
-              <section
-                aria-label="หมวด ML สัญญาณอัจฉริยะ — ความผิดปกติ สาเหตุร่วม พยากรณ์ และแผนสุ่มตรวจ"
-                className="rounded-xl border border-teal-200 bg-teal-50/50 p-4"
-              >
-                <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-teal-900">ML · สัญญาณอัจฉริยะ — ตรวจจับ → หาสาเหตุ → พยากรณ์ → จัดงบทบทวน</h2>
-                    <p className="mt-1 text-xs leading-relaxed text-teal-800/90">
-                      ML ทั้ง 4 ตัวเป็น <strong>"สัญญาณรอมนุษย์ทบทวน"</strong> — ไม่ตัดสินผ่าน/ไม่ผ่านแทนเกณฑ์เดิม และไม่แก้ข้อมูลต้นทาง ·
-                      คณิตความเสี่ยงใช้เกณฑ์เดียวกับหมวด Risk (LIKELIHOOD_BANDS · SEVERITY_WEIGHT ใน{' '}
-                      <span className="font-mono">src/lib/regulation.ts</span>) · ปรับเกณฑ์ค่าคงที่ 10 ค่าได้ที่ <strong>ศูนย์ ML</strong> ในเมนู คุณภาพข้อมูล
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0 border-teal-300 bg-white text-teal-800 hover:bg-teal-50"
-                    onClick={() => setSection('risk')}
-                    aria-label="ไปที่หมวด Risk"
-                  >
-                    ไปที่หมวด Risk
-                    <ArrowRight className="ml-1 size-3.5" aria-hidden="true" />
-                  </Button>
-                </div>
-              </section>
-
-              {/* ① ML Anomaly Detection: ความผิดปกติข้ามรอบ (เรียนรู้ baseline จากประวัติจริง) */}
-              <MlAnomalyPanel />
-
-              {/* ④ ML Root Cause Clustering: สมมติฐานสาเหตุร่วมของรอบล่าสุด */}
-              <MlClusterCard />
-
-              {/* ③ ML Quality Trend Forecasting: พยากรณ์แนวโน้มอัตราล้มเหลว 1/3/5 รอบข้างหน้า */}
-              <ForecastPanel />
-
-              {/* ② Risk-based Sampling: จัดสรรงบการทบทวนตามความเสี่ยง */}
-              <SamplingPanel users={users} />
             </div>
           )}
 
@@ -1977,26 +1909,12 @@ export default function DqDashboard({ datasets, users, reloadTick, onRefetch }: 
           {/* ================================================================ */}
           {section === 'classification' && (
             <div className="space-y-4">
-              {/* เลือกผู้ดำเนินการ */}
-              <Card className="border-slate-200">
-                <CardContent className="flex flex-wrap items-center gap-3 py-3">
-                  <Label htmlFor="cls-operator" className="text-xs text-muted-foreground">
-                    ผู้ดำเนินการจำแนก (ต้องมีสิทธิ์จัดการชุดข้อมูล)
-                  </Label>
-                  <Select value={clsOperator} onValueChange={setClsOperator}>
-                    <SelectTrigger id="cls-operator" className="h-8 w-[300px] text-xs">
-                      <SelectValue placeholder="เลือกผู้ดำเนินการ" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {operators.map((u) => (
-                        <SelectItem key={u.email} value={u.email} className="text-xs">
-                          {u.name} · {ROLE_LIST.find((r) => r.key === u.role)?.th ?? u.role}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </CardContent>
-              </Card>
+              {/* ผู้ดำเนินการ = ผู้ใช้ปัจจุบันของระบบ (v0.32.0 — ย้ายไปใช้ identity ศูนย์กลางที่ header) */}
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-xs text-slate-600">
+                <UserRound className="size-3.5 text-emerald-700" aria-hidden="true" />
+                ผู้ดำเนินการจำแนก: <span className="font-medium text-slate-800">{user ? `${user.name} (${user.roleTh})` : 'กำลังโหลด…'}</span>
+                <span className="text-muted-foreground">— ต้องมีสิทธิ์จัดการชุดข้อมูล (ตรวจสิทธิ์ที่ API เสมอ)</span>
+              </div>
 
               {/* การ์ด 11 ประเภท */}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="radiogroup" aria-label="เลือกประเภทข้อมูล">
@@ -2185,774 +2103,4 @@ function gradeOfClient(score: number | null): { band: string; label: string; bad
   if (score >= 85) return { band: 'GOOD', label: 'ดี', badgeClass: 'bg-teal-50 text-teal-800 border-teal-200', textClass: 'text-teal-700' }
   if (score >= 70) return { band: 'FAIR', label: 'ต้องปรับปรุง', badgeClass: 'bg-amber-50 text-amber-900 border-amber-200', textClass: 'text-amber-700' }
   return { band: 'POOR', label: 'วิกฤต', badgeClass: 'bg-rose-50 text-rose-800 border-rose-200', textClass: 'text-rose-700' }
-}
-
-/* ==========================================================================
-   ML Panels (v0.25.0) — ① Anomaly Detection + ④ Root Cause Clustering
-   อ่านจาก /api/dq/ml/* — เกณฑ์ทุกตัวแสดงจากตารางค่าคงที่ src/lib/ml.ts โดยตรง
-   (single source of truth เดียวกับที่ engine ใช้คำนวณ — anti-drift ต่อยอด v0.24.1)
-   ========================================================================== */
-
-/** โหลดผล ML แบบอิสระต่อแผง — loading/error จัดการในแผงของตัวเอง ไม่กระทบส่วนอื่นของแดชบอร์ด */
-function useMlEvaluation(endpoint: 'anomalies' | 'clusters') {
-  const [data, setData] = useState<MlEvaluation | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const reload = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/dq/ml/${endpoint}`)
-      const body = (await res.json().catch(() => ({}))) as MlEvaluation & { error?: string }
-      if (!res.ok) throw new Error(body.error ?? 'โหลดผล ML ไม่สำเร็จ')
-      setData(body)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'โหลดผล ML ไม่สำเร็จ')
-    } finally {
-      setLoading(false)
-    }
-  }, [endpoint])
-  useEffect(() => {
-    void reload()
-  }, [reload])
-  return { data, loading, error, reload }
-}
-
-/** เกณฑ์ ML ปัจจุบันจาก /api/dq/ml/settings — แผงแสดงเกณฑ์เดียวกับที่ engine ใช้คำนวณ (v0.28.0) */
-function useMlSettings(): MlSettings {
-  const [s, setS] = useState<MlSettings>(DEFAULT_ML_SETTINGS)
-  useEffect(() => {
-    let live = true
-    fetch('/api/dq/ml/settings')
-      .then((r) => r.json())
-      .then((b: { settings?: MlSettings }) => {
-        if (live && b?.settings) setS(b.settings)
-      })
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [])
-  return s
-}
-
-/** ป้ายโหมดการประเมิน — โปร่งใสว่าตัวเลขมาจาก batch ที่บันทึกหรือโหมดสด */
-function MlModeBadge({ mode, batchAt }: { mode: string; batchAt: string | null }) {
-  if (mode === 'BATCH') {
-    return (
-      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800">
-        บันทึกจาก batch ล่าสุด · {fmtTime(batchAt)}
-      </Badge>
-    )
-  }
-  return (
-    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] text-amber-900">
-      โหมดสด — ยังไม่มี batch (ประเมินจากผลรันล่าสุดรายกฎ ไม่บันทึก)
-    </Badge>
-  )
-}
-
-/** กราฟประวัติอัตราล้มเหลว (SVG บริสุทธิ์ — ไม่พึ่งไลบรารีกราฟ) + เส้น baseline ประ */
-function MlSparkline({ history, baseline }: { history: Array<{ failRate: number }>; baseline: number }) {
-  const w = 120
-  const h = 30
-  const pad = 2
-  const rates = history.map((p) => p.failRate)
-  const max = Math.max(...rates, baseline, 0.05)
-  const xOf = (i: number) => (rates.length > 1 ? pad + (i * (w - 2 * pad)) / (rates.length - 1) : w / 2)
-  const yOf = (r: number) => h - pad - (r / max) * (h - 2 * pad)
-  const points = rates.map((r, i) => `${xOf(i).toFixed(1)},${yOf(r).toFixed(1)}`).join(' ')
-  const baseY = yOf(baseline).toFixed(1)
-  const last = rates.length > 0 ? rates[rates.length - 1] : null
-  return (
-    <svg
-      width={w}
-      height={h}
-      role="img"
-      aria-label={`ประวัติอัตราล้มเหลว ${rates.length} จุด เทียบ baseline ${(baseline * 100).toFixed(1)}%`}
-      className="shrink-0"
-    >
-      <line x1={pad} x2={w - pad} y1={baseY} y2={baseY} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
-      {points && <polyline points={points} fill="none" stroke="#0f766e" strokeWidth="1.5" strokeLinejoin="round" />}
-      {last !== null && <circle cx={xOf(rates.length - 1)} cy={yOf(last)} r="2.5" fill={last > baseline ? '#e11d48' : '#0f766e'} />}
-    </svg>
-  )
-}
-
-/** ① ความผิดปกติข้ามรอบ — เรียนรู้ baseline รายกฎจากประวัติจริง (v0.25.0) */
-function MlAnomalyPanel() {
-  const { data, loading, error, reload } = useMlEvaluation('anomalies')
-  const s = useMlSettings()
-  const bands = zBandsOf(s)
-  const anomalies = data?.anomalies ?? []
-  const counts = {
-    CRITICAL: anomalies.filter((a) => a.level === 'CRITICAL').length,
-    HIGH: anomalies.filter((a) => a.level === 'HIGH').length,
-    MEDIUM: anomalies.filter((a) => a.level === 'MEDIUM').length,
-    BETTER: anomalies.filter((a) => a.better).length,
-    NORMAL: anomalies.filter((a) => a.level === 'NORMAL' && !a.better).length,
-    INSUFFICIENT: anomalies.filter((a) => a.level === 'INSUFFICIENT_HISTORY').length,
-  }
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              <BrainCircuit className="h-4 w-4 text-teal-700" aria-hidden />
-              ความผิดปกติข้ามรอบที่ ML ตรวจพบ (Anomaly Detection)
-            </CardTitle>
-            <CardDescription className="mt-1">
-              เรียนรู้ baseline ของแต่ละกฎจากประวัติรันจริง — รอบที่อัตราล้มเหลวห่างจาก baseline เกินเกณฑ์จะถูกแจ้งเตือน
-              แม้ยังไม่ทะลุ threshold เดิม (ML เป็นสัญญาณรอทบทวน ไม่ตัดสินแทนเกณฑ์ผ่าน/ไม่ผ่าน)
-            </CardDescription>
-          </div>
-          <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1 text-xs" onClick={() => void reload()} aria-label="โหลดผลประเมิน ML ใหม่">
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />
-            โหลดใหม่
-          </Button>
-        </div>
-        {data && <div className="pt-1">{<MlModeBadge mode={data.mode} batchAt={data.batchAt} />}</div>}
-      </CardHeader>
-      <CardContent>
-        {loading && <p className="py-6 text-center text-sm text-muted-foreground">กำลังประเมินความผิดปกติจากประวัติรัน…</p>}
-        {error && !loading && (
-          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800" role="alert">
-            {error}
-          </div>
-        )}
-        {!loading && !error && data && (
-          <>
-            <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px]" aria-label="สรุปจำนวนตามระดับ">
-              <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-800">สูงมาก {counts.CRITICAL}</Badge>
-              <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-800">สูง {counts.HIGH}</Badge>
-              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">ปานกลาง {counts.MEDIUM}</Badge>
-              {counts.BETTER > 0 && (
-                <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-800">ดีขึ้นผิดปกติ {counts.BETTER}</Badge>
-              )}
-              <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">ปกติ {counts.NORMAL}</Badge>
-              {counts.INSUFFICIENT > 0 && (
-                <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-500">ยังไม่ประเมิน {counts.INSUFFICIENT}</Badge>
-              )}
-            </div>
-            {anomalies.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">ยังไม่มีผลรันในระบบ — รัน validation แล้ว ML จะประเมินอัตโนมัติ</p>
-            ) : (
-              <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="รายการความผิดปกติรายกฎ">
-                {anomalies.map((a) => (
-                  <MlAnomalyRow key={`${a.ruleId}-${a.datasetId}`} a={a} minHistory={s.mlMinHistory} />
-                ))}
-              </div>
-            )}
-            {/* เกณฑ์แสดงจาก settings ปัจจุบัน (v0.28.0) — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ ปรับได้ที่ศูนย์ ML */}
-            <div className="mt-3 space-y-1.5 rounded-md bg-slate-50 px-2.5 py-2">
-              <p className="text-[11px] font-medium text-slate-700">
-                เกณฑ์ระดับจากคะแนน z:{' '}
-                {bands
-                  .slice()
-                  .reverse()
-                  .map((z) => `z ≥ ${z.minZ} = ${z.label}`)
-                  .join(' · ')}{' '}
-                · ต่ำกว่า {bands[bands.length - 1].minZ} = ปกติ
-              </p>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">{mlFootnoteTh(s)}</p>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
-                ประเมินอัตโนมัติหลังรัน validation ทุกครั้ง — ระดับ สูง/สูงมาก ถูกส่งเข้ากล่องสัญญาณ (รอมนุษย์ทบทวน) ·
-                นิยามอยู่ใน <span className="font-mono">src/lib/ml.ts</span> + <span className="font-mono">src/lib/ml-engine.ts</span> ตรวจย้อนได้ทุกตัวเลข
-              </p>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function MlAnomalyRow({ a, minHistory }: { a: AnomalyView; minHistory: number }) {
-  const insufficient = a.level === 'INSUFFICIENT_HISTORY'
-  return (
-    <div role="listitem" className={`rounded-lg border p-3 ${insufficient ? 'opacity-70' : ''}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className={`text-[10.5px] ${a.badgeClass}`}>
-            {insufficient ? 'ยังไม่ประเมิน' : `${a.label} · z ${a.zScore.toFixed(1)}`}
-          </Badge>
-          <DimensionBadge dimension={a.dimension as DimensionKey} />
-          <span className="truncate text-sm font-medium">{a.datasetName}</span>
-          <span className="truncate text-xs text-muted-foreground">
-            · {a.column} — {a.conditionName}
-          </span>
-        </div>
-        {a.drift && (
-          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-900">
-            <TrendingDown className="mr-1 h-3 w-3 rotate-180" aria-hidden />
-            แนวโน้มแย่ลงต่อเนื่อง
-          </Badge>
-        )}
-      </div>
-      {insufficient ? (
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          ประวัติไม่พอ — มี {a.windowSize}/{minHistory} รอบ (ระบบจะเริ่มประเมินเมื่อประวัติครบ {minHistory} รอบ เพื่อความน่าเชื่อถือของ baseline)
-        </p>
-      ) : (
-        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-slate-600">
-            รอบนี้ <strong className="text-slate-900">{(a.failRate * 100).toFixed(1)}%</strong> · baseline {(a.baseline * 100).toFixed(1)}% (มัธยฐาน{' '}
-            {a.windowSize} รอบ) · MAD {(a.mad * 100).toFixed(2)}%
-            {a.better && (
-              <span className="text-teal-700"> — อัตราล้มเหลวลดต่ำกว่ารูปแบบเดิมมาก (ไม่นับเป็นความเสี่ยง แต่แนะให้ตรวจว่าไม่ใช่ข้อมูลหาย)</span>
-            )}
-          </p>
-          <MlSparkline history={a.history} baseline={a.baseline} />
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** ④ สมมติฐานสาเหตุร่วม — จัดกลุ่ม exact-match ตามลายเซ็น (v0.25.0) */
-function MlClusterCard() {
-  const { data, loading, error, reload } = useMlEvaluation('clusters')
-  const s = useMlSettings()
-  const clusters = data?.clusters ?? []
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              <Network className="h-4 w-4 text-teal-700" aria-hidden />
-              สมมติฐานสาเหตุร่วมของรอบล่าสุด (Root Cause Clustering)
-            </CardTitle>
-            <CardDescription className="mt-1">
-              รวมความล้มเหลวของรอบด้วยลายเซ็น &quot;แหล่งข้อมูล · ชุดข้อมูล · มิติ&quot; แบบ exact-match — ทุกกลุ่มระบุสมาชิกได้ครบ
-              (ตั้งใจไม่ใช้โมเดลกล่องดำ เพื่อให้ตรวจสอบย้อนได้ทุกกลุ่ม)
-            </CardDescription>
-          </div>
-          <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1 text-xs" onClick={() => void reload()} aria-label="โหลดกลุ่มสาเหตุร่วมใหม่">
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />
-            โหลดใหม่
-          </Button>
-        </div>
-        {data && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <MlModeBadge mode={data.mode} batchAt={data.batchAt} />
-            {data.totalFailedRows > 0 && (
-              <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-700">
-                แถวล้มรวมรอบล่าสุด {data.totalFailedRows}
-              </Badge>
-            )}
-          </div>
-        )}
-      </CardHeader>
-      <CardContent>
-        {loading && <p className="py-6 text-center text-sm text-muted-foreground">กำลังจัดกลุ่มสาเหตุร่วม…</p>}
-        {error && !loading && (
-          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800" role="alert">
-            {error}
-          </div>
-        )}
-        {!loading && !error && data && (
-          <>
-            {clusters.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">ไม่มีความล้มเหลวในรอบล่าสุด — ไม่มีอะไรให้จัดกลุ่ม (ผลดี)</p>
-            ) : (
-              <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="กลุ่มสาเหตุร่วม">
-                {clusters.map((c) => (
-                  <MlClusterRow key={c.signatureKey} c={c} />
-                ))}
-              </div>
-            )}
-            <p className="mt-3 rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              เกณฑ์เสนอสมมติฐาน: กลุ่มครอบ ≥ {Math.round(s.clusterShareMin * 100)}% ของความล้มเหลวทั้งรอบ (clusterShareMin — ปรับได้ที่ศูนย์ ML) ·
-              นับแถวจากผลรันจริงรายกฎ — เป็นข้อเสนอให้มนุษย์เริ่มตรวจจุดที่ใช่ที่สุดก่อนเสมอ ไม่ใช่การสรุปสาเหตุแทนผู้เชี่ยวชาญ
-            </p>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function MlClusterRow({ c }: { c: ClusterView }) {
-  return (
-    <div role="listitem" className="rounded-lg border p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10.5px] text-slate-700">
-            {c.sourceType || 'ไม่ระบุแหล่ง'}
-          </Badge>
-          <span className="truncate text-sm font-medium">{c.datasetName}</span>
-          <span className="text-xs text-muted-foreground">· มิติ {c.dimensionTh}</span>
-        </div>
-        <span className="shrink-0 font-mono text-sm font-bold text-rose-700">{c.sharePct.toFixed(0)}%</span>
-      </div>
-      <ScoreBar score={c.sharePct} className="mt-2" />
-      <p className="mt-1.5 text-xs text-slate-600">
-        แถวล้ม {c.groupFailedRows} จาก {c.totalFailedRows} ทั้งรอบ · สมาชิก {c.members.length} กฎ:{' '}
-        {c.members.slice(0, 4).map((m) => `${m.column} (${m.failedRows} แถว)`).join(' · ')}
-        {c.members.length > 4 ? ` · +${c.members.length - 4} กฎ` : ''}
-      </p>
-      {c.hypothesis && (
-        <p className="mt-1.5 rounded-md border border-emerald-200 bg-emerald-50/60 px-2 py-1.5 text-[11px] leading-relaxed text-emerald-900">
-          {c.hypothesis}
-        </p>
-      )}
-    </div>
-  )
-}
-
-/** ③ พยากรณ์แนวโน้มคุณภาพข้อมูล — linear trend ของอัตราล้มเหลว 10 รอบล่าสุด → คาด 1/3/5 รอบข้างหน้า (v0.27.0) */
-function useForecastData() {
-  const [data, setData] = useState<ForecastEvaluation | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const reload = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/dq/ml/forecasts')
-      const body = (await res.json().catch(() => ({}))) as ForecastEvaluation & { error?: string }
-      if (!res.ok) throw new Error(body.error ?? 'โหลดผลพยากรณ์ไม่สำเร็จ')
-      setData(body)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'โหลดผลพยากรณ์ไม่สำเร็จ')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-  useEffect(() => {
-    void reload()
-  }, [reload])
-  return { data, loading, error, reload }
-}
-
-function ForecastPanel() {
-  const { data, loading, error, reload } = useForecastData()
-  const s = useMlSettings()
-  const rows = data?.forecasts ?? []
-  const counts = {
-    WORSE: rows.filter((f) => f.direction.key === 'WORSE').length,
-    BETTER: rows.filter((f) => f.direction.key === 'BETTER').length,
-    STABLE: rows.filter((f) => f.direction.key === 'STABLE' && f.windowSize >= s.mlMinHistory).length,
-    SIGNAL: rows.filter((f) => f.signalLevel !== null).length,
-    INSUFFICIENT: rows.filter((f) => f.windowSize < s.mlMinHistory).length,
-  }
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              <TrendingUp className="h-4 w-4 text-teal-700" aria-hidden />
-              พยากรณ์แนวโน้มคุณภาพข้อมูล (Quality Trend Forecasting)
-            </CardTitle>
-            <CardDescription className="mt-1">
-              ต่อยอดเส้น trend เดิมของ ML — คาดอัตราล้มเหลวของแต่ละกฎในอีก 1/3/5 รอบข้างหน้าจากความชันของ 10 รอบล่าสุด
-              เพื่อให้มนุษย์ลงมือก่อนที่คุณภาพจะแย่ถึง threshold (พยากรณ์เป็นสัญญาณล่วงหน้า ไม่ตัดสินแทนเกณฑ์ผ่าน/ไม่ผ่าน)
-            </CardDescription>
-          </div>
-          <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1 text-xs" onClick={() => void reload()} aria-label="โหลดผลพยากรณ์ใหม่">
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />
-            โหลดใหม่
-          </Button>
-        </div>
-        {data && <div className="pt-1">{<MlModeBadge mode={data.mode} batchAt={data.batchAt} />}</div>}
-      </CardHeader>
-      <CardContent>
-        {loading && <p className="py-6 text-center text-sm text-muted-foreground">กำลังพยากรณ์แนวโน้มจากประวัติรัน…</p>}
-        {error && !loading && (
-          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800" role="alert">
-            {error}
-          </div>
-        )}
-        {!loading && !error && data && (
-          <>
-            <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px]" aria-label="สรุปจำนวนตามทิศทางของแนวโน้ม">
-              {counts.WORSE > 0 && <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-800">แย่ลง {counts.WORSE}</Badge>}
-              {counts.BETTER > 0 && <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-800">ดีขึ้น {counts.BETTER}</Badge>}
-              {counts.STABLE > 0 && <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">ทรงตัว {counts.STABLE}</Badge>}
-              {counts.SIGNAL > 0 && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">สัญญาณล่วงหน้า {counts.SIGNAL}</Badge>}
-              {counts.INSUFFICIENT > 0 && <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-500">ยังไม่พอประเมิน {counts.INSUFFICIENT}</Badge>}
-            </div>
-            {rows.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">ยังไม่มีผลรันในระบบ — รัน validation แล้วระบบจะพยากรณ์อัตโนมัติ</p>
-            ) : (
-              <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="รายการพยากรณ์แนวโน้มรายกฎ">
-                {rows.map((f) => (
-                  <ForecastRow key={`${f.ruleId}-${f.datasetId}`} f={f} minHistory={s.mlMinHistory} />
-                ))}
-              </div>
-            )}
-            {/* เกณฑ์แสดงจาก settings ปัจจุบัน (v0.28.0) — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ ปรับได้ที่ศูนย์ ML */}
-            <div className="mt-3 space-y-1.5 rounded-md bg-slate-50 px-2.5 py-2">
-              <p className="text-[11px] leading-relaxed text-muted-foreground">{forecastFootnoteTh(s)}</p>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
-                ส่งสัญญาณล่วงหน้า (kind <span className="font-mono">ML_FORECAST</span>) เฉพาะ: ทิศแย่ลง · R² ≥ {s.driftR2Min} · ค่าคาดรอบถัดไปอยู่แถวโอกาสขั้นต่ำ{' '}
-                {s.fMinSignalBand} (ปานกลาง = ≥ 10% ตาม LIKELIHOOD_BANDS) — ระดับสัญญาณจากแถวโอกาสของค่าคาด (แถว 5 = วิกฤต / 4 = สูง / 3 = ปานกลาง)
-              </p>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
-                พยากรณ์อัตโนมัติหลังรัน validation ทุกครั้ง — นิยามอยู่ใน <span className="font-mono">src/lib/forecast.ts</span> +{' '}
-                <span className="font-mono">src/lib/forecast-engine.ts</span> ตรวจย้อนได้ทุกตัวเลข
-              </p>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function ForecastRow({ f, minHistory }: { f: ForecastView; minHistory: number }) {
-  const insufficient = f.windowSize < minHistory
-  const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`)
-  const slopePct = (f.slope * 100).toFixed(2)
-  return (
-    <div role="listitem" className={`rounded-lg border p-3 ${insufficient ? 'opacity-70' : ''}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className={`text-[10.5px] ${f.direction.badgeClass}`}>
-            {f.direction.key === 'WORSE' ? (
-              <TrendingUp className="mr-1 h-3 w-3" aria-hidden />
-            ) : f.direction.key === 'BETTER' ? (
-              <TrendingDown className="mr-1 h-3 w-3" aria-hidden />
-            ) : (
-              <Minus className="mr-1 h-3 w-3" aria-hidden />
-            )}
-            {f.direction.label}
-          </Badge>
-          <Badge variant="outline" className={`text-[10.5px] ${f.confidence.badgeClass}`}>
-            {f.confidence.label} · R² {f.r2.toFixed(2)}
-          </Badge>
-          <DimensionBadge dimension={f.dimension as DimensionKey} />
-          <span className="truncate text-sm font-medium">{f.datasetName}</span>
-          <span className="truncate text-xs text-muted-foreground">
-            · {f.column} — {f.conditionName}
-          </span>
-        </div>
-        {f.signalLevel && (
-          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-900">
-            <AlertTriangle className="mr-1 h-3 w-3" aria-hidden />
-            สัญญาณล่วงหน้า: {f.signalLevel === 'CRITICAL' ? 'วิกฤต' : f.signalLevel === 'HIGH' ? 'สูง' : 'ปานกลาง'}
-          </Badge>
-        )}
-      </div>
-      {insufficient ? (
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          ประวัติไม่พอ — มี {f.windowSize}/{minHistory} รอบ (ระบบจะเริ่มพยากรณ์เมื่อประวัติครบ {minHistory} รอบ เพื่อความน่าเชื่อถือของเส้น trend)
-        </p>
-      ) : (
-        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-slate-600">
-            รอบนี้ <strong className="text-slate-900">{pct(f.failRate)}</strong> → คาดรอบถัดไป{' '}
-            <strong className={f.direction.key === 'WORSE' ? 'text-rose-700' : 'text-slate-900'}>{pct(f.forecasts[1])}</strong> · อีก 3 รอบ {pct(f.forecasts[3])} · อีก 5 รอบ{' '}
-            {pct(f.forecasts[5])} · ความชัน {f.slope >= 0 ? '+' : ''}
-            {slopePct} จุด% ต่อรอบ (หน้าต่าง {f.windowSize} รอบ)
-          </p>
-          <ForecastSparkline history={f.history} forecasts={f.forecasts} direction={f.direction.key} />
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** กราฟประวัติ + เส้น projection ถึงจุดคาด 1/3/5 รอบ (SVG บริสุทธิ์ — สีตามทิศทางของแนวโน้ม) */
-function ForecastSparkline({ history, forecasts, direction }: { history: Array<{ failRate: number }>; forecasts: ForecastHorizons; direction: string }) {
-  const w = 150
-  const h = 30
-  const pad = 2
-  const rates = history.map((p) => p.failRate)
-  const n = rates.length
-  const lastIndex = n - 1
-  const proj = [1, 3, 5]
-    .map((k) => ({ k, i: lastIndex + k, rate: forecasts[k as 1 | 3 | 5] }))
-    .filter((p): p is { k: number; i: number; rate: number } => p.rate !== null)
-  const maxI = lastIndex + 5
-  const max = Math.max(...rates, ...proj.map((p) => p.rate), 0.05)
-  const xOf = (i: number) => pad + (i * (w - 2 * pad)) / maxI
-  const yOf = (r: number) => h - pad - (r / max) * (h - 2 * pad)
-  const histPoints = rates.map((r, i) => `${xOf(i).toFixed(1)},${yOf(r).toFixed(1)}`).join(' ')
-  const projPoints = [...(n > 0 ? [{ i: lastIndex, rate: rates[lastIndex] }] : []), ...proj]
-    .map((p) => `${xOf(p.i).toFixed(1)},${yOf(p.rate).toFixed(1)}`)
-    .join(' ')
-  const color = direction === 'WORSE' ? '#e11d48' : direction === 'BETTER' ? '#0f766e' : '#64748b'
-  return (
-    <svg
-      width={w}
-      height={h}
-      role="img"
-      aria-label={`ประวัติอัตราล้มเหลว ${n} จุด + จุดคาดอีก ${proj.length} จุด (1/3/5 รอบ) — แนวโน้ม${direction === 'WORSE' ? 'แย่ลง' : direction === 'BETTER' ? 'ดีขึ้น' : 'ทรงตัว'}`}
-      className="shrink-0"
-    >
-      {histPoints && <polyline points={histPoints} fill="none" stroke="#0f766e" strokeWidth="1.5" strokeLinejoin="round" />}
-      {projPoints && <polyline points={projPoints} fill="none" stroke={color} strokeWidth="1.5" strokeDasharray="3 3" strokeLinejoin="round" />}
-      {proj.map((p) => (
-        <circle key={p.k} cx={xOf(p.i)} cy={yOf(p.rate)} r="2.5" fill={color} />
-      ))}
-    </svg>
-  )
-}
-
-/** ② แผนสุ่มตรวจตามความเสี่ยง — จัดสรรงบการทบทวนรายกฎ×ชุดข้อมูล สุ่มแบบทำซ้ำได้ (v0.26.0) */
-function SamplingPanel({ users }: { users: DashUser[] }) {
-  const { toast } = useToast()
-  const reviewRoles = useMemo(() => rolesWithPermission('REVIEW_SIGNALS').map((r) => r.key), [])
-  const [operator, setOperator] = useState('')
-  const [policy, setPolicy] = useState<'FULL' | 'P10' | 'P5' | 'P1'>('P10')
-  const [plan, setPlan] = useState<SamplePlanView | null>(null)
-  const [planMessage, setPlanMessage] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [generating, setGenerating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // ผู้ดำเนินการเริ่มต้น — บัญชีแรกที่ ACTIVE และมีสิทธิ์ REVIEW_SIGNALS
-  useEffect(() => {
-    if (operator) return
-    const first = users.find((u) => u.status !== 'SUSPENDED' && reviewRoles.includes(u.role as RoleKey))
-    if (first) setOperator(first.email)
-  }, [users, reviewRoles, operator])
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/dq/sampling')
-      const body = (await res.json().catch(() => ({}))) as { plan: SamplePlanView | null; message?: string; error?: string }
-      if (!res.ok) throw new Error(body.error ?? 'โหลดแผนสุ่มตรวจไม่สำเร็จ')
-      setPlan(body.plan)
-      setPlanMessage(body.plan ? null : (body.message ?? 'ยังไม่ได้สร้างแผนสุ่มตรวจสำหรับรอบนี้'))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'โหลดแผนสุ่มตรวจไม่สำเร็จ')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  async function generate() {
-    if (!operator) {
-      toast({ title: 'กรุณาเลือกผู้ดำเนินการ (ต้องมีสิทธิ์ทบทวนสัญญาณ)', variant: 'destructive' })
-      return
-    }
-    setGenerating(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/dq/sampling', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operatorEmail: operator, policy }),
-      })
-      const body = (await res.json().catch(() => ({}))) as { plan: SamplePlanView | null; message?: string; error?: string }
-      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
-      setPlan(body.plan)
-      if (body.plan) {
-        setPlanMessage(null)
-        toast({
-          title: 'สร้างแผนสุ่มตรวจแล้ว',
-          description: `นโยบาย ${body.plan.policyLabel} — งบ ${body.plan.summary.budgetRows} แถว · ครอบคลุมความเสี่ยง ${body.plan.summary.riskCoveragePct}%`,
-        })
-      } else {
-        setPlanMessage(body.message ?? 'สร้างแผนไม่สำเร็จ')
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'สร้างแผนสุ่มตรวจไม่สำเร็จ'
-      setError(msg)
-      toast({ title: 'สร้างแผนสุ่มตรวจไม่สำเร็จ', description: msg, variant: 'destructive' })
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  const s = plan?.summary
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              <ListChecks className="h-4 w-4 text-teal-700" aria-hidden />
-              แผนสุ่มตรวจตามความเสี่ยง (Risk-based Sampling)
-            </CardTitle>
-            <CardDescription className="mt-1">
-              เมื่อแถวที่ล้มเหลวมีมากจนทบทวนไม่ไหว — ระบบจัดสรร &quot;งบการทบทวน&quot; ให้กลุ่มที่ความเสี่ยงสูงสุดก่อน
-              (validation ยังรันตรวจครบทุกแถวเหมือนเดิม แผนนี้ช่วยตอบว่า &quot;มนุษย์ควรเปิดดูแถวไหนก่อน&quot; เท่านั้น)
-            </CardDescription>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 shrink-0 gap-1 text-xs"
-            onClick={() => void load()}
-            aria-label="โหลดแผนสุ่มตรวจใหม่"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />
-            โหลดใหม่
-          </Button>
-        </div>
-        {plan && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800">
-              บันทึกจาก batch ล่าสุด · {fmtTime(plan.batchAt)}
-            </Badge>
-            <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-700">
-              นโยบาย {plan.policyLabel}
-            </Badge>
-          </div>
-        )}
-      </CardHeader>
-      <CardContent>
-        {/* ตัวเลือกนโยบาย + ผู้ดำเนินการ (ตาม RBAC — REVIEW_SIGNALS) */}
-        <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="เลือกนโยบายงบการทบทวน">
-          {SAMPLING_POLICIES.map((p) => (
-            <Button
-              key={p.key}
-              type="button"
-              size="sm"
-              variant="outline"
-              aria-pressed={policy === p.key}
-              className={`h-8 gap-1 text-xs ${policy === p.key ? 'border-teal-500 bg-teal-50 text-teal-900 ring-1 ring-teal-500' : ''}`}
-              onClick={() => setPolicy(p.key)}
-            >
-              {p.label}
-            </Button>
-          ))}
-          <div className="ms-auto flex flex-wrap items-center gap-2">
-            <Select value={operator} onValueChange={setOperator}>
-              <SelectTrigger aria-label="ผู้ดำเนินการสร้างแผน (ต้องมีสิทธิ์ทบทวนสัญญาณ)" className="h-8 w-[280px] text-xs">
-                <SelectValue placeholder="เลือกผู้ดำเนินการ" />
-              </SelectTrigger>
-              <SelectContent>
-                {users
-                  .filter((u) => u.status !== 'SUSPENDED' && reviewRoles.includes(u.role as RoleKey))
-                  .map((u) => (
-                    <SelectItem key={u.email} value={u.email} className="text-xs">
-                      {u.name} ({ROLE_LIST.find((r) => r.key === u.role)?.th ?? u.role})
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            <Button size="sm" className="h-8 gap-1 text-xs" onClick={() => void generate()} disabled={generating}>
-              <ListChecks className="h-3.5 w-3.5" aria-hidden />
-              {generating ? 'กำลังสร้างแผน…' : 'สร้างแผนสุ่มตรวจ'}
-            </Button>
-          </div>
-        </div>
-
-        {loading && <p className="py-6 text-center text-sm text-muted-foreground">กำลังโหลดแผนสุ่มตรวจ…</p>}
-        {error && !loading && (
-          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800" role="alert">
-            {error}
-          </div>
-        )}
-        {!loading && !error && !plan && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-muted-foreground">
-            {planMessage ?? 'ยังไม่ได้สร้างแผนสุ่มตรวจสำหรับรอบนี้ — เลือกนโยบายแล้วกด "สร้างแผนสุ่มตรวจ"'}
-          </div>
-        )}
-        {!loading && !error && plan && s && (
-          <>
-            {/* สรุปงบการทบทวน */}
-            <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px]" aria-label="สรุปงบการทบทวน">
-              <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-900">
-                งบทบทวน {s.budgetRows} แถว
-              </Badge>
-              <Badge variant="outline" className="max-w-full whitespace-normal border-slate-200 bg-slate-50 text-slate-700">
-                แถวล้มทั้งรอบ {s.totalFailedRows} · เก็บทบทวนได้ {s.reviewableRows} (จำกัด snapshot 200 แถว/กฎ)
-              </Badge>
-              <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
-                กลุ่มที่รวม {s.includedGroups}/{s.totalGroups}
-              </Badge>
-              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">
-                ครอบคลุมความเสี่ยง {s.riskCoveragePct}%
-              </Badge>
-            </div>
-
-            {plan.groups.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">ไม่มีกลุ่มความล้มเหลวให้จัดสรร (ผลดี)</p>
-            ) : (
-              <div className="max-h-96 space-y-2 overflow-y-auto pr-1" role="list" aria-label="รายการกลุ่มตามความเสี่ยง">
-                {plan.groups.map((g) => (
-                  <SamplingGroupRow key={`${g.ruleId}-${g.datasetId}`} g={g} />
-                ))}
-              </div>
-            )}
-
-            {/* เกณฑ์แสดงจากตารางค่าคงที่ src/lib/sampling.ts โดยตรง — สิ่งที่ engine ใช้คือสิ่งที่เห็นบนจอ */}
-            <div className="mt-3 space-y-1.5 rounded-md bg-slate-50 px-2.5 py-2">
-              <p className="text-[11px] font-medium text-slate-700">
-                วิธีจัดสรร: <span className="font-mono">{SAMPLING_METHOD}</span> · เพดานคะแนน {RISK_SCORE_MAX}
-              </p>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">{SAMPLING_FOOTNOTE_TH}</p>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
-                สุ่มรายแถวแบบทำซ้ำได้ (seed จาก batch + นโยบาย + กลุ่ม) — สร้างแผนซ้ำด้วยนโยบายเดิมเมื่อสถานะแถวไม่เปลี่ยน จะได้ชุดแถวเดิมเป๊ะ
-                ตรวจย้อนได้ · แถวที่ถูกเลือกมีสถานะ NEW ก่อนเสมอ · นิยามอยู่ใน{' '}
-                <span className="font-mono">src/lib/sampling.ts</span> + <span className="font-mono">src/lib/sampling-engine.ts</span>
-              </p>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function SamplingGroupRow({ g }: { g: SamplePlanView['groups'][number] }) {
-  const f = g.factors
-  const boosts = [
-    f.mlBoost > 0 ? `ML +${f.mlBoost}` : '',
-    f.driftBoost > 0 ? `แนวโน้มแย่ลง +${f.driftBoost}` : '',
-    f.piiBoost > 0 ? `PII +${f.piiBoost}` : '',
-  ].filter(Boolean)
-  const rowNos = g.picked.map((p) => p.rowNo)
-  return (
-    <div role="listitem" className={`rounded-lg border p-3 ${g.included ? '' : 'opacity-60'}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className={`text-[10.5px] ${g.riskBand.className}`}>
-            {g.riskBand.label} · {g.riskScore}/{RISK_SCORE_MAX}
-          </Badge>
-          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-600">
-            {g.sourceType || 'ไม่ระบุแหล่ง'}
-          </Badge>
-          <span className="truncate text-sm font-medium">{g.datasetName}</span>
-          <span className="truncate text-xs text-muted-foreground">
-            · {g.column} — {g.conditionName} · มิติ{g.dimensionTh}
-          </span>
-        </div>
-        {g.included ? (
-          <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800">
-            สุ่มให้ทบทวน {g.sampleSize} แถว
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-500">
-            ไม่ได้อยู่ในงบนี้
-          </Badge>
-        )}
-      </div>
-      <div className="mt-2 flex items-center gap-2" aria-label={`คะแนนความเสี่ยง ${g.riskScore} จาก ${RISK_SCORE_MAX}`}>
-        <div className="h-2 min-w-10 flex-1 overflow-hidden rounded-full bg-slate-200">
-          <div className="h-full rounded-full bg-teal-600" style={{ width: `${Math.min(100, (g.riskScore / RISK_SCORE_MAX) * 100)}%` }} />
-        </div>
-      </div>
-      <p className="mt-1.5 text-xs text-slate-600">
-        คะแนน = โอกาส {f.likelihood} ({f.likelihoodLabel}) × ผลกระทบ {f.impact} ({g.severity})
-        {boosts.length > 0 && <span className="text-amber-800"> + {boosts.join(' · ')}</span>} · อัตราล้มเหลว{' '}
-        {(g.failRate * 100).toFixed(1)}%
-      </p>
-      <p className="mt-0.5 text-xs text-slate-600">
-        แถวล้ม {g.failedRows} · เก็บทบทวนได้ {g.reviewableRows} แถว
-        {g.included && g.picked.length > 0 && (
-          <>
-            {' '}
-            · สถานะแถวที่เลือก: NEW {g.statusCounts.NEW} / FIXED {g.statusCounts.FIXED} / IGNORED {g.statusCounts.IGNORED} · แถวที่เลือก:{' '}
-            {rowNos.slice(0, 6).map((n) => `#${n}`).join(', ')}
-            {rowNos.length > 6 ? ` … +${rowNos.length - 6}` : ''}
-          </>
-        )}
-      </p>
-    </div>
-  )
 }

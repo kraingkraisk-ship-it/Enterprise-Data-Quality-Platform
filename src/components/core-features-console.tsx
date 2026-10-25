@@ -26,6 +26,8 @@ import {
   Box,
   Star,
   Banknote,
+  CircleMinus,
+  UserRound,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { EXCEPTION_ACTIONS, EXCEPTION_ACTION_KEYS } from '@/lib/mappings'
@@ -51,6 +53,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
+import { useCurrentUser } from '@/components/user-context'
 import { DIMENSION_ICONS, DimensionBadge, DimensionHint, DimensionPicker } from '@/components/dimension-picker'
 import { EngineBadge, EngineHint, EnginePicker } from '@/components/engine-picker'
 import BatchHistory from '@/components/dq/batch-history'
@@ -215,7 +218,7 @@ interface RunResponse {
     /** คำตัดสินตามมาตรา (ภาษาไทยอ่านง่าย) */
     verdict: string
     advice: string | null
-    status: 'PASSED' | 'FAILED'
+    status: 'PASSED' | 'FAILED' | 'NO_DATA'
     totalRows: number
     failedRows: number
     passRate: number
@@ -313,6 +316,24 @@ const PERMISSIONS_BY_ACTION: Record<string, PermissionKey> = {
   APPROVE_EXCEPTIONS: 'APPROVE_EXCEPTIONS',
 }
 
+/** ชิปแสดงผู้ดำเนินการปัจจุบัน (v0.32.0) — แทนตัวเลือก "ผู้ดำเนินการ" ที่เคยกระจายทุกแท็บ
+ *  เปลี่ยนตัวบุคคลที่ตัวเลือก "ผู้ใช้งาน" มุมขวาบนของ header เพียงจุดเดียว */
+function ActorChip({ id, permission }: { id: string; permission: PermissionKey }) {
+  const { user, hasPermission } = useCurrentUser()
+  const allowed = hasPermission(permission)
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs" aria-live="polite">
+      <UserRound className="size-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+      <span className="min-w-0 truncate font-medium text-slate-800" id={id}>
+        {user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลดผู้ใช้…'}
+      </span>
+      <Badge variant="outline" className={`shrink-0 text-[10px] ${allowed ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+        {allowed ? 'มีสิทธิ์ดำเนินการ' : 'ไม่มีสิทธิ์ (API จะปฏิเสธ)'}
+      </Badge>
+    </div>
+  )
+}
+
 /* ----------------------------- component --------------------------------- */
 
 interface CoreFeaturesConsoleProps {
@@ -326,12 +347,15 @@ interface CoreFeaturesConsoleProps {
 
 export default function CoreFeaturesConsole({ activeView, onViewChange, mode = 'full' }: CoreFeaturesConsoleProps) {
   const { toast } = useToast()
+  /* v0.32.0 — identity ศูนย์กลาง: มุมมอง/สิทธิ์/ผู้ดำเนินการ = ผู้ใช้ปัจจุบันเดียวของทั้งระบบ */
+  const { user, roleKey } = useCurrentUser()
+  const actorEmail = user?.email ?? ''
 
   // โหมด library — สลับแท็บกฎ/เงื่อนไขภายในหน้าเดียว (ไม่เปลี่ยนเมนู)
   const [libraryTab, setLibraryTab] = useState<'rules' | 'conditions'>('rules')
 
   // shared data
-  const [users, setUsers] = useState<ApiUser[]>([])
+  // v0.32.0 — รายชื่อผู้ใช้ย้ายไปโหลดครั้งเดียวที่ UserSwitcher (CurrentUserProvider) — ไม่โหลดซ้ำที่นี่
   const [datasets, setDatasets] = useState<ApiDataset[]>([])
   const [rules, setRules] = useState<ApiRule[] | null>(null)
   const [conditions, setConditions] = useState<ApiCondition[]>([])
@@ -354,7 +378,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rbExceptionAction, setRbExceptionAction] = useState('')
   const [rbExceptionActionNote, setRbExceptionActionNote] = useState('')
   const [rbParams, setRbParams] = useState<Record<string, string>>({})
-  const [rbOperator, setRbOperator] = useState('somchai.owner@company.co.th')
+  /* v0.32.0 — ผู้ดำเนินการทุก action = ผู้ใช้ปัจจุบันจาก UserSwitcher (identity ศูนย์กลาง — เดิมมี selector แยก 4 จุด) */
   /* Data Element cascade (v0.18.0) — โดเมนหลัก → โดเมนย่อย → element */
   const [rbDomains, setRbDomains] = useState<DomainItem[]>([])
   const [rbElements, setRbElements] = useState<ElementRowLite[]>([])
@@ -376,13 +400,10 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [cnParams, setCnParams] = useState<Array<{ key: string; label: string; type: TemplateParamDef['type']; placeholder: string }>>(
     CONDITIONS.REGEX.params.map((p) => ({ key: p.key, label: p.label, type: p.type, placeholder: p.placeholder ?? '' })),
   )
-  const [cnOperator, setCnOperator] = useState('anucha.analyst@company.co.th')
 
   // tab 3 — run + review
   const [runDataset, setRunDataset] = useState('')
-  const [runOperator, setRunOperator] = useState('malee.steward@company.co.th')
   const [runResult, setRunResult] = useState<RunResponse | null>(null)
-  const [reviewerEmail, setReviewerEmail] = useState('anucha.analyst@company.co.th')
 
 
   const refetch = useCallback(() => setReloadTick((t) => t + 1), [])
@@ -393,12 +414,10 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     let alive = true
     ;(async () => {
       try {
-        const [u, d] = await Promise.all([
-          fetch('/api/rbac/users').then((r) => r.json()),
+        const [d] = await Promise.all([
           fetch('/api/rbac/datasets').then((r) => r.json()),
         ])
         if (!alive) return
-        setUsers(u.users ?? [])
         setDatasets(d.datasets ?? [])
       } catch {
         /* network error — คงค่าว่างไว้ */
@@ -469,10 +488,8 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   }, [reloadTick])
 
   // Rule Builder — ตัวอย่างข้อมูลของชุดข้อมูลที่เลือก (รองรับหลายชุด + ปิดบัง PII ตามบทบาทผู้ดำเนินการ)
-  const rbOperatorRole = useMemo(() => {
-    const role = users.find((u) => u.email === rbOperator)?.role
-    return (role as RoleKey) ?? 'BUSINESS_USER'
-  }, [users, rbOperator])
+  // v0.32.0 — บทบาทผู้ดำเนินการ = ผู้ใช้ปัจจุบันของระบบ (UserSwitcher บน header)
+  const rbOperatorRole = roleKey
 
   useEffect(() => {
     if (rbDatasets.length === 0) {
@@ -517,17 +534,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const rbSelectedElement = useMemo(() => rbElements.find((e) => e.id === rbElementId) ?? null, [rbElements, rbElementId])
 
   /* ------------------------------ derived -------------------------------- */
-
-  const activeUsers = useMemo(() => users.filter((u) => u.status === 'ACTIVE'), [users])
-
-  const hasPerm = useCallback(
-    (email: string, permission: PermissionKey): boolean => {
-      const role = users.find((u) => u.email === email)?.role as RoleKey | undefined
-      if (!role) return false
-      return ROLE_LIST.find((r) => r.key === role)?.permissions.includes(permission) ?? false
-    },
-    [users],
-  )
 
   // เงื่อนไขในคลัง — แยกของระบบ / ที่ผู้ใช้สร้าง (เฉพาะที่เปิดใช้งาน สำหรับสร้างกฎ)
   const systemConditions = useMemo(() => conditions.filter((c) => c.isSystem && c.enabled), [conditions])
@@ -752,7 +758,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         exceptionAction: rbExceptionAction || undefined,
         exceptionActionNote: rbExceptionActionNote || undefined,
         dataElementId: rbElementId || undefined,
-        operatorEmail: rbOperator,
+        operatorEmail: actorEmail,
       },
       'create-rule',
       rbDatasets.length > 1 ? `สร้างกฎใหม่เรียบร้อย (ใช้ร่วม ${rbDatasets.length} ชุดข้อมูล)` : 'สร้างกฎใหม่เรียบร้อย',
@@ -779,7 +785,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         dimension: cnDimension,
         engineType: cnEngine,
         params: cnParams,
-        operatorEmail: cnOperator,
+        operatorEmail: actorEmail,
       },
       'create-condition',
       'บันทึกเงื่อนไขส่วนกลางใหม่เรียบร้อย — ใช้ได้กับทุกกฎในระบบ',
@@ -795,7 +801,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   async function handleToggleCondition(c: ApiCondition) {
     const ok = await patchJson(
       `/api/dq/conditions/${c.id}`,
-      { action: 'TOGGLE_ENABLED', operatorEmail: cnOperator },
+      { action: 'TOGGLE_ENABLED', operatorEmail: actorEmail },
       `cond-toggle-${c.id}`,
       c.enabled ? 'ปิดใช้งานเงื่อนไขแล้ว' : 'เปิดใช้งานเงื่อนไขแล้ว',
     )
@@ -805,7 +811,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   async function handleDeleteCondition(c: ApiCondition) {
     const ok = await deleteJson(
       `/api/dq/conditions/${c.id}`,
-      { operatorEmail: cnOperator },
+      { operatorEmail: actorEmail },
       `cond-del-${c.id}`,
       'ลบเงื่อนไขส่วนกลางแล้ว',
     )
@@ -815,7 +821,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   async function handleToggleRule(id: string, enabled: boolean) {
     const ok = await patchJson(
       `/api/dq/rules/${id}`,
-      { action: 'TOGGLE_ENABLED', operatorEmail: rbOperator },
+      { action: 'TOGGLE_ENABLED', operatorEmail: actorEmail },
       `toggle-${id}`,
       enabled ? 'ปิดใช้งานกฎแล้ว' : 'เปิดใช้งานกฎแล้ว',
     )
@@ -823,7 +829,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   }
 
   async function handleDeleteRule(id: string) {
-    const ok = await patchJson(`/api/dq/rules/${id}`, { action: 'DELETE', operatorEmail: rbOperator }, `del-${id}`, 'ลบกฎแล้ว')
+    const ok = await patchJson(`/api/dq/rules/${id}`, { action: 'DELETE', operatorEmail: actorEmail }, `del-${id}`, 'ลบกฎแล้ว')
     if (ok) refetch()
   }
 
@@ -834,7 +840,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       const res = await fetch('/api/dq/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datasetId: runDataset, operatorEmail: runOperator }),
+        body: JSON.stringify({ datasetId: runDataset, operatorEmail: actorEmail }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -857,44 +863,11 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   async function handleReviewSignal(id: string, action: 'CONFIRM' | 'DISMISS') {
     const ok = await patchJson(
       `/api/dq/signals/${id}`,
-      { action, reviewerEmail },
+      { action, reviewerEmail: actorEmail },
       `signal-${id}`,
       action === 'CONFIRM' ? 'ยืนยันสัญญาณแล้ว (บันทึกผู้ทบทวน)' : 'ปลดสัญญาณแล้ว (บันทึกผู้ทบทวน)',
     )
     if (ok) refetch()
-  }
-
-  /* ---------------------------- operator select --------------------------- */
-
-  function OperatorSelect({
-    value,
-    onChange,
-    permission,
-    id,
-  }: {
-    value: string
-    onChange: (v: string) => void
-    permission: PermissionKey
-    id: string
-  }) {
-    return (
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id={id} className="w-full">
-          <SelectValue placeholder="เลือกผู้ดำเนินการ" />
-        </SelectTrigger>
-        <SelectContent className="max-h-72">
-          {activeUsers.map((u) => {
-            const allowed = ROLE_LIST.find((r) => r.key === u.role)?.permissions.includes(permission) ?? false
-            return (
-              <SelectItem key={u.id} value={u.email}>
-                {u.name} — {ROLE_LIST.find((r) => r.key === u.role)?.th}
-                {!allowed ? ' (ไม่มีสิทธิ์)' : ''}
-              </SelectItem>
-            )
-          })}
-        </SelectContent>
-      </Select>
-    )
   }
 
   /* ------------------------- dataset multi select -------------------------- */
@@ -1613,7 +1586,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                 <Label htmlFor="rb-operator" className="gap-1">
                   ผู้ดำเนินการ (บทบาทต้องมีสิทธิ์สร้างกฎ)
                 </Label>
-                <OperatorSelect id="rb-operator" value={rbOperator} onChange={setRbOperator} permission={PERMISSIONS_BY_ACTION.MANAGE_RULES} />
+                <ActorChip id="rb-operator" permission={PERMISSIONS_BY_ACTION.MANAGE_RULES} />
               </div>
               </div>
               )}
@@ -1777,15 +1750,19 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                         <Badge
                           variant="outline"
                           className={`border text-[11px] ${
-                            rule.lastRun.passRate * 100 < rule.threshold
-                              ? 'bg-rose-50 text-rose-800 border-rose-300'
-                              : rule.lastRun.status === 'PASSED'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-rose-50 text-rose-800 border-rose-200'
+                            rule.lastRun.status === 'NO_DATA'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : rule.lastRun.passRate * 100 < rule.threshold
+                                ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                : rule.lastRun.status === 'PASSED'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-rose-50 text-rose-800 border-rose-200'
                           }`}
                         >
-                          ผลรันล่าสุด {Math.round(rule.lastRun.passRate * 100)}%
-                          {rule.lastRun.passRate * 100 < rule.threshold && ` · ต่ำกว่าเกณฑ์ ${rule.threshold}%`}
+                          {rule.lastRun.status === 'NO_DATA'
+                            ? 'ผลรันล่าสุด: ไม่มีข้อมูล (0 แถว)'
+                            : `ผลรันล่าสุด ${Math.round(rule.lastRun.passRate * 100)}%`}
+                          {rule.lastRun.status !== 'NO_DATA' && rule.lastRun.passRate * 100 < rule.threshold && ` · ต่ำกว่าเกณฑ์ ${rule.threshold}%`}
                         </Badge>
                       )}
                       {!rule.lastRun && (
@@ -1972,7 +1949,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
 
               <div className="space-y-1.5">
                 <Label htmlFor="cn-operator">ผู้ดำเนินการ (ต้องมีสิทธิ์ MANAGE_RULES)</Label>
-                <OperatorSelect id="cn-operator" value={cnOperator} onChange={setCnOperator} permission={PERMISSIONS_BY_ACTION.MANAGE_RULES} />
+                <ActorChip id="cn-operator" permission={PERMISSIONS_BY_ACTION.MANAGE_RULES} />
               </div>
 
               <div className="rounded-lg bg-slate-900 p-3.5 font-mono text-[12.5px] leading-relaxed break-words text-emerald-300" aria-live="polite">
@@ -2150,7 +2127,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="run-operator">ผู้รัน (ต้องมีสิทธิ์ RUN_VALIDATION)</Label>
-                <OperatorSelect id="run-operator" value={runOperator} onChange={setRunOperator} permission={PERMISSIONS_BY_ACTION.RUN_VALIDATION} />
+                <ActorChip id="run-operator" permission={PERMISSIONS_BY_ACTION.RUN_VALIDATION} />
               </div>
               <Button
                 className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
@@ -2276,6 +2253,8 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                       <div className="mb-1 flex flex-wrap items-center gap-1.5">
                         {r.status === 'PASSED' ? (
                           <CheckCircle2 className="size-4 text-emerald-600" aria-label="ผ่าน" />
+                        ) : r.status === 'NO_DATA' ? (
+                          <CircleMinus className="size-4 text-amber-600" aria-label="ไม่มีข้อมูลให้ตรวจ" />
                         ) : (
                           <XCircle className="size-4 text-rose-600" aria-label="ล้มเหลว" />
                         )}
@@ -2290,13 +2269,30 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                         <Badge variant="outline" className="text-[11px]">
                           {r.conditionName}
                         </Badge>
-                        <span className={`text-xs font-semibold ${r.status === 'PASSED' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                          {r.status === 'PASSED' ? 'ผ่าน' : `ล้มเหลว ${r.failedRows}/${r.totalRows} แถว (${Math.round(r.passRate * 100)}%)`}
+                        <span
+                          className={`text-xs font-semibold ${
+                            r.status === 'PASSED'
+                              ? 'text-emerald-700'
+                              : r.status === 'NO_DATA'
+                                ? 'text-amber-700'
+                                : 'text-rose-700'
+                          }`}
+                        >
+                          {r.status === 'PASSED'
+                            ? 'ผ่าน'
+                            : r.status === 'NO_DATA'
+                              ? 'ไม่มีข้อมูลให้ตรวจ (0 แถว)'
+                              : `ล้มเหลว ${r.failedRows}/${r.totalRows} แถว (${Math.round(r.passRate * 100)}%)`}
                         </span>
                       </div>
                       <p className="font-mono text-[12px] text-slate-700">{r.sentence}</p>
                       {/* คำตัดสินตามมาตรา — อ่านง่าย รู้ทันทีว่าผ่าน/ไม่ผ่านมาตราใด เพราะอะไร */}
-                      <p className={`mt-1.5 text-[12.5px] leading-relaxed ${r.status === 'PASSED' ? 'text-emerald-800' : 'text-rose-800'}`} role="note">
+                      <p
+                        className={`mt-1.5 text-[12.5px] leading-relaxed ${
+                          r.status === 'PASSED' ? 'text-emerald-800' : r.status === 'NO_DATA' ? 'text-amber-800' : 'text-rose-800'
+                        }`}
+                        role="note"
+                      >
                         {r.verdict}
                       </p>
                       {r.advice && (
@@ -2341,7 +2337,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   <Label htmlFor="reviewer" className="mb-1 block text-xs">
                     ผู้ทบทวน (ต้องมีสิทธิ์ REVIEW_SIGNALS)
                   </Label>
-                  <OperatorSelect id="reviewer" value={reviewerEmail} onChange={setReviewerEmail} permission={PERMISSIONS_BY_ACTION.REVIEW_SIGNALS} />
+                  <ActorChip id="reviewer" permission={PERMISSIONS_BY_ACTION.REVIEW_SIGNALS} />
                 </div>
               </div>
             </CardHeader>
@@ -2416,14 +2412,14 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         </div>
           </TabsContent>
           <TabsContent value="domain-mode" className="mt-4">
-            <DomainRunPanel runOperator={runOperator} />
+            <DomainRunPanel runOperator={actorEmail} />
           </TabsContent>
         </Tabs>
       </TabsContent>
 
       {/* ===================== TAB 4: DASHBOARD — 5 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Regulation / Risk / Data Classification) ===================== */}
       <TabsContent value="dashboard" className="mt-4">
-        <DqDashboard datasets={datasets} users={users} reloadTick={reloadTick} onRefetch={refetch} />
+        <DqDashboard datasets={datasets} reloadTick={reloadTick} onRefetch={refetch} onGoMlCenter={() => onViewChange('ml-center')} />
       </TabsContent>
     </Tabs>
   )

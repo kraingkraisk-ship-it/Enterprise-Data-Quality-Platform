@@ -1787,3 +1787,21 @@ Work Log:
 Stage Summary:
 - **ระบบรอบตัว (v0.31.0) สุขภาพดี: 19/19 หน้า ใช้งานได้, flow หลักเดินครบ, 0 console error, lint ผ่าน** — ข้อเสนอปรับปรุงเป็นตัวเลือกรอผู้ใช้เลือกก่อน implement (ไม่แก้เองเพราะเป็นการเปลี่ยนพฤติกรรมการคำนวณ/เมนู)
 - สรุปไทม์ไลน์: ... v0.30.0 (ศูนย์ Audit) → v0.31.0 (ข้อมูลอ้างอิง) + Task 54 กู้คืน sandbox rollback → Task 55 full audit
+
+---
+Task ID: 56
+Agent: Z.ai Code (main orchestrator)
+Task: v0.32.0 — ปรับปรุงตามผล Full System Audit (Task 55) — ผู้ใช้อนุมัติ "เริ่มทำหมดกลุ่ม" (4 กลุ่ม insight ครบ)
+
+Work Log:
+- กลุ่ม 1 คะแนนข้ามหน้า: exec/summary API เปิด measuredScore เป็นตัวเลขหลัก + เกรดเปลี่ยนเป็น gradeOf(measuredScore) ให้ตรงฐานกับบัตรคะแนน · การ์ด KPI แสดงสองฐานชัดเจน "เฉลี่ยเฉพาะ N ชุดที่เคยตรวจ (ฐานเดียวกับบัตรคะแนน DQ) · รวมทุกชุด (ไม่เคยตรวจนับ 0) = X" · scorecard เติมหมายเหตุฐานการคำนวณ — พิสูจน์แล้ว 93.9/ดี vs รวมทุกชุด 53.7 อ่านตรงกันทั้งสองหน้า
+- กลุ่ม 2 NO_DATA: เอนจินรัน (run + run-domain) กำหนด status='NO_DATA' เมื่อชุดข้อมูล 0 แถว (เดิม PASSED โดยปริยาย) + verdict ใหม่ "ไม่สามารถตัดสินมาตราที่ N — ชุดข้อมูลไม่มีแถวให้ตรวจ" · ผู้บริโภคทุกจุดปรับ: scorecard/analytics/exec/compliance ไม่นับ NO_DATA เป็นคะแนนหรือกฎผ่าน (นับแยก rulesNoData) · validations[id]/analytics คงสถานะแทนการบังคับ FAILED · rollup ตัด NO_DATA · UI badge amber "ไม่มีข้อมูลให้ตรวจ (0 แถว)" ครบทั้ง run results/batch-history/domain-run/dq-dashboard/mapping-detail/rule lastRun
+- กลุ่ม 3 ML ซ้อน: ตัดหมวด "ML · สัญญาณอัจฉริยะ" ออกจาก DQ แดชบอร์ด (เหลือ 5 หมวด) ลบ ML panels ทั้ง 4 + hooks + imports (~770 บรรทัด) เหลือการ์ดลิงก์ "เปิดศูนย์ ML" ในหมวด Risk → onGoMlCenter ทำงานจริง (ทดสอบแล้ว) — ML อยู่ศูนย์ ML จุดเดียว
+- กลุ่ม 4 identity ศูนย์กลาง: สร้าง UserSwitcher + CurrentUserProvider (localStorage จำค่า) บน header · ลบ selector กระจัดกระจาย 9 จุด: asset-inventory (บทบาท+ผู้ดำเนินการ), dq-dashboard (previewRole+clsOperator), exec-dashboard (viewer), failed-records, profiling, issues, ml-center, core console 4 จุด (rb/cn/run/reviewer) + exceptions-panel (ผู้ขอ/ผู้อนุมัติ) → ทั้งหมดใช้ผู้ใช้ปัจจุบันเดียว + ชิปแสดงสิทธิ์ (ActorChip) พร้อมปุ่มสลับบุคคลเดียวที่ header — RBAC deny-by-default ยังบังคับที่ API (ทดสอบ: ผู้ใช้ธุรกิจเห็นการ์ดปฏิเสธบนแดชบอร์ดผู้บริหารจริง)
+- เมนู: ลบหน้า "รายงานผู้บริหาร" (exec-reports) รวมเป็นปุ่มพิมพ์/PDF บนแดชบอร์ดผู้บริหาร (19→18 หน้า) · ย้าย "เกี่ยวกับแพลตฟอร์ม" ออกจากกลุ่ม Governance ไปท้าย sidebar (SIDEBAR_FOOTER_LINKS) · แก้ label กลุ่ม Data Asset ที่ th/en สลับตำแหน่ง
+- E2E พิสูจน์สด (agent-browser): import ชุดว่างทางเดียวไม่ได้ → สร้าง dataset 0 แถว + กฎ NOT_NULL ด้วยสคริปต์ชั่วคราว → รันผ่าน UI หน้าผลการตรวจสอบ → สรุป "(ผ่าน 0 · ไม่ผ่าน 0 · ไม่มีข้อมูลให้ตรวจ 1)" + badge amber + verdict ใหม่ + 9 มาตรา "ยังไม่เคยประเมิน" · scorecard ชุดว่าง score=null ไม่ดันค่าเฉลี่ย · exec rules.noData=1 นับแยก · ล้างข้อมูลทดสอบคืนครบ (15 กฎ)
+- lint ผ่าน (exit 0) · console error 0 · mobile 375px ไม่มี overflow + footer ติดล่าง · dev.log สะอาด
+
+Stage Summary:
+- v0.32.0 ครบทั้ง 4 กลุ่มที่ผู้ใช้อนุมัติ: คะแนนโปร่งใสทั้งสองฐาน · กฎบนชุดว่างไม่ผ่านโดยปริยายแล้ว (NO_DATA) · ML ไม่ซ้ำซ้อน (ศูนย์เดียว) · identity สลับที่เดียวคุมทุกหน้า/ทุก action · เมนูกระชับ 18 หน้า ไม่มีหน้าซ้ำ
+- ระบบยังคงหลักการเดิม: audit trail ทุก action ผูกกับผู้ใช้ปัจจุบันจริง · deny-by-default · PII masking ตามบทบาทของผู้ใช้ปัจจุบัน

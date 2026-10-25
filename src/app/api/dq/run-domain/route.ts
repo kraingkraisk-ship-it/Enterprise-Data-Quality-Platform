@@ -279,7 +279,7 @@ export async function POST(req: NextRequest) {
       dimensionTh: string
       sentence: string
       verdict: string
-      status: 'PASSED' | 'FAILED'
+      status: 'PASSED' | 'FAILED' | 'NO_DATA'
       totalRows: number
       failedRows: number
       passRate: number
@@ -434,7 +434,8 @@ export async function POST(req: NextRequest) {
         }
 
         const evaluation = evaluateRule({ column: rule.column, engineType, parameters: rule.parameters }, rows, evalContext)
-        const status = evaluation.failedRows === 0 ? 'PASSED' : 'FAILED'
+        // v0.32.0 — 0 แถว = NO_DATA (ไม่ผ่านโดยปริยาย) · passRate คงเป็น 1 เพื่อไม่กระทบเกณฑ์ threshold เดิม
+        const status = evaluation.totalRows === 0 ? 'NO_DATA' : evaluation.failedRows === 0 ? 'PASSED' : 'FAILED'
         const passRate = evaluation.totalRows > 0 ? (evaluation.totalRows - evaluation.failedRows) / evaluation.totalRows : 1
         if (status === 'PASSED') passedCount += 1
 
@@ -537,7 +538,10 @@ export async function POST(req: NextRequest) {
           elementName: el.nameTh,
           subDomainName: el.subDomain.name,
         })
-        rollupRuns.push({ dataElementId: el.id, totalRows: evaluation.totalRows, passRate, status, datasetId })
+        // v0.32.0 — NO_DATA (0 แถว) ไม่เข้า rollup (ไม่มีหลักฐานให้ถ่วงน้ำหนัก)
+        if (status !== 'NO_DATA') {
+          rollupRuns.push({ dataElementId: el.id, totalRows: evaluation.totalRows, passRate, status, datasetId })
+        }
         batchResultCount += 1
       }
 
@@ -546,7 +550,7 @@ export async function POST(req: NextRequest) {
         data: {
           totalRules: batchResultCount,
           passedRules: passedCount,
-          failedRules: batchResultCount - passedCount,
+          failedRules: batchResultCount - passedCount - results.filter((r) => r.batchId === batch.id && r.status === 'NO_DATA').length,
           skippedRules: skipped,
         },
       })

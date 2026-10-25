@@ -253,7 +253,10 @@ export async function GET() {
           const scoped = measurable ? (rulesByDataset.get(d.id) ?? []).filter((rule) => dimSet.has(dimOfRule(rule))) : []
           const measuredPairs = scoped
             .map((rule) => ({ rule, latest: latestMap.get(`${rule.id}|${d.id}`) ?? null }))
-            .filter((x): x is { rule: (typeof rulesEnabled)[number]; latest: RunRow } => x.latest !== null)
+            .filter(
+              (x): x is { rule: (typeof rulesEnabled)[number]; latest: RunRow } =>
+                x.latest !== null && x.latest.status !== 'NO_DATA', // v0.32.0 — ผลรันบนชุดข้อมูลว่าง = ยังไม่วัด
+            )
 
           const rules: ClauseRuleView[] = scoped.map((rule) => {
             const latest = latestMap.get(`${rule.id}|${d.id}`) ?? null
@@ -267,11 +270,11 @@ export async function GET() {
               threshold: rule.threshold,
               latestPassRate: latest ? latest.passRate : null,
               latestRunAt: latest ? latest.createdAt.toISOString() : null,
-              failRate: latest ? failRateOf(latest) : null,
-              meetsThreshold: latest ? latest.passRate * 100 >= rule.threshold : null,
-              // Inherent มีค่าเสมอเมื่อกฎแมปอยู่ (แม้ยังไม่เคยรัน) — Residual ต้องมีผลรันจริง
+              failRate: latest && latest.status !== 'NO_DATA' ? failRateOf(latest) : null,
+              meetsThreshold: latest && latest.status !== 'NO_DATA' ? latest.passRate * 100 >= rule.threshold : null,
+              // Inherent มีค่าเสมอเมื่อกฎแมปอยู่ (แม้ยังไม่เคยรัน) — Residual ต้องมีผลรันจริง (NO_DATA = ยังไม่วัด)
               inherent: 5 * sevW,
-              residual: latest ? likelihoodOf(failRateOf(latest)).level * sevW : null,
+              residual: latest && latest.status !== 'NO_DATA' ? likelihoodOf(failRateOf(latest)).level * sevW : null,
             }
           })
 

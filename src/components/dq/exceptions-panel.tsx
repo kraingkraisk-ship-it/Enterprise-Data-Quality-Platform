@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, ClipboardCheck, Send, XCircle } from 'lucide-react'
+import { CheckCircle2, ClipboardCheck, Send, UserRound, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { ROLES, ROLE_LIST, type PermissionKey } from '@/lib/rbac'
+import { useCurrentUser } from '@/components/user-context'
 
 /* ------------------------------------------------------------------ */
 /* Exceptions Panel — คำขอยกเว้นกฎ + การอนุมัติตามบทบาท (RBAC)           */
@@ -68,44 +68,9 @@ function fmtTime(iso: string | null): string {
   }
 }
 
-/** เลือกผู้ดำเนินการ — แสดงบทบาท + ติเครื่องหมายผู้ที่ไม่มีสิทธิ์ */
-function OperatorSelect({
-  value,
-  onChange,
-  permission,
-  id,
-  users,
-}: {
-  value: string
-  onChange: (v: string) => void
-  permission: PermissionKey
-  id: string
-  users: ApiUser[]
-}) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger id={id} className="w-full">
-        <SelectValue placeholder="เลือกผู้ดำเนินการ" />
-      </SelectTrigger>
-      <SelectContent className="max-h-72">
-        {users.map((u) => {
-          const allowed = ROLES[u.role as keyof typeof ROLES]?.permissions.includes(permission) ?? false
-          return (
-            <SelectItem key={u.id} value={u.email}>
-              {u.name} — {ROLE_LIST.find((r) => r.key === u.role)?.th}
-              {!allowed ? ' (ไม่มีสิทธิ์)' : ''}
-            </SelectItem>
-          )
-        })}
-      </SelectContent>
-    </Select>
-  )
-}
-
 export default function ExceptionsPanel() {
   const { toast } = useToast()
 
-  const [users, setUsers] = useState<ApiUser[]>([])
   const [datasets, setDatasets] = useState<ApiDataset[]>([])
   const [rules, setRules] = useState<ApiRule[]>([])
   const [exceptions, setExceptions] = useState<ApiException[]>([])
@@ -116,23 +81,20 @@ export default function ExceptionsPanel() {
   const [exRule, setExRule] = useState('')
   const [exReason, setExReason] = useState('')
   const [exExpires, setExExpires] = useState('')
-  const [exRequester, setExRequester] = useState('malee.steward@company.co.th')
-  const [exApprover, setExApprover] = useState('somchai.owner@company.co.th')
+  // v0.32.0 — ผู้ขอ/ผู้อนุมัติ = ผู้ใช้ปัจจุบันจาก header (identity ศูนย์กลาง — สิทธิ์ตรวจที่ API เสมอ)
+  const { user, hasPermission } = useCurrentUser()
 
-  const activeUsers = useMemo(() => users.filter((u) => u.status === 'ACTIVE'), [users])
   const pendingExceptions = useMemo(() => exceptions.filter((x) => x.status === 'PENDING'), [exceptions])
   const decidedExceptions = useMemo(() => exceptions.filter((x) => x.status !== 'PENDING'), [exceptions])
   const rulesOfDataset = useMemo(() => rules?.filter((r) => r.enabled && r.datasetIds.includes(exDataset)) ?? [], [rules, exDataset])
 
   const reload = useCallback(async () => {
     try {
-      const [u, d, r, x] = await Promise.all([
-        fetch('/api/rbac/users').then((res) => res.json()),
+      const [d, r, x] = await Promise.all([
         fetch('/api/rbac/datasets').then((res) => res.json()),
         fetch('/api/dq/rules').then((res) => res.json()),
         fetch('/api/dq/exceptions').then((res) => res.json()),
       ])
-      setUsers(u.users ?? [])
       setDatasets(d.datasets ?? [])
       setRules(r.rules ?? [])
       setExceptions(x.exceptions ?? [])
@@ -199,7 +161,7 @@ export default function ExceptionsPanel() {
         ruleId: exRule || undefined,
         reason: exReason,
         expiresAt: exExpires ? new Date(exExpires).toISOString() : '',
-        requestedByEmail: exRequester,
+        requestedByEmail: user?.email ?? '',
       },
       'create-exception',
       'ส่งคำขอข้อยกเว้นแล้ว (รอผู้อนุมัติ)',
@@ -215,7 +177,7 @@ export default function ExceptionsPanel() {
   async function handleDecideException(id: string, action: 'APPROVE' | 'REJECT') {
     const ok = await patchJson(
       `/api/dq/exceptions/${id}`,
-      { action, approverEmail: exApprover },
+      { action, approverEmail: user?.email ?? '' },
       `exception-${id}`,
       action === 'APPROVE' ? 'อนุมัติคำขอแล้ว' : 'ปฏิเสธคำขอแล้ว',
     )
@@ -290,7 +252,13 @@ export default function ExceptionsPanel() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ex-requester">ผู้ขอ (ต้องมีสิทธิ์ MANAGE_RULES)</Label>
-              <OperatorSelect id="ex-requester" value={exRequester} onChange={setExRequester} permission="MANAGE_RULES" users={activeUsers} />
+              <div className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-sm text-muted-foreground" aria-label="ผู้ขอ (ผู้ใช้ปัจจุบัน)">
+                <UserRound className="size-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+                <span className="min-w-0 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+                <Badge variant="outline" className={`shrink-0 text-[10px] ${hasPermission('MANAGE_RULES') ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                  {hasPermission('MANAGE_RULES') ? 'มีสิทธิ์ขอ' : 'ไม่มีสิทธิ์ MANAGE_RULES'}
+                </Badge>
+              </div>
             </div>
           </div>
 
@@ -308,12 +276,18 @@ export default function ExceptionsPanel() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">รอการอนุมัติ ({pendingExceptions.length})</CardTitle>
-          <CardDescription>เฉพาะบทบาทที่มีสิทธิ์ APPROVE_EXCEPTIONS เท่านั้นที่อนุมัติได้ (ลองเลือกบทบาทอื่นเพื่อทดสอบ)</CardDescription>
+          <CardDescription>เฉพาะบทบาทที่มีสิทธิ์ APPROVE_EXCEPTIONS เท่านั้นที่อนุมัติได้ — เปลี่ยนผู้ใช้ปัจจุบันได้ที่ตัวเลือก “ผู้ใช้งาน” มุมขวาบนของระบบ</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="ex-approver">ผู้อนุมัติ</Label>
-            <OperatorSelect id="ex-approver" value={exApprover} onChange={setExApprover} permission="APPROVE_EXCEPTIONS" users={activeUsers} />
+            <div className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-sm text-muted-foreground" aria-label="ผู้อนุมัติ (ผู้ใช้ปัจจุบัน)">
+              <UserRound className="size-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+              <span className="min-w-0 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+              <Badge variant="outline" className={`shrink-0 text-[10px] ${hasPermission('APPROVE_EXCEPTIONS') ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                {hasPermission('APPROVE_EXCEPTIONS') ? 'มีสิทธิ์อนุมัติ' : 'ไม่มีสิทธิ์อนุมัติ'}
+              </Badge>
+            </div>
           </div>
 
           <div className="max-h-80 space-y-2.5 overflow-y-auto pr-1">

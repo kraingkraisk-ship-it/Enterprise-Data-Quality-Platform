@@ -15,6 +15,7 @@ import {
   Search,
   ShieldOff,
   Trash2,
+  UserRound,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,7 +44,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { ROLES } from '@/lib/rbac'
+import { useCurrentUser } from '@/components/user-context'
 import { buildDomainTree, domainColor, rollupAssetCount, type DomainItem } from '@/lib/domains'
 
 /* ------------------------------------------------------------------ */
@@ -82,14 +83,6 @@ interface AssetDetail {
   totalPages: number
   piiMasked: boolean
 }
-
-interface AssetUser {
-  email: string
-  name: string
-  role: string
-}
-
-const MANAGE_ROLES = ['DATA_OWNER', 'DATA_STEWARD', 'DATA_ENGINEER', 'SYS_ADMIN']
 
 const SOURCE_META: Record<string, { th: string; icon: typeof FileSpreadsheet; cls: string }> = {
   CSV: { th: 'ไฟล์ CSV', icon: FileSpreadsheet, cls: 'border-teal-300 bg-teal-50 text-teal-800' },
@@ -135,8 +128,8 @@ export function AssetInventory({
   const { toast } = useToast()
   const [assets, setAssets] = useState<AssetItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [viewerRole, setViewerRole] = useState('BUSINESS_USER')
-  const [users, setUsers] = useState<AssetUser[]>([])
+  // v0.32.0 — บทบาทผู้ชม/ผู้ดำเนินการ = ผู้ใช้ปัจจุบันของระบบจาก header (UserSwitcher) จุดเดียว
+  const { user, roleKey } = useCurrentUser()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<AssetDetail | null>(null)
@@ -150,7 +143,6 @@ export function AssetInventory({
   const [renameDesc, setRenameDesc] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [operatorEmail, setOperatorEmail] = useState('preecha.engineer@company.co.th')
 
   // ---------- โดเมนข้อมูล (v0.15.0 — คงไว้เพื่อกรอง/แสดงป้าย การจัดการย้ายไปเมนู Data Domain) ----------
   const [domains, setDomains] = useState<DomainItem[]>([])
@@ -198,27 +190,11 @@ export function AssetInventory({
     if (active) void loadDomains()
   }, [active, loadDomains])
 
-  useEffect(() => {
-    let alive = true
-    fetch('/api/rbac/users')
-      .then((r) => r.json())
-      .then((d) => {
-        if (!alive) return
-        setUsers((d?.users ?? []).filter((u: AssetUser & { status?: string }) => u.status === 'ACTIVE'))
-      })
-      .catch(() => undefined)
-    return () => {
-      alive = false
-    }
-  }, [])
-
-  const operators = useMemo(() => users.filter((u) => MANAGE_ROLES.includes(u.role)), [users])
-
   const loadDetail = useCallback(
     async (assetId: string, p: number, q: string) => {
       setDetailLoading(true)
       try {
-        const params = new URLSearchParams({ role: viewerRole, page: String(p), pageSize: '25' })
+        const params = new URLSearchParams({ role: roleKey, page: String(p), pageSize: '25' })
         if (q) params.set('q', q)
         const res = await fetch(`/api/assets/${assetId}?${params.toString()}`)
         const data = await res.json()
@@ -233,7 +209,7 @@ export function AssetInventory({
         setDetailLoading(false)
       }
     },
-    [viewerRole, toast],
+    [roleKey, toast],
   )
 
   function openDetail(a: AssetItem) {
@@ -246,7 +222,7 @@ export function AssetInventory({
 
   useEffect(() => {
     if (selectedId) void loadDetail(selectedId, page, query)
-  }, [page, query, viewerRole])
+  }, [page, query, roleKey])
 
   /* ------------------------- actions ------------------------- */
   async function patchAsset(action: string, extra: Record<string, unknown>, okTitle: string) {
@@ -256,7 +232,7 @@ export function AssetInventory({
       const res = await fetch(`/api/assets/${selectedId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operatorEmail, action, ...extra }),
+        body: JSON.stringify({ operatorEmail: user?.email ?? '', action, ...extra }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -327,18 +303,14 @@ export function AssetInventory({
               <FolderTree className="size-4" aria-hidden="true" /> จัดการ Data Domain
             </Button>
           )}
-          <Select value={viewerRole} onValueChange={setViewerRole}>
-            <SelectTrigger className="h-9 w-full sm:w-64" aria-label="ดูข้อมูลในมุมมองบทบาท">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(ROLES).map(([key, def]) => (
-                <SelectItem key={key} value={key}>
-                  {def.th}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* v0.32.0 — มุมมองบทบาทใช้ผู้ใช้ปัจจุบันจาก header — แสดงเป็นชิปอ่านอย่างเดียว */}
+          <div
+            className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground"
+            aria-label="มุมมองบทบาทของผู้ใช้ปัจจุบัน"
+          >
+            <UserRound className="size-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+            <span className="max-w-52 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+          </div>
           <Button variant="outline" size="icon" className="size-9" onClick={() => void loadAssets()} aria-label="โหลดรายการใหม่">
             <RefreshCw className="size-4" aria-hidden="true" />
           </Button>
@@ -547,18 +519,11 @@ export function AssetInventory({
 
           {/* ปุ่มจัดการ + ค้นหา */}
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={operatorEmail} onValueChange={setOperatorEmail}>
-              <SelectTrigger className="h-8 w-full text-xs sm:w-56" aria-label="ผู้ดำเนินการจัดการข้อมูล">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {operators.map((u) => (
-                  <SelectItem key={u.email} value={u.email} className="text-xs">
-                    {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* v0.32.0 — ผู้ดำเนินการ = ผู้ใช้ปัจจุบันจาก header */}
+            <div className="flex h-8 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-xs text-muted-foreground" aria-label="ผู้ดำเนินการจัดการข้อมูล (ผู้ใช้ปัจจุบัน)">
+              <UserRound className="size-3 shrink-0 text-emerald-700" aria-hidden="true" />
+              <span className="max-w-56 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+            </div>
             <Button size="sm" variant="outline" onClick={() => {
               setRenameName(selectedAsset?.name ?? '')
               setRenameDesc(selectedAsset?.description ?? '')
@@ -603,7 +568,7 @@ export function AssetInventory({
           {detail?.piiMasked && (
             <p className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
               <Eye className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              กำลังแสดงในมุมมองบทบาท &quot;{ROLES[viewerRole as keyof typeof ROLES]?.th ?? viewerRole}&quot; — ข้อมูลส่วนบุคคลถูกปิดบังตามหลัก PDPA เปลี่ยนบทบาทด้านบนเพื่อดูมุมมองอื่น
+              กำลังแสดงในมุมมองของ &quot;{user?.name ?? '-'} ({user?.roleTh ?? '-'})&quot; — ข้อมูลส่วนบุคคลถูกปิดบังตามหลัก PDPA เปลี่ยนบทบาทได้ที่ตัวเลือก “ผู้ใช้งาน” มุมขวาบนของระบบ
             </p>
           )}
 

@@ -64,7 +64,7 @@ interface RunDomainResponse {
     dimensionTh: string
     sentence: string
     verdict: string
-    status: 'PASSED' | 'FAILED'
+    status: 'PASSED' | 'FAILED' | 'NO_DATA'
     totalRows: number
     failedRows: number
     passRate: number
@@ -491,8 +491,17 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
               <ul className="mt-2 space-y-1.5">
                 {result.results.map((r) => (
                   <li key={r.runId} className="flex flex-wrap items-center gap-1.5 rounded border bg-white px-2.5 py-1.5 text-[11.5px]">
-                    <Badge variant="outline" className={`text-[9.5px] ${r.status === 'PASSED' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>
-                      {r.status === 'PASSED' ? 'ผ่าน' : 'ไม่ผ่าน'}
+                    <Badge
+                      variant="outline"
+                      className={`text-[9.5px] ${
+                        r.status === 'NO_DATA'
+                          ? 'border-amber-200 bg-amber-50 text-amber-800'
+                          : r.status === 'PASSED'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-rose-200 bg-rose-50 text-rose-800'
+                      }`}
+                    >
+                      {r.status === 'PASSED' ? 'ผ่าน' : r.status === 'NO_DATA' ? 'ไม่มีข้อมูล (0 แถว)' : 'ไม่ผ่าน'}
                     </Badge>
                     <Badge variant="outline" className={`text-[9.5px] ${SEVERITY_BADGE[r.severity] ?? ''}`}>
                       {r.severity}

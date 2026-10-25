@@ -12,6 +12,7 @@ import {
   Search,
   ShieldAlert,
   UserCheck,
+  UserRound,
   Wrench,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +29,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
+import { useCurrentUser } from '@/components/user-context'
 import { DimensionBadge } from '@/components/dimension-picker'
 import { SEVERITY_LABELS } from '@/lib/dq'
 
@@ -54,14 +56,6 @@ interface FailureItem {
   createdAt: string
   data: Record<string, string>
   piiMasked: boolean
-}
-
-interface ApiUser {
-  id: string
-  email: string
-  name: string
-  role: string
-  status: 'ACTIVE' | 'SUSPENDED'
 }
 
 const SEVERITY_BADGE: Record<string, string> = {
@@ -106,24 +100,11 @@ export default function DqFailedRecords({ active }: FailedRecordsProps) {
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
 
-  // ผู้ชม — กำหนดบทบาทเพื่อดู PII ตามสิทธิ์ (PDPA)
-  const [users, setUsers] = useState<ApiUser[]>([])
-  const [viewerEmail, setViewerEmail] = useState('')
+  // ผู้ชม/ผู้ดำเนินการ = ผู้ใช้ปัจจุบันของระบบจาก header (v0.32.0 — identity ศูนย์กลาง)
+  const { user } = useCurrentUser()
 
   // dialog
   const [detail, setDetail] = useState<FailureItem | null>(null)
-
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const res = await fetch('/api/rbac/users')
-        const data = (await res.json()) as { users?: ApiUser[] }
-        setUsers((data.users ?? []).filter((u) => u.status === 'ACTIVE'))
-      } catch {
-        /* คงค่าว่าง */
-      }
-    })()
-  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -131,7 +112,7 @@ export default function DqFailedRecords({ active }: FailedRecordsProps) {
       if (status) qs.set('status', status)
       if (severity) qs.set('severity', severity)
       if (search) qs.set('search', search)
-      if (viewerEmail) qs.set('operatorEmail', viewerEmail)
+      if (user) qs.set('operatorEmail', user.email)
       qs.set('page', String(page))
       const res = await fetch(`/api/dq/failures?${qs.toString()}`)
       const data = (await res.json()) as {
@@ -152,7 +133,7 @@ export default function DqFailedRecords({ active }: FailedRecordsProps) {
     } catch {
       setItems([])
     }
-  }, [status, severity, search, viewerEmail, page])
+  }, [status, severity, search, user, page])
 
   useEffect(() => {
     if (active) void load()
@@ -160,7 +141,7 @@ export default function DqFailedRecords({ active }: FailedRecordsProps) {
 
   async function changeStatus(item: FailureItem, next: 'NEW' | 'FIXED' | 'IGNORED') {
     if (item.status === next) return
-    const operator = viewerEmail || users[0]?.email || ''
+    const operator = user?.email ?? ''
     if (!operator) {
       toast({ title: 'กรุณาเลือกผู้ดำเนินการก่อน', variant: 'destructive' })
       return
@@ -194,7 +175,7 @@ export default function DqFailedRecords({ active }: FailedRecordsProps) {
 
   /** เปิดแถวที่ล้มเหลวเป็นปัญหาคุณภาพข้อมูล (DQ Issue) — ผู้รายงานต้องมีสิทธิ์ MANAGE_ISSUES */
   async function openAsIssue(item: FailureItem) {
-    const reporter = viewerEmail || users.find((u) => u.role === 'DATA_OWNER')?.email || ''
+    const reporter = user?.email ?? ''
     if (!reporter) {
       toast({ title: 'กรุณาเลือกผู้ดำเนินการก่อน', variant: 'destructive' })
       return
@@ -335,24 +316,15 @@ export default function DqFailedRecords({ active }: FailedRecordsProps) {
               </form>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="fr-viewer" className="flex items-center gap-1 text-xs">
+              {/* v0.32.0 — ผู้ชม (PII ตามบทบาท) = ผู้ใช้ปัจจุบันจาก header — เปลี่ยนที่มุมขวาบนจุดเดียว */}
+              <Label className="flex items-center gap-1 text-xs">
                 <Eye className="size-3" aria-hidden="true" />
                 ผู้ชม (PII ตามบทบาท)
               </Label>
-              <select
-                id="fr-viewer"
-                aria-label="เลือกผู้ชมเพื่อดูข้อมูลตามสิทธิ์บทบาท"
-                value={viewerEmail}
-                onChange={(e) => setViewerEmail(e.target.value)}
-                className="h-9 w-full rounded-md border bg-background px-2 text-xs"
-              >
-                <option value="">ปิดบังเข้มสุด (แนะนำ)</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.email}>
-                    {u.name} ({u.role})
-                  </option>
-                ))}
-              </select>
+              <div className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-2.5 text-xs text-muted-foreground">
+                <UserRound className="size-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+                <span className="min-w-0 truncate">{user ? `${user.name} · ${user.roleTh}` : 'กำลังโหลด…'}</span>
+              </div>
             </div>
           </div>
 

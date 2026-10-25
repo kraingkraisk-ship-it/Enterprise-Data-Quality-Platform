@@ -47,7 +47,7 @@ interface LatestRun {
   severity: string
   dimension: DimensionKey
   clauseNo: number
-  status: 'PASSED' | 'FAILED'
+  status: 'PASSED' | 'FAILED' | 'NO_DATA'
   totalRows: number
   failedRows: number
   passRate: number
@@ -125,7 +125,8 @@ export async function GET(req: NextRequest) {
       if (datasetFilter && run.datasetId !== datasetFilter) continue
       const dimension = isDimensionKey(run.dimension) ? run.dimension : 'VALIDITY'
       const engineType = engineOf(run.rule.condition)
-      const status = run.status === 'PASSED' ? 'PASSED' : 'FAILED'
+      // v0.32.0 — คงสถานะ NO_DATA (ชุดข้อมูล 0 แถว) ไม่บังคับเป็น PASSED/FAILED
+      const status = run.status === 'NO_DATA' ? 'NO_DATA' : run.status === 'PASSED' ? 'PASSED' : 'FAILED'
       const failRate = run.totalRows > 0 ? run.failedRows / run.totalRows : 0
       const verdict = buildRuleVerdict({ status, totalRows: run.totalRows, failedRows: run.failedRows, dimension, engineType })
       const likelihood = likelihoodOf(failRate)
@@ -165,6 +166,8 @@ export async function GET(req: NextRequest) {
       const counts = new Map<DimensionKey, number>()
       const fails = new Map<DimensionKey, number>()
       for (const e of entries) {
+        // v0.32.0 — NO_DATA (0 แถว) ไม่ถูกนับเป็นคะแนนมิติ (ไม่มีหลักฐานคุณภาพ)
+        if (e.status === 'NO_DATA') continue
         const arr = arrs.get(e.dimension) ?? []
         arr.push(e.passRate * 100)
         arrs.set(e.dimension, arr)

@@ -19,7 +19,7 @@ import {
   SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { NAV_GROUPS, VIEWS, APP_VERSION, type ViewKey } from '@/lib/views'
+import { NAV_GROUPS, SIDEBAR_FOOTER_LINKS, VIEWS, APP_VERSION, type ViewKey } from '@/lib/views'
 
 /* ------------------------- live nav badges ------------------------- */
 
@@ -177,6 +177,30 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+      {/* ---------------------- footer links ---------------------- */}
+      {/* ลิงก์สากลท้ายเมนู (v0.32.0) — แยกจากกลุ่มธุรกิจ เช่น "เกี่ยวกับแพลตฟอร์ม" */}
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {SIDEBAR_FOOTER_LINKS.map((key) => {
+              const view = VIEWS[key]
+              return (
+                <SidebarMenuItem key={key}>
+                  <SidebarMenuButton
+                    isActive={activeView === key}
+                    tooltip={`${view.th} · ${view.en}`}
+                    onClick={() => handleNavigate(key)}
+                    aria-current={activeView === key ? 'page' : undefined}
+                  >
+                    <view.icon className="size-4" aria-hidden="true" />
+                    <span className="truncate text-muted-foreground">{view.th}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
       </SidebarContent>
 
       {/* ------------------------- footer ------------------------- */}
