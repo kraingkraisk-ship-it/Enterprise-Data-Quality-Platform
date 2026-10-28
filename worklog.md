@@ -1903,3 +1903,21 @@ Work Log:
 Stage Summary:
 - แดชบอร์ดลดความซ้ำซ้อน 3 จุดตาม feedback: PII เข้มขึ้น (เฉพาะเจ้าของข้อมูล+session-based ปลอมไม่ได้) · Regulation การ์ดเดียวจบ · Risk เหลือ 2 มุมมองเนื้อหาไม่ทับกัน · ความเสี่ยงรายมาตรฐานอยู่ที่ ประเมินความสอดคล้อง จุดเดียว
 - เพิ่มมิติบริหารแผนงาน: เห็นภาพทวนสอบ Data Domain 2026–2030 + Progress ถ่วงน้ำหนักจาก Task + จัดการ Task พร้อม Audit Trail ครบ · ระบบอยู่ที่ v0.34.0 · 18+1 หน้า
+
+---
+Task ID: 63
+Agent: Z.ai Code (main orchestrator)
+Task: รับ PAT ใหม่ (rotate ตาม pattern Task 51/57/59/61) — ตรวจอ่าน+เขียนผ่าน · push v0.34.0 ที่ค้างจาก session ก่อน · กู้สภาพแวดล้อมหลัง sandbox rollback (DB/Turbopack cache/dev server)
+
+Work Log:
+- ผู้ใช้ส่ง PAT ใหม่ — ตรวจ read: GET repo ได้ 200 · ตรวจ write: POST /git/blobs ได้ 201 (blob probe ไม่กระทบ repo) · ไม่บันทึกลง git config หรือไฟล์ใดๆ — ใช้ inline เท่านั้น
+- ตรวจพบงานค้างจาก session ก่อน: commit afc8c2c (v0.34.0 — Task 62) อยู่ local แต่ยังไม่ push (remote main = 3eece5a Task 61 · ไม่มี tag v0.34.0 บน remote) — สาเหตุ session ก่อนจบกลางทางหลัง commit
+- sandbox rollback ทิ้งร่องรอย 3 จุด — ตรวจและกู้ครบ: (1) file mode เปลี่ยน 205 ไฟล์ แต่ diff = 0 insertions/0 deletions (เนื้อหาเหมือน HEAD 100%) → ตั้ง git config core.fileMode false ให้ status สะอาด · (2) db/custom.db หาย → prisma db push + scripts/seed-demo.ts กู้ข้อมูลสาธิตครบ (ผู้ใช้ 8 บทบาท Dq@2025 · dataset+SampleRow 2 · ทะเบียน 2 · เงื่อนไข 10 · กฎ 8 · Mapping · แผนงาน 15 task 8 โดเมน) · (3) Turbopack panic (persistent cache เสียจาก rollback) → rm -rf .next แล้วรีสตาร์ท — หาย
+- ลบ template leftovers ที่ทำ dev.log error ซ้ำ: src/instrumentation.ts + src/lib/jobs + src/app/api/jobs (untracked ไม่เคยถูก track · โค้ดที่ commit ไม่มีใครอ้างอิง — ตรวจ git grep ที่ afc8c2c · model Job ไม่มีใน schema → TypeError "Cannot read properties of undefined (reading 'findFirst')" ทุก kick ~24 ครั้ง) — หลังลบ + เคลียร์ .next dev.log สะอาด
+- dev server โดน sandbox reaper kill ระหว่าง call (ตายเงียบ ไม่มี crash trace) — ใช้ watchdog loop (while+restart) แทน setsid เดี่ยว + รวม E2E เป็นชุดต่อ call (ขยายบทเรียน Task 62)
+- E2E smoke ผ่าน Agent Browser: login สมชาย (somchai.owner@company.co.th / Dq@2025 — เจ้าของข้อมูล) → session cookie อยู่ครบ reload ไม่ต้อง login ใหม่ (AuthGate ตรวจ session ผ่าน) → DQ แดชบอร์ด การ์ด "ตัวอย่างการปิดบัง PII (Live)": เลือก dataset ทะเบียนลูกค้าองค์กร (มี PII) → badge "แสดงข้อมูลจริง" + อีเมลจริงในตัวอย่างแถว (OWNER เห็น PII ตามนโยบาย v0.34.0) → เมนู แผนงาน DQ: Progress ถ่วงน้ำหนัก + ปี 2026/2027/2028/2029/2030 ครบ + ส่วน "เหลือ" → page errors 0 · console สะอาด
+- push ด้วย PAT ใหม่ (inline URL): main 3eece5a..afc8c2c สำเร็จ + tag v0.34.0 ขึ้น remote สำเร็จ → ตรวจยืนยันผ่าน GitHub API หลัง commit นี้
+
+Stage Summary:
+- PAT ใหม่ใช้งานได้ครบ (อ่าน 200 + เขียน 201 + push สำเร็จ 2 ครั้ง: commit v0.34.0 + worklog Task 63)
+- ระบบกู้สภาพครบหลัง rollback และยืนยันว่า v0.34.0 ทำงานจริง: login/PII ตามบทบาท/แผนงาน DQ · sync 100% local/remote/tag · 18+1 หน้า · รอคำสั่งถัดไปจากผู้ใช้
