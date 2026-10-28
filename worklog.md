@@ -1821,3 +1821,19 @@ Work Log:
 Stage Summary:
 - PAT ใหม่ใช้งานได้ครบ (อ่าน 200 + เขียน 201 + push สำเร็จ) พร้อมใช้เวิร์กโฟลว์ถัดไป
 - ระบบอยู่ที่ v0.32.0 สมบูรณ์: sync 100% ไม่มีงานค้าง push · 18 หน้า · รอคำสั่งถัดไปจากผู้ใช้
+
+---
+Task ID: 58
+Agent: Z.ai Code (main orchestrator)
+Task: v0.32.1 — ปรับเนื้อหาหน้า "เกี่ยวกับแพลตฟอร์ม" ให้ตรงระบบปัจจุบัน (คำขอผู้ใช้: เนื้อหาค้างยุคแรกไม่ตรงระบบ)
+
+Work Log:
+- พิสูจน์ข้อเท็จจริงจากโค้ดก่อนแก้ทุกข้อ: asset-import (CSV/JSON/MySQL/PostgreSQL), ROLES 8 บทบาท, CONDITIONS 10 เงื่อนไข, buildRuleSentence (lib/dq.ts), page.tsx (view ที่เรนเดอร์จริง)
+- **พบบั๊กจริง**: ปุ่ม CTA "เริ่มสร้างกฎคุณภาพข้อมูล" บนหน้า about ชี้ view 'rules' ซึ่ง v0.32.0 เปลี่ยนไปใช้ 'rule-library' → กดแล้วทุก div ซ่อน จอว่างเงียบ — แก้เป็น onNavigate('rule-library') และพิสูจน์สด: กดแล้วหน้าคลังกฎเรนเดอร์เต็ม (สร้างกฎ 4 ขั้น)
+- เนื้อหาที่แก้ 7 กลุ่ม: (1) สถิติ hero 23 "ฟังก์ชันหลัก"/5 "แหล่งข้อมูล" → 10 เงื่อนไขตรวจสอบกลาง / 4 แหล่งข้อมูล (อ้างอิงโค้ดได้จริง: 9 มิติ · 8 บทบาท · 10 conditions · 4 sources) (2) SOURCES ลบ Excel/MS SQL Server/REST API ที่ไม่มีในระบบ → CSV/JSON/MySQL/PostgreSQL + หมายเหตุอ่านอย่างเดียว SELECT (3) WORKFLOW 5→6 ขั้น เพิ่ม "จัดโครงสร้างสินทรัพย์ข้อมูล" (Domain/ทะเบียน/lineage) + ปรับทุกขั้นตามระบบจริง (NO_DATA ชุดว่าง · PII ปิดบังตามบทบาท · แดชบอร์ด 2 ฐาน) (4) FEATURES 4→8 ใบ ครบ 4 กลุ่มเมนู: Data Asset/Domain · ข้อมูลอ้างอิง (v0.31.0 anti-drift) · Mapping/Lineage · Rule Builder 4 ขั้น · ศูนย์ ML 4 โมเดล · Approval workflow · แดชบอร์ดโปร่งใส · Governance/RBAC/Audit (5) STANDARDS เพิ่ม ISO/IEC 11179 (ใช้จริงใน Data Domain) (6) hero paragraph + การ์ดตัวอย่างประโยค เพิ่มหมายเหตุ "โหมดทะเบียน [ทะเบียน: ...]" ของ IN_LIST/REFERENCE_MATCH (7) security ปรับคำ RBAC deny-by-default + ศูนย์บันทึกตรวจสอบ (กรอง/ค้น/ส่งออก CSV/meta-audit) + PII ตามผู้ใช้ปัจจุบัน
+- **พบและแก้ overflow ฝั่ง mobile 375px** (เกิดจากเนื้อหาใหม่): คำยาวต่อเนื่อง IN_LIST/REFERENCE_MATCH + DIRECT/TRANSFORM/DERIVED/AGGREGATE/LOOKUP ดัน min-content การ์ดล้น (437>375) → เว้นวรรครอบเครื่องหมาย / + [overflow-wrap:anywhere] ที่ p desc ทั้ง 4 ชุดการ์ด (features/workflow/security/dimensions) → วัดซ้ำ 375=375 NO-OVERFLOW + footer ถูกดันล่างสุดถูกต้อง
+- APP_VERSION v0.32.1 · lint ผ่าน (exit 0) · E2E agent-browser: desktop ABOUT-FULL-OK · mobile 375 NO-OVERFLOW · 0 console error · dev.log สะอาด
+
+Stage Summary:
+- หน้า "เกี่ยวกับแพลตฟอร์ม" สอดคล้องระบบปัจจุบัน (v0.32.1) ครบทุกหัวข้อ + ได้แก้บั๊ก CTA จอว่างที่ซ่อนอยู่โดยไม่คาดคิด + กัน overflow mobile เชิงโครงสร้าง
+- บทเรียน: หน้าประเมินคงที่ (about) ควรได้รับการตรวจสอบความตรงกันเวลา bump เวอร์ชันใหญ่ — ข้อความถูก derive จากโค้ดแหล่งเดียว (DIMENSIONS) บางส่วนแล้ว ส่วน FEATURES/WORKFLOW/SOURCES เขียนตรงแบบ (ต้องดูแลเอง)

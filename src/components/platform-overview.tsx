@@ -8,9 +8,10 @@ import {
   BrainCircuit,
   ClipboardCheck,
   LayoutDashboard,
-  FileSpreadsheet,
   Server,
-  Globe,
+  Braces,
+  BookMarked,
+  Waypoints,
   Table2,
   AlertTriangle,
   Lock,
@@ -19,6 +20,7 @@ import {
   ArrowRight,
   Sparkles,
   History,
+  PackageSearch,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -49,28 +51,60 @@ const DIMENSIONS = DIMENSION_KEYS.map((key) => ({
 
 const FEATURES = [
   {
+    icon: PackageSearch,
+    title: 'สินทรัพย์ข้อมูลครบวงจร',
+    en: 'Data Asset · Domain · Inventory',
+    desc:
+      'นำเข้า CSV / JSON / ฐานข้อมูล เก็บเป็นคลังข้อมูลพร้อมพรีวิว แล้วจัดโครงสร้าง 4 ระดับ (Data Domain > Sub Domain > Data Element > Meta Data) ตามมาตรฐาน ISO/IEC 11179 พร้อมธง CDE และ workflow อนุมัติ',
+  },
+  {
+    icon: BookMarked,
+    title: 'ข้อมูลอ้างอิงศูนย์กลาง',
+    en: 'Reference Data (v0.31.0)',
+    desc:
+      'ทะเบียนค่ามาตรฐาน (สกุลเงิน ISO 4217 กลุ่มลูกค้า ฯลฯ) แก้ที่ต้นทางจุดเดียว — กฎ IN_LIST / REFERENCE_MATCH โหมดทะเบียนใช้ค่าใหม่ทันทีโดยไม่ต้องแก้กฎ (anti-drift) พร้อมสแกนค่านอกทะเบียนและนำเข้า/ส่งออก CSV',
+  },
+  {
+    icon: Waypoints,
+    title: 'การแมปข้อมูลและ Lineage',
+    en: 'Data Mapping & Lineage',
+    desc:
+      'เส้นเชื่อม Element ต้นทาง→ปลายทางข้ามระบบ/ข้ามโดเมน พร้อมแผนผังหลายขั้น (DIRECT / TRANSFORM / DERIVED / AGGREGATE / LOOKUP) และ workflow อนุมัติแบบเดียวกับ Data Element',
+  },
+  {
     icon: GitBranch,
     title: 'Rule Builder แบบไม่ต้องเขียนโค้ด',
     en: 'No-code Rule Builder',
-    desc: 'สร้างกฎตรวจสอบคุณภาพข้อมูลด้วยประโยคที่อ่านเข้าใจง่าย ไม่ต้องมีความรู้ด้าน SQL หรือการเขียนโปรแกรม',
+    desc:
+      'สร้างกฎตรวจสอบแบบทีละขั้น 4 ขั้น (เป้าหมาย → คอลัมน์ → เงื่อนไข → ตั้งค่า) เป็นประโยคที่อ่านเข้าใจง่าย ใช้เงื่อนไขจากคลังกลาง 10 เงื่อนไข — ไม่ต้องมีความรู้ SQL',
   },
   {
     icon: BrainCircuit,
-    title: 'การตรวจจับด้วย AI อย่างรับผิดชอบ',
-    en: 'ML-Assisted Detection',
-    desc: 'โมเดล Machine Learning ช่วยแจ้งเตือนความผิดปกติ ข้อมูลซ้ำ และการเปลี่ยนแปลงของข้อมูล — เป็นเพียง “สัญญาณ” ที่ต้องมีมนุษย์ทบทวนเสมอ',
+    title: 'ศูนย์ ML — AI อย่างรับผิดชอบ',
+    en: 'ML Center · Responsible AI',
+    desc:
+      '4 โมเดลช่วยตัดสินใจ: ความผิดปกติข้ามรอบ · สาเหตุร่วม · พยากรณ์แนวโน้ม · แผนสุ่มตรวจ พร้อมปรับเกณฑ์ค่าคงที่จากการใช้งานจริง — เป็นเพียง “สัญญาณ” ที่ต้องมีมนุษย์ทบทวนเสมอ',
   },
   {
     icon: ClipboardCheck,
     title: 'กระบวนการอนุมัติและข้อยกเว้น',
     en: 'Approval & Exception Workflow',
-    desc: 'ข้อยกเว้นต้องผ่านการอนุมัติตามบทบาท พร้อมเหตุผลและวันหมดอายุที่ตรวจสอบย้อนหลังได้',
+    desc:
+      'ข้อยกเว้นและข้อมูลอ้างอิง/Element/Mapping ต้องผ่านการอนุมัติตามบทบาท พร้อมเหตุผล ผู้ดำเนินการ และวันหมดอายุที่ตรวจสอบย้อนหลังได้',
   },
   {
     icon: LayoutDashboard,
-    title: 'แดชบอร์ดรายงานผล',
+    title: 'แดชบอร์ดโปร่งใสตามบทบาท',
     en: 'Role-based Dashboards',
-    desc: 'แดชบอร์ดแยกตามบทบาทผู้ใช้ สรุปคะแนนคุณภาพข้อมูล แนวโน้ม และรายการที่ต้องดำเนินการ',
+    desc:
+      'DQ แดชบอร์ด 5 หมวด + บัตรคะแนนรายชุดครบ 9 มิติ + แดชบอร์ดผู้บริหาร (ตามสิทธิ์) — คะแนนแสดงสองฐานชัดเจน: เฉลี่ยเฉพาะที่เคยตรวจ และรวมทุกชุด (v0.32.0)',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'การกำกับดูแลและตรวจสอบย้อนหลัง',
+    en: 'Governance · RBAC · Audit',
+    desc:
+      'บทบาทและสิทธิ์ deny-by-default รายชุดข้อมูล · ศูนย์บันทึกตรวจสอบกรอง/ค้นหา/ส่งออก CSV · ประเมินความสอดคล้องรายมาตรฐาน (Inherent → Residual)',
   },
 ]
 
@@ -85,33 +119,39 @@ const RULE_PARTS = [
 const WORKFLOW = [
   {
     step: 1,
-    title: 'อัปโหลดหรือเชื่อมต่อข้อมูล',
-    en: 'Upload / Connect',
-    desc: 'รองรับไฟล์ CSV, Excel และการเชื่อมต่อ PostgreSQL, MS SQL Server, REST API',
+    title: 'นำเข้าข้อมูล',
+    en: 'Import Data',
+    desc: 'ไฟล์ CSV ตรวจตัวคั่นอัตโนมัติ · ไฟล์ JSON รองรับอาร์เรย์/วัตถุซ้อน · ฐานข้อมูล MySQL/PostgreSQL (อ่านเฉพาะ SELECT)',
   },
   {
     step: 2,
-    title: 'กำหนดกฎคุณภาพข้อมูล',
-    en: 'Define Rules',
-    desc: 'สร้างกฎผ่าน Rule Builder โดยเลือกชุดข้อมูล คอลัมน์ เงื่อนไข และระดับความรุนแรง',
+    title: 'จัดโครงสร้างสินทรัพย์ข้อมูล',
+    en: 'Structure Assets',
+    desc: 'จัด Data Domain 4 ระดับตาม ISO/IEC 11179 ผูกทะเบียนข้อมูลอ้างอิง และแมป lineage ข้ามระบบ — ทุกอันผ่าน workflow อนุมัติ',
   },
   {
     step: 3,
-    title: 'รันการตรวจสอบ',
-    en: 'Run Validation',
-    desc: 'ระบบตรวจสอบตาม 9 มิติ พร้อมสรุปผลลัพธ์และคะแนนคุณภาพข้อมูล',
+    title: 'สร้างกฎคุณภาพข้อมูล',
+    en: 'Define Rules',
+    desc: 'สร้างกฎแบบทีละขั้น 4 ขั้นผ่าน Rule Builder เลือกเงื่อนไขจากคลังกลาง ระบุความรุนแรงและตัวกรองได้',
   },
   {
     step: 4,
-    title: 'ทบทวนสัญญาณ AI',
-    en: 'Review ML Signals',
-    desc: 'ทีมวิเคราะห์ทบทวนความผิดปกติ/ข้อมูลซ้ำ/การเปลี่ยนแปลงที่ AI แจ้งเตือน ก่อนนำไปใช้',
+    title: 'รันการตรวจสอบ',
+    en: 'Run Validation',
+    desc: 'ระบบตรวจตาม 9 มิติ รายรอบ (batch) สรุปผลและคะแนนรายมิติ — ชุดข้อมูล 0 แถวถือ NO_DATA ไม่ผ่านโดยปริยาย',
   },
   {
     step: 5,
-    title: 'อนุมัติหรือขอข้อยกเว้น',
-    en: 'Approve / Exception',
-    desc: 'ผู้อนุมัติตัดสินใจต่อผลลัพธ์ ข้อยกเว้นถูกบันทึกพร้อมเหตุผลและวันหมดอายุ',
+    title: 'ทบทวนสัญญาณ AI และจัดการผล',
+    en: 'Review & Handle Results',
+    desc: 'ทีมวิเคราะห์ทบทวนสัญญาณจากศูนย์ ML ดูรายแถวที่ไม่ผ่าน (PII ถูกปิดบังตามบทบาท) และบริหารปัญหา/ข้อยกเว้นพร้อมอนุมัติ',
+  },
+  {
+    step: 6,
+    title: 'ติดตามและกำกับดูแล',
+    en: 'Monitor & Govern',
+    desc: 'แดชบอร์ดคะแนน 2 ฐาน บัตรคะแนน 9 มิติ ประเมินความสอดคล้องรายมาตรฐาน และศูนย์บันทึกตรวจสอบส่งออกได้',
   },
 ]
 
@@ -120,19 +160,19 @@ const SECURITY = [
     icon: EyeOff,
     title: 'ปิดบังข้อมูลส่วนบุคคลเป็นค่าเริ่มต้น',
     en: 'PII Masking by Default',
-    desc: 'ข้อมูลที่ระบุตัวตนได้ถูกปกปิดตามค่าเริ่มต้น สอดคล้อง พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA)',
+    desc: 'ข้อมูลที่ระบุตัวตนได้ถูกปกปิดตามบทบาทของผู้ใช้ปัจจุบัน สอดคล้อง พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA)',
   },
   {
     icon: Lock,
     title: 'แยกการเข้าถึงรายชุดข้อมูล',
     en: 'Dataset-level Isolation',
-    desc: 'ชุดข้อมูลที่ไม่ได้รับอนุญาตจะมองไม่เห็นทั้งหมด — การเข้าถึงกำหนดผ่านบทบาท (RBAC)',
+    desc: 'ชุดข้อมูลที่ไม่ได้รับอนุญาตจะมองไม่เห็นทั้งหมด — สิทธิ์กำหนดผ่านบทบาท 8 บทบาท (RBAC) แบบ deny-by-default ตรวจสอบที่ API ทุกคำขอ',
   },
   {
     icon: History,
     title: 'ตรวจสอบย้อนหลังได้ทุกการเปลี่ยนแปลง',
     en: 'Full Audit Trail',
-    desc: 'ทุกการกระทำถูกบันทึกเวลาและผู้ใช้ สร้างรายงานการตรวจสอบได้ตลอดเวลา',
+    desc: 'ทุกการกระทำถูกบันทึกเวลาและผู้ใช้ปัจจุบัน ค้นดู/กรอง/ส่งออก CSV ได้จากศูนย์บันทึกตรวจสอบ พร้อมนโยบายเก็บรักษา (meta-audit)',
   },
   {
     icon: ShieldCheck,
@@ -144,13 +184,12 @@ const SECURITY = [
 
 const SOURCES = [
   { icon: Table2, name: 'CSV' },
-  { icon: FileSpreadsheet, name: 'Excel' },
-  { icon: Database, name: 'PostgreSQL' },
-  { icon: Server, name: 'MS SQL Server' },
-  { icon: Globe, name: 'REST API' },
+  { icon: Braces, name: 'JSON' },
+  { icon: Database, name: 'MySQL' },
+  { icon: Server, name: 'PostgreSQL' },
 ]
 
-const STANDARDS = ['ISO 8000', 'ISO/IEC 25012', 'DAMA-DMBOK', 'DCAM', 'BCBS 239', 'PDPA (TH)']
+const STANDARDS = ['ISO 8000', 'ISO/IEC 25012', 'ISO/IEC 11179', 'DAMA-DMBOK', 'DCAM', 'BCBS 239', 'PDPA (TH)']
 
 /* -------------------------------- component ------------------------------- */
 
@@ -178,12 +217,12 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
               <span className="block text-emerald-700">อย่างถูกต้อง ตรวจสอบได้ ปลอดภัย</span>
             </h1>
             <p className="mt-4 max-w-xl text-base text-muted-foreground">
-              Enterprise Data Quality Platform ช่วยตรวจสอบคุณภาพข้อมูลครบทั้ง 9 มิติ
-              สร้างกฎแบบไม่ต้องเขียนโค้ด พร้อม AI ช่วยแจ้งเตือนความผิดปกติที่ต้องผ่านการทบทวนโดยมนุษย์เสมอ
-              ปฏิบัติตาม PDPA และมาตรฐานสากล
+              Enterprise Data Quality Platform ครบทั้งวงจร: นำเข้าและจัดโครงสร้างสินทรัพย์ข้อมูล (Data Domain · ข้อมูลอ้างอิง · Lineage)
+              ตรวจสอบคุณภาพครบ 9 มิติด้วยกฎแบบไม่ต้องเขียนโค้ด พร้อม AI ช่วยแจ้งเตือนที่ต้องผ่านการทบทวนโดยมนุษย์เสมอ
+              ทุกการเปลี่ยนแปลงบันทึกตรวจสอบย้อนหลังได้ ปฏิบัติตาม PDPA และมาตรฐานสากล
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <Button size="lg" className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => onNavigate('rules')}>
+              <Button size="lg" className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => onNavigate('rule-library')}>
                 เริ่มสร้างกฎคุณภาพข้อมูล
                 <ArrowRight className="size-4" aria-hidden="true" />
               </Button>
@@ -195,8 +234,8 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
               {[
                 { value: '9', label: 'มิติคุณภาพข้อมูล', en: 'DQ Dimensions' },
                 { value: '8', label: 'บทบาทผู้ใช้', en: 'User Roles' },
-                { value: '23', label: 'ฟังก์ชันหลัก', en: 'Core Functions' },
-                { value: '5', label: 'แหล่งข้อมูลรองรับ', en: 'Data Sources' },
+                { value: '10', label: 'เงื่อนไขตรวจสอบกลาง', en: 'Shared Conditions' },
+                { value: '4', label: 'แหล่งข้อมูลรองรับ', en: 'Data Sources' },
               ].map((stat) => (
                 <div key={stat.en} className="rounded-xl border bg-card p-4 shadow-sm">
                   <dt className="sr-only">{stat.label}</dt>
@@ -244,6 +283,10 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
                     </li>
                   ))}
                 </ul>
+                <p className="rounded-md border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5 text-[11px] text-emerald-900">
+                  เงื่อนไข IN_LIST / REFERENCE_MATCH มี “โหมดทะเบียน” — พารามิเตอร์จะระบุ [ทะเบียน: ชื่อทะเบียน]
+                  ให้ใช้ค่าจากข้อมูลอ้างอิงศูนย์กลาง (แก้ที่ทะเบียน กฎใช้ใหม่ทันที)
+                </p>
               </CardContent>
             </Card>
           </motion.div>
@@ -277,7 +320,7 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <p className="text-sm text-muted-foreground">{d.desc}</p>
+                <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{d.desc}</p>
                 <p className="mt-2 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
                   <span className="font-medium text-slate-600">เอนจินประเมินผล:</span>
                   {d.engines.map((e) => (
@@ -319,7 +362,7 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <p className="text-sm text-muted-foreground">{f.desc}</p>
+                <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{f.desc}</p>
               </CardContent>
             </Card>
           ))}
@@ -341,6 +384,9 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
               </span>
             ))}
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            ไฟล์ CSV ตรวจหาตัวคั่นอัตโนมัติ · JSON รองรับอาร์เรย์/วัตถุซ้อน · ฐานข้อมูล MySQL และ PostgreSQL เชื่อมต่อแบบอ่านอย่างเดียว (SELECT)
+          </p>
         </div>
       </section>
 
@@ -349,11 +395,11 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
         <div className="mb-6 max-w-2xl">
           <Badge variant="outline" className="mb-3 border-emerald-300 bg-emerald-50 text-emerald-800">Workflow</Badge>
           <h2 id="workflow-title" className="text-xl font-bold tracking-tight sm:text-2xl">
-            ขั้นตอนการใช้งาน 5 ขั้นตอน
+            ขั้นตอนการใช้งาน 6 ขั้นตอน
           </h2>
           <p className="mt-2 text-muted-foreground">จากข้อมูลดิบสู่ข้อมูลที่ผ่านการรับรองคุณภาพ พร้อมตรวจสอบย้อนหลังได้ทุกจุด</p>
         </div>
-        <ol className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {WORKFLOW.map((w) => (
             <li key={w.step}>
               <Card className="h-full transition-shadow hover:shadow-md">
@@ -368,7 +414,7 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
                   <CardDescription className="text-xs">{w.en}</CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0">
-                  <p className="text-sm text-muted-foreground">{w.desc}</p>
+                  <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{w.desc}</p>
                 </CardContent>
               </Card>
             </li>
@@ -409,7 +455,7 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <p className="text-sm text-muted-foreground">{s.desc}</p>
+                <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{s.desc}</p>
               </CardContent>
             </Card>
           ))}
