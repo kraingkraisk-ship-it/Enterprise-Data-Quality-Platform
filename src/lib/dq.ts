@@ -731,14 +731,13 @@ export function generateMlSignals(rows: Row[]): MlSignalDraft[] {
 
 /* --------------------------- PII masking ---------------------------------- */
 
-/** บทบาทที่ได้เห็น PII แบบไม่ปิดบัง (least privilege) */
-export const PII_UNMASKED_ROLES: RoleKey[] = [
-  'DATA_OWNER',
-  'DATA_STEWARD',
-  'DQ_ANALYST',
-  'COMPLIANCE_OFFICER',
-  'SYS_ADMIN',
-]
+/**
+ * บทบาทที่ได้เห็น PII แบบไม่ปิดบัง (v0.34.0 — นโยบายผู้ใช้: เห็นได้เฉพาะ "เจ้าของข้อมูล")
+ * เดิม (≤ v0.33.0) ให้ 5 บทบาทเห็น PII — ผู้ใช้เสนอหลัก least privilege เข้มขึ้น:
+ * เฉพาะ DATA_OWNER (เจ้าของข้อมูล) เท่านั้นที่เห็นข้อมูลส่วนบุคคลแบบเต็ม
+ * บทบาทอื่นทั้งหมด (รวมผู้ดูแลระบบ) เห็นเวอร์ชันปิดบัง — ตรวจสอบได้ผ่านหน้า DQ แดชบอร์ด
+ */
+export const PII_UNMASKED_ROLES: RoleKey[] = ['DATA_OWNER']
 
 export function canSeePii(role: string): boolean {
   return PII_UNMASKED_ROLES.includes(role as RoleKey)

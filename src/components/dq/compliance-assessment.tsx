@@ -29,7 +29,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { FRAMEWORKS } from '@/lib/regulation'
+import { FRAMEWORKS, riskBandOf } from '@/lib/regulation'
 
 /* ------------------------------- types ----------------------------------- */
 
@@ -533,6 +533,30 @@ export default function ComplianceAssessment({ active }: { active: boolean }) {
                 <span className="mx-1">·</span>
                 วัดได้ {f.measurableClauses}/{f.totalClauses} ข้อ
               </p>
+              {/* v0.34.0 — การ์ดเลือกแสดงความเสี่ยง Inherent→Residual ครบ 5 มาตรฐาน
+                  (หน้านี้เป็นจุดเดียวของ "ความเสี่ยงรายมาตรฐาน" — ยุบแท็บรายมาตรฐานของแดชบอร์ด Risk มารวมที่นี่) */}
+              {f.inherentAvg !== null && f.residualAvg !== null ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span
+                    className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${riskBandOf(f.inherentAvg).className}`}
+                    title={`Inherent ระดับ${riskBandOf(f.inherentAvg).label} (คะแนน ${f.inherentAvg.toFixed(1)}/25)`}
+                  >
+                    {riskBandOf(f.inherentAvg).label}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10.5px] font-semibold text-rose-700">{f.inherentAvg.toFixed(1)}</span>
+                  <ChevronRight className="size-3 shrink-0 text-slate-400" aria-hidden="true" />
+                  <span
+                    className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${riskBandOf(f.residualAvg).className}`}
+                    title={`Residual ระดับ${riskBandOf(f.residualAvg).label} (คะแนน ${f.residualAvg.toFixed(1)}/25)`}
+                  >
+                    {riskBandOf(f.residualAvg).label}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10.5px] font-bold text-emerald-700">{f.residualAvg.toFixed(1)}</span>
+                  <span className="shrink-0 text-[9.5px] text-slate-400">/25</span>
+                </div>
+              ) : (
+                <p className="mt-1.5 text-[10px] text-muted-foreground">ความเสี่ยง: ยังไม่มีกฎแมปมาตรฐานนี้</p>
+              )}
             </button>
           )
         })}

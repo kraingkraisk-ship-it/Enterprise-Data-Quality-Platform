@@ -285,13 +285,45 @@ async function main() {
   await ensureColMapping(elCurrency.id, (await prisma.dataAsset.findFirst({ where: { name: 'อัตราแลกเปลี่ยนรายวัน' } }))!.id, 'currency')
   log.push('mapping: MP-0001 DIRECT (EL-0001→EL-0004) + แมปคอลัมน์จริง 3 เส้น')
 
-  /* ---------------- 9) Audit log เริ่มต้น ---------------- */
+  /* ---------------- 9) แผนงาน DQ 2026–2030 (v0.34.0 — ProjectTask) ---------------- */
+  // แผนแม่บท: ปี 2026 ทวนสอบโดเมนหลักที่มีข้อมูลอยู่แล้ว (ลูกค้า/การเงิน/สินเชื่อ) — ปีถัดไปขยายโดเมนอื่นถึง 2030
+  // แต่ละ Task มีน้ำหนักคะแนน ×1–×5 และความคืบหน้า 0–100 (สถานะ derive จาก progress)
+  const PLAN_TASKS: Array<{
+    title: string; detail: string; domainLabel: string; year: number; quarter: number;
+    weight: number; progress: number; ownerRole: string; sortOrder: number;
+  }> = [
+    { title: 'ทวนสอบความสมบูรณ์ทะเบียนลูกค้าองค์กร (ครบถ้วน/ไม่ซ้ำ)', detail: 'กฎ NOT_NULL/UNIQUE รหัสลูกค้า — จัดเก็บหลักฐานผลรันตรวจ', domainLabel: 'ข้อมูลลูกค้า', year: 2026, quarter: 1, weight: 5, progress: 100, ownerRole: 'DATA_OWNER', sortOrder: 1 },
+    { title: 'ทวนสอบรูปแบบอีเมล/เบอร์โทรติดต่อลูกค้า', detail: 'กฎ EMAIL — แก้ค่าที่รูปแบบไม่ถูกต้องจากโปรไฟล์ข้อมูล', domainLabel: 'ข้อมูลลูกค้า', year: 2026, quarter: 2, weight: 3, progress: 100, ownerRole: 'DATA_STEWARD', sortOrder: 2 },
+    { title: 'จัดระดับชั้นข้อมูล (Classification) ลูกค้าทุกกลุ่ม', detail: 'CONFIDENTIAL/INTERNAL ตามนโยบาย PDPA', domainLabel: 'ข้อมูลลูกค้า', year: 2026, quarter: 3, weight: 2, progress: 75, ownerRole: 'COMPLIANCE_OFFICER', sortOrder: 3 },
+    { title: 'ทวนสอบความถูกต้องอัตราแลกเปลี่ยนรายวัน', detail: 'กฎ REFERENCE_MATCH สกุลเงิน + MAX_AGE_DAYS 7 วัน', domainLabel: 'ข้อมูลการเงิน', year: 2026, quarter: 1, weight: 4, progress: 100, ownerRole: 'DATA_STEWARD', sortOrder: 4 },
+    { title: 'ทวนสอบช่วงค่าอัตราดอกเบี้ย/ค่าธรรมเนียม', detail: 'กฎ RANGE — ตรวจค่านอกช่วงที่ธนาคารประกาศ', domainLabel: 'ข้อมูลการเงิน', year: 2026, quarter: 2, weight: 3, progress: 50, ownerRole: 'DQ_ANALYST', sortOrder: 5 },
+    { title: 'ทวนสอบความครบถ้วนไฟล์สินเชื่อรายเดือน', detail: 'ไฟล์จากระบบสินเชื่อ — ตรวจแถวว่างของวงเงิน/วันสัญญา', domainLabel: 'ข้อมูลสินเชื่อ', year: 2026, quarter: 3, weight: 4, progress: 40, ownerRole: 'DATA_STEWARD', sortOrder: 6 },
+    { title: 'ทวนสอบรหัสสาขา/หน่วยงานเจ้าของสินเชื่อ', detail: 'แมปกับทะเบียนอ้างอิงหน่วยงาน', domainLabel: 'ข้อมูลสินเชื่อ', year: 2026, quarter: 4, weight: 2, progress: 0, ownerRole: 'DATA_STEWARD', sortOrder: 7 },
+    { title: 'ทวนสอบยอดเงินฝากรายวันเทียบระบบแกน', detail: 'Reconcile กับระบบ core banking', domainLabel: 'ข้อมูลเงินฝาก', year: 2027, quarter: 1, weight: 5, progress: 0, ownerRole: 'DATA_OWNER', sortOrder: 8 },
+    { title: 'ทวนสอบความเป็นเอกภาพรหัสสถานะลูกหนี้', detail: 'IN_LIST ตามทะเบียนสถานะ', domainLabel: 'ข้อมูลสินเชื่อ', year: 2027, quarter: 2, weight: 3, progress: 0, ownerRole: 'DQ_ANALYST', sortOrder: 9 },
+    { title: 'ทวนสอบข้อมูลความเสี่ยง (NPL/พึงผูกพัน) รายเดือน', detail: 'เกณฑ์ BCBS 239 — ความถูกต้อง/ตรวจสอบย้อนหลังได้', domainLabel: 'ข้อมูลความเสี่ยง', year: 2027, quarter: 3, weight: 5, progress: 0, ownerRole: 'DATA_OWNER', sortOrder: 10 },
+    { title: 'ทวนสอบประวัติคะแนนความเสี่ยงลูกค้า (Risk Score)', detail: 'ช่วงค่า + ความเปลี่ยนแปลงผิดปกติข้ามรอบ', domainLabel: 'ข้อมูลความเสี่ยง', year: 2028, quarter: 1, weight: 4, progress: 0, ownerRole: 'DQ_ANALYST', sortOrder: 11 },
+    { title: 'ทวนสอบข้อมูลการตลาด — ความยินยอม (Consent) PDPA', detail: 'ธง consent ครบถ้วน/อ้างอิงถูกต้อง', domainLabel: 'ข้อมูลการตลาด', year: 2028, quarter: 2, weight: 4, progress: 0, ownerRole: 'COMPLIANCE_OFFICER', sortOrder: 12 },
+    { title: 'ทวนสอบความสมบูรณ์ข้อมูลผู้เบิกจ่าย/ที่อยู่', detail: 'ซ้ำซ้อน/ไม่ครบก่อนออกหนังสือ', domainLabel: 'ข้อมูลทรัพยากรบุคคล', year: 2029, quarter: 1, weight: 2, progress: 0, ownerRole: 'DATA_STEWARD', sortOrder: 13 },
+    { title: 'ทวนสอบข้อมูลจัดซื้อ — รหัสคู่ค้า/เลขผู้เสียภาษี', detail: 'แมปทะเบียนคู่ค้า ตรวจรูปแบบเลขผู้เสียภาษี', domainLabel: 'ข้อมูลการจัดซื้อ', year: 2030, quarter: 1, weight: 3, progress: 0, ownerRole: 'DATA_STEWARD', sortOrder: 14 },
+    { title: 'ทวนสอบสิทธิ์เข้าถึงข้อมูลไอที (Access Review)', detail: 'RBAC รายชุดข้อมูล — ตรวจบัญชีค้าง/สิทธิ์เกิน', domainLabel: 'ข้อมูลระบบไอที', year: 2030, quarter: 2, weight: 3, progress: 0, ownerRole: 'SYS_ADMIN', sortOrder: 15 },
+  ]
+  let planCreated = 0
+  for (const t of PLAN_TASKS) {
+    const exists = await prisma.projectTask.findFirst({ where: { title: t.title, domainLabel: t.domainLabel, year: t.year } })
+    if (exists) continue
+    await prisma.projectTask.create({ data: { ...t, createdBy: 'sys.admin@company.co.th', updatedBy: 'sys.admin@company.co.th' } })
+    planCreated++
+  }
+  log.push(`project plan: แผนงาน DQ 2026–2030 ${PLAN_TASKS.length} task 8 โดเมน (เพิ่มใหม่ ${planCreated})`)
+
+  /* ---------------- 10) Audit log เริ่มต้น ---------------- */
   const auditCount = await prisma.auditLog.count()
   if (auditCount === 0) {
     await prisma.auditLog.create({
       data: {
         action: 'SEED_DEMO', actor: 'sys.admin@company.co.th', target: 'platform',
-        detail: 'สร้างข้อมูลสาธิตเริ่มต้นครบวงจร (v0.33.0): ผู้ใช้ 8 บทบาท · โดเมน 2 · asset/dataset 2 ชุด · ทะเบียน RD-0001/RD-0002 · เงื่อนไข 10 · กฎ 8 · แมป 1',
+        detail: 'สร้างข้อมูลสาธิตเริ่มต้นครบวงจร (v0.34.0): ผู้ใช้ 8 บทบาท · โดเมน 2 · asset/dataset 2 ชุด · ทะเบียน RD-0001/RD-0002 · เงื่อนไข 10 · กฎ 8 · แมป 1 · แผนงาน DQ 2026–2030',
       },
     })
     log.push('audit: SEED_DEMO 1 รายการ')

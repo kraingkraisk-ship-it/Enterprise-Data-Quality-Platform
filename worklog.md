@@ -1885,3 +1885,21 @@ Work Log:
 Stage Summary:
 - PAT ใหม่ใช้งานได้ครบ (อ่าน 200 + เขียน 201 + push สำเร็จ) พร้อมใช้เวิร์กโฟลว์ถัดไป
 - ระบบอยู่ที่ v0.33.0 สมบูรณ์: sync 100% ไม่มีงานค้าง push · 18 หน้า + ระบบ login · รอคำสั่งถัดไปจากผู้ใช้
+
+---
+Task ID: 62
+Agent: Z.ai Code (main orchestrator)
+Task: v0.34.0 — ปรับปรุง DQ Dashboard ตาม feedback 5 ข้อ (PII เฉพาะเจ้าของข้อมูล · รวมมุมซ้ำ 3 จุด · แผนงาน DQ 2026–2030)
+
+Work Log:
+- **Point 1 — PII เห็นได้เฉพาะเจ้าของข้อมูล (รับไอเดียผู้ใช้)**: PII_UNMASKED_ROLES จาก 5 บทบาท → ['DATA_OWNER'] เท่านั้น · **ปิดจุดอ่อนปลอมบทบาท**: sample-preview/dataset-preview รับ role จาก query param + failures รับ operatorEmail (ปลอมเป็นเจ้าของข้อมูลแล้วเห็น PII) → ทั้ง 3 API อ่านบทบาทจาก session จริงผ่าน resolveViewerRole() ใหม่ (ไม่มี session/บัญชีถูกระงับ → BUSINESS_USER เข้มสุด) · ลบ param role จากฝั่ง client ทั้งหมด (dq-dashboard/core-features-console) · ปรับข้อความหน้าจอ "เห็นได้เฉพาะเจ้าของข้อมูล (Data Owner) เท่านั้น"
+- **Point 2 — Regulation ยุบจุดแสดงซ้ำ**: ลบส่วน "ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน" (แสดงมาตรฐานซ้ำกับการ์ดเลือกด้านบน) → ยุบ Inherent→Residual + %ลดลง ใส่การ์ดเลือก 5 กรอบใบเดียว (การ์ดเดียวครบ คะแนนรวม+วัดได้+ความเสี่ยง) พร้อม fallback ข้อความเมื่อไม่มีกฎแมป + บรรทัดชี้ทางไปเมนู ประเมินความสอดคล้อง
+- **Point 3 — Risk: Risk Matrix เหลือจุดเดียว**: scope switcher 3 แท็บ (แสดง Matrix/Impact ซ้ำทุกแท็บ) → 2 แท็บเนื้อหาต่างกัน: รายมิติ DQ (ตาราง Inherent/Residual + Risk Matrix + Data Quality Impact + Risk Methodology) · รายประเภทข้อมูล (ตาราง + ความเสี่ยงเด่นรายประเภท [group risks.items] + ผลกระทบธุรกิจรายประเภท [impacts/avgScore/focusScore จาก Data Classification]) — ไม่มี Matrix ซ้ำ
+- **Point 4 — รวมความเสี่ยงรายมาตรฐานที่ ประเมินความสอดคล้อง จุดเดียว**: ยืนยันความซ้ำซ้อน (compliance มีมิติลึกกว่า: รายข้อ → รายกฎ → ประวัติรัน) → ลบแท็บ "รายมาตรฐาน" ออกจาก Risk + เพิ่มปุ่มลิงก์ "ความเสี่ยงรายมาตรฐาน → ประเมินความสอดคล้อง" + การ์ดเลือกของหน้า compliance เพิ่ม chip Inherent→Residual ครบ 5 มาตรฐาน (เทียบกันได้ในหน้าเดียว)
+- **Point 5 — เมนูใหม่ "แผนงาน DQ" (DQ Project Plan)**: ProjectTask (title/domainLabel/year/quarter/weight×1–5/progress 0–100/ownerRole) · RBAC สิทธิ์ใหม่ MANAGE_PROJECT_PLAN (เจ้าของข้อมูล·ผู้ดูแลข้อมูล·ผู้ดูแลระบบ) · API /api/dq/project-plan GET/POST/PATCH/DELETE (resolveOperator+AuditLog CREATE/UPDATE/DELETE_PROJECT_TASK กลุ่ม DQ) · หน้าจอ: Progress รวมถ่วงน้ำหนัก Σ(w×p)/Σw · การ์ดรายปี 2026–2030 · สรุป "ทวนสอบปี 2026" ครอบคลุมกี่โดเมน/เหลือกี่โดเมน (ชื่อโดเมนที่เหลือ) · แผนที่ Gantt โดเมน×ปี (เซลล์ = task Q+progress, คอลัมน์ปีปัจจุบันไฮไลต์) · รายการ Task แก้ progress/น้ำหนักผ่าน Select + เพิ่มผ่าน Dialog (datalist ชื่อโดเมนจากทะเบียน) + ลบผ่าน AlertDialog · seed แผนสาธิต 15 task 8 โดเมน (ปี 2026 ตรวจ 3 โดเมน — ขยายถึง 2030)
+- แก้บั๊กระหว่างทาง: (1) dev server หลัง prisma db push ต้องรีสตาร์ทให้ client ใหม่ (2) sandbox reaper kill next dev ที่สตาร์ทผ่าน `bun run dev` (pipeline tee) — ใช้ `setsid bash -c 'exec -a ... ./node_modules/.bin/next dev'` ตรงแทน + ทำ E2E ต่อชุดใน call เดียว
+- E2E พิสูจน์สด: curl 15 เคส (PII: OWNER เห็นจริง/STEWARD+ADMIN+BIZ mask/ปลอม role param+operatorEmail ไม่มีผล/401 ไม่ login · plan: 403 BIZ+ปลอม email/POST-PATCH-DELETE OWNER 200+audit) + browser ~46 เช็ค: login OWNER→PII badge "แสดงข้อมูลจริง"+อีเมลจริง→Regulation ไม่มีส่วนซ้ำ+การ์ดรวม→Risk 2 แท็บ Matrix เฉพาะรายมิติ+ลิงก์ compliance→แผนงาน DQ ครบ (31.9%·เหลือ 6 โดเมน·Gantt)→UI แก้ progress 31.9→32.9→คืน 31.9→UI เพิ่ม/ลบ Task 15→16→15→compliance การ์ด 5 มาตรฐานมี /25→logout→STEWARD PII ปิดบัง (email/เบอร์ mask)→BIZ แผนงานดูอย่างเดียว (ไม่มีปุ่มเพิ่ม)→mobile 375 ไม่ overflow 3 หน้า→footer ท้ายเอกสาร→0 page error · lint ผ่าน
+
+Stage Summary:
+- แดชบอร์ดลดความซ้ำซ้อน 3 จุดตาม feedback: PII เข้มขึ้น (เฉพาะเจ้าของข้อมูล+session-based ปลอมไม่ได้) · Regulation การ์ดเดียวจบ · Risk เหลือ 2 มุมมองเนื้อหาไม่ทับกัน · ความเสี่ยงรายมาตรฐานอยู่ที่ ประเมินความสอดคล้อง จุดเดียว
+- เพิ่มมิติบริหารแผนงาน: เห็นภาพทวนสอบ Data Domain 2026–2030 + Progress ถ่วงน้ำหนักจาก Task + จัดการ Task พร้อม Audit Trail ครบ · ระบบอยู่ที่ v0.34.0 · 18+1 หน้า

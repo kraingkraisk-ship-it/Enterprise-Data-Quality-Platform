@@ -760,3 +760,27 @@ model AuditPolicy {
   updatedBy     String? // email ผู้บันทึกล่าสุด (audit trail)
   updatedAt     DateTime @updatedAt
 }
+
+// แผนงาน DQ (v0.34.0) — Task ของแผนทวนสอบคุณภาพข้อมูลราย Data Domain รายปี (2026–2030)
+// แต่ละ Task มี "น้ำหนักคะแนน" (weight 1–5) และ "ความคืบหน้า" (progress 0–100)
+// หน้า "แผนงาน DQ" รวม progress แบบถ่วงน้ำหนัก: Σ(weight×progress)/Σ(weight) ทั้งระบบ รายปี และราย Data Domain
+// สถานะ: 0 = วางแผน · 1–99 = กำลังดำเนินการ · 100 = เสร็จสิ้น (derive จาก progress)
+model ProjectTask {
+  id          String   @id @default(cuid())
+  title       String
+  detail      String   @default("")
+  // แนวงานตาม Data Domain (ชื่อโดเมนเพื่อ group แผนแม่บท 2026–2030 — สอดคล้องชื่อ DataDomain ในระบบ)
+  domainLabel String
+  year        Int // ปีแผนงาน ค.ศ. เช่น 2026
+  quarter     Int      @default(1) // ไตรมาสเริ่มต้น 1–4
+  weight      Int      @default(1) // น้ำหนักคะแนน 1–5 (task ใหญ่/สำคัญ = น้ำหนักมาก)
+  progress    Int      @default(0) // ความคืบหน้า 0–100
+  ownerRole   String   @default("DATA_STEWARD") // บทบาทผู้รับผิดชอบหลัก (RoleKey)
+  sortOrder   Int      @default(0)
+  createdBy   String   @default("") // email ผู้สร้าง (audit trail)
+  updatedBy   String? // email ผู้บันทึกล่าสุด (audit trail)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([year, domainLabel])
+}

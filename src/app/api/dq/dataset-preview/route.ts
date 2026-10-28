@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isValidRole } from '@/lib/rbac'
+import { resolveViewerRole } from '@/lib/operator'
 import { canSeePii, maskRowByRole, type Row } from '@/lib/dq'
 
 /**
- * ตัวอย่างข้อมูลแบบ sandbox สำหรับ Rule Builder — รองรับหลายชุดข้อมูลในครั้งเดียว
+ * ตัวอย่างข้อมูลแบบ sandbox สำหรับ Rule Builder — รองรับหลายชุดข้อมูลในครั้งเดียว (v0.34.0)
  * - แสดงแถวตัวอย่าง (ปิดบัง PII ฝั่ง backend ตามบทบาทเสมอ)
+ * - บทบาทผู้ชมอ่านจาก session ผู้เข้าสู่ระบบจริง — เดิมรับ role จาก query param (ปลอมได้)
+ *   นโยบาย v0.34.0: เห็น PII ไม่ปิดบังได้เฉพาะเจ้าของข้อมูล (DATA_OWNER)
  * - สรุปคอลัมน์ทั้งหมด (union) พร้อมข้อมูลว่าคอลัมน์ใดมีในชุดข้อมูลใด
  *   เพื่อให้เลือกคอลัมน์สำหรับกฎที่ใช้ร่วมหลายชุดข้อมูลได้อย่างถูกต้อง
  */
 export async function GET(req: NextRequest) {
   try {
     const idsParam = req.nextUrl.searchParams.get('datasetIds')?.trim() ?? ''
-    const role = req.nextUrl.searchParams.get('role')?.trim().toUpperCase() ?? ''
+    const role = await resolveViewerRole()
     const rowsPerDataset = Math.min(Math.max(Number(req.nextUrl.searchParams.get('rows') ?? '5'), 1), 20)
 
     if (!idsParam) return NextResponse.json({ error: 'กรุณาระบุ datasetIds' }, { status: 400 })
-    if (!isValidRole(role)) return NextResponse.json({ error: 'บทบาทไม่ถูกต้อง' }, { status: 400 })
 
     const datasetIds = [...new Set(idsParam.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 12)
     if (datasetIds.length === 0) return NextResponse.json({ error: 'กรุณาระบุ datasetIds' }, { status: 400 })

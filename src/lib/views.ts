@@ -1,5 +1,6 @@
 import {
   BookMarked,
+  CalendarRange,
   ClipboardCheck,
   ClipboardList,
   Crown,
@@ -28,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.33.0'
+export const APP_VERSION = 'v0.34.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -53,7 +54,7 @@ export type DqViewKey = 'scorecard' | 'rule-library' | 'profiling' | 'validation
 export type GovViewKey = 'rbac' | 'audit-center' | 'about'
 
 /** มุมมองทั้งหมดของแอป (รวม Data Asset, Governance และหน้าแนะนำแพลตฟอร์ม) */
-export type ViewKey = CoreViewKey | AssetViewKey | DqViewKey | ExecViewKey | GovViewKey | 'compliance-assessment' | 'about'
+export type ViewKey = CoreViewKey | AssetViewKey | DqViewKey | ExecViewKey | GovViewKey | 'compliance-assessment' | 'project-plan' | 'about'
 
 export interface ViewMeta {
   key: ViewKey
@@ -82,8 +83,15 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'compliance-assessment',
     th: 'ประเมินความสอดคล้อง',
     en: 'Compliance Assessment',
-    desc: 'ประเมินความเสี่ยงและความสอดคล้องรายมาตรฐาน (Inherent → Residual) จากเกณฑ์ตรวจที่ทำงานได้จริงของแต่ละข้อกำหนด — เลือกมาตรฐาน ชุดข้อมูล และเจาะรายข้อพร้อมประวัติผลรัน',
+    desc: 'จุดเดียวของความเสี่ยงรายมาตรฐาน (v0.34.0): ประเมิน Inherent → Residual + คะแนนความสอดคล้องรายมาตรฐาน จากเกณฑ์ตรวจที่ทำงานได้จริง — เลือกมาตรฐาน ชุดข้อมูล และเจาะรายข้อพร้อมประวัติผลรัน',
     icon: ClipboardCheck,
+  },
+  'project-plan': {
+    key: 'project-plan',
+    th: 'แผนงาน DQ',
+    en: 'DQ Project Plan',
+    desc: 'แผนแม่บททวนสอบคุณภาพข้อมูล 2026–2030 ราย Data Domain (v0.34.0): Progress ถ่วงน้ำหนักจาก Task รายงาน · แผนที่โดเมน×ปี แบบ Gantt · ทวนสอบปีนี้ครบหรือยัง เหลืออีกกี่โดเมน',
+    icon: CalendarRange,
   },
   scorecard: {
     key: 'scorecard',
@@ -235,7 +243,7 @@ export interface NavGroup {
 }
 
 export const NAV_GROUPS: NavGroup[] = [
-  { labelTh: 'ภาพรวม', labelEn: 'Overview', items: ['dashboard', 'exec-dashboard', 'compliance-assessment'] },
+  { labelTh: 'ภาพรวม', labelEn: 'Overview', items: ['dashboard', 'exec-dashboard', 'compliance-assessment', 'project-plan'] },
   {
     labelTh: 'สินทรัพย์ข้อมูล',
     labelEn: 'Data Asset',

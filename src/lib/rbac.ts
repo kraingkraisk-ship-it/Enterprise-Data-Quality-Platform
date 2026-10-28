@@ -27,6 +27,7 @@ export const PERMISSION_KEYS = [
   'MANAGE_ISSUES',
   'VIEW_DASHBOARDS',
   'VIEW_EXEC_DASHBOARD',
+  'MANAGE_PROJECT_PLAN',
   'MANAGE_USERS',
 ] as const
 
@@ -42,6 +43,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, { th: string; en: string }
   MANAGE_ISSUES: { th: 'จัดการปัญหาคุณภาพข้อมูล', en: 'Manage DQ Issues' },
   VIEW_DASHBOARDS: { th: 'ดูแดชบอร์ด', en: 'View Dashboards' },
   VIEW_EXEC_DASHBOARD: { th: 'ดูแดชบอร์ดผู้บริหาร', en: 'View Executive Dashboard' },
+  MANAGE_PROJECT_PLAN: { th: 'จัดการแผนงาน DQ', en: 'Manage DQ Project Plan' },
   MANAGE_USERS: { th: 'จัดการผู้ใช้และสิทธิ์', en: 'Manage Users' },
 }
 
@@ -70,6 +72,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'MANAGE_ISSUES',
       'VIEW_DASHBOARDS',
       'VIEW_EXEC_DASHBOARD',
+      'MANAGE_PROJECT_PLAN',
     ],
     scope: 'เห็นเฉพาะชุดข้อมูลที่ตนเป็นเจ้าของหรือได้รับมอบสิทธิ์',
   },
@@ -87,6 +90,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'MANAGE_ISSUES',
       'VIEW_DASHBOARDS',
       'VIEW_EXEC_DASHBOARD',
+      'MANAGE_PROJECT_PLAN',
     ],
     scope: 'เห็นเฉพาะชุดข้อมูลในโดเมนที่รับผิดชอบ',
   },
@@ -143,6 +147,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'MANAGE_ISSUES',
       'VIEW_DASHBOARDS',
       'VIEW_EXEC_DASHBOARD',
+      'MANAGE_PROJECT_PLAN',
       'MANAGE_USERS',
     ],
     scope: 'จัดการการเข้าถึงทุกชุดข้อมูล (ไม่อนุมัติข้อยกเว้นทางธุรกิจ)',

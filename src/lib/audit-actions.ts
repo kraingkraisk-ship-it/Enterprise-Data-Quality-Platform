@@ -153,6 +153,11 @@ export const AUDIT_ACTIONS: Record<string, { th: string; group: AuditGroupKey }>
   DEPRECATE_DATA_MAPPING: { th: 'เลิกใช้การแมป', group: RULE },
 
   /* ------------------------------ กระบวนการตรวจสอบ ------------------------------ */
+  /* ---------------- แผนงาน DQ (Project Plan — v0.34.0) ---------------- */
+  CREATE_PROJECT_TASK: { th: 'เพิ่ม Task แผนงาน DQ', group: DQ },
+  UPDATE_PROJECT_TASK: { th: 'แก้ไข Task แผนงาน DQ', group: DQ },
+  DELETE_PROJECT_TASK: { th: 'ลบ Task แผนงาน DQ', group: DQ },
+
   RUN_VALIDATION: { th: 'รันตรวจสอบ', group: DQ },
   RUN_DOMAIN_VALIDATION: { th: 'รันตรวจสอบรายโดเมน', group: DQ },
   UPDATE_FAILURE_STATUS: { th: 'ปรับสถานะแถวไม่ผ่าน', group: DQ },

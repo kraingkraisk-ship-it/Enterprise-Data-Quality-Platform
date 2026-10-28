@@ -72,3 +72,18 @@ export async function resolveOperator(rawEmail: unknown, permission: PermissionK
 
   return { ok: true, ctx: { email: user.email, name: user.name, role: user.role, roleTh: roleDef.th } }
 }
+
+/**
+ * บทบาทผู้ชมจาก session (v0.34.0) — ใช้กับทุก API ที่ปิดบัง PII ตามบทบาทผู้ชม
+ * เดิมรับ role/operatorEmail/viewer จาก query/body (ปลอมได้ — ส่งอีเมลเจ้าของข้อมูลแล้วเห็น PII)
+ * v0.34.0 อ่านบทบาทจาก session cookie เท่านั้น · ไม่มี session/บัญชีหาย/ถูกระงับ → BUSINESS_USER
+ * (เข้มสุดเพื่อ PDPA-first: ตกชั้นหมายความว่า PII ถูกปิดบัง ไม่ใช่เห็นมากขึ้น)
+ */
+export async function resolveViewerRole(): Promise<string> {
+  const store = await cookies()
+  const session = await verifySession(store.get(SESSION_COOKIE)?.value)
+  if (!session) return 'BUSINESS_USER'
+  const user = await db.user.findUnique({ where: { email: session.e }, select: { role: true, status: true } })
+  if (!user || user.status !== 'ACTIVE') return 'BUSINESS_USER'
+  return user.role
+}

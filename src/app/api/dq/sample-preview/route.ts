@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isValidRole } from '@/lib/rbac'
+import { resolveViewerRole } from '@/lib/operator'
 import { canSeePii, maskRowByRole, type Row } from '@/lib/dq'
 
 /**
- * ตัวอย่างแถวข้อมูลแบบ sandbox พร้อมปิดบัง PII **ฝั่ง backend** ตามบทบาท
+ * ตัวอย่างแถวข้อมูลแบบ sandbox พร้อมปิดบัง PII **ฝั่ง backend** ตามบทบาท (v0.34.0)
+ * บทบาทผู้ชมอ่านจาก **session ผู้เข้าสู่ระบบจริง** เท่านั้น — เดิมรับ role จาก query param (ปลอมได้)
+ * นโยบาย v0.34.0: เห็น PII แบบไม่ปิดบังได้เฉพาะ "เจ้าของข้อมูล" (DATA_OWNER) เท่านั้น
  * หลักการ: ห้ามส่ง PII ให้บทบาทที่ไม่มีสิทธิ์เห็นออกจากเซิร์ฟเวอร์เด็ดขาด (PII masking by default)
  */
 export async function GET(req: NextRequest) {
   try {
     const datasetId = req.nextUrl.searchParams.get('datasetId')?.trim()
-    const role = req.nextUrl.searchParams.get('role')?.trim().toUpperCase() ?? ''
-
     if (!datasetId) return NextResponse.json({ error: 'กรุณาระบุ datasetId' }, { status: 400 })
-    if (!isValidRole(role)) return NextResponse.json({ error: 'บทบาทไม่ถูกต้อง' }, { status: 400 })
+
+    const role = await resolveViewerRole()
 
     const dataset = await db.dataset.findUnique({ where: { id: datasetId } })
     if (!dataset) {
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
       rows: maskedRows,
       piiMasked,
       piiEnabled: dataset.piiEnabled,
+      viewerRole: role,
     })
   } catch (e) {
     console.error('GET /api/dq/sample-preview', e)

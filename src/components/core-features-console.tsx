@@ -348,7 +348,7 @@ interface CoreFeaturesConsoleProps {
 export default function CoreFeaturesConsole({ activeView, onViewChange, mode = 'full' }: CoreFeaturesConsoleProps) {
   const { toast } = useToast()
   /* v0.32.0 — identity ศูนย์กลาง: มุมมอง/สิทธิ์/ผู้ดำเนินการ = ผู้ใช้ปัจจุบันเดียวของทั้งระบบ */
-  const { user, roleKey } = useCurrentUser()
+  const { user } = useCurrentUser()
   const actorEmail = user?.email ?? ''
 
   // โหมด library — สลับแท็บกฎ/เงื่อนไขภายในหน้าเดียว (ไม่เปลี่ยนเมนู)
@@ -487,9 +487,8 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     }
   }, [reloadTick])
 
-  // Rule Builder — ตัวอย่างข้อมูลของชุดข้อมูลที่เลือก (รองรับหลายชุด + ปิดบัง PII ตามบทบาทผู้ดำเนินการ)
-  // v0.32.0 — บทบาทผู้ดำเนินการ = ผู้ใช้ปัจจุบันของระบบ (UserSwitcher บน header)
-  const rbOperatorRole = roleKey
+  // Rule Builder — ตัวอย่างข้อมูลของชุดข้อมูลที่เลือก (รองรับหลายชุด)
+  // v0.34.0 — บทบาทผู้ชม (PII masking) อ่านฝั่ง backend จาก session ผู้เข้าสู่ระบบ — client ไม่ส่ง role อีกต่อไป
 
   useEffect(() => {
     if (rbDatasets.length === 0) {
@@ -500,7 +499,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     let alive = true
     ;(async () => {
       try {
-        const res = await fetch(`/api/dq/dataset-preview?datasetIds=${rbDatasets.join(',')}&role=${rbOperatorRole}&rows=5`)
+        const res = await fetch(`/api/dq/dataset-preview?datasetIds=${rbDatasets.join(',')}&rows=5`)
         const data = (await res.json()) as MultiPreviewData & { error?: string }
         if (!alive) return
         if (data.error) {
@@ -515,7 +514,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     return () => {
       alive = false
     }
-  }, [rbDatasets, rbOperatorRole])
+  }, [rbDatasets])
 
   // คงตัวอย่างที่แสดงไว้กับชุดข้อมูลที่ยังเลือกอยู่ — ถ้าหลุดให้สลับไปชุดแรกที่เลือก
   useEffect(() => {
@@ -571,7 +570,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     let alive = true
     ;(async () => {
       try {
-        const res = await fetch(`/api/dq/dataset-preview?datasetIds=${rbRefDatasetIds.join(',')}&role=${rbOperatorRole}&rows=5`)
+        const res = await fetch(`/api/dq/dataset-preview?datasetIds=${rbRefDatasetIds.join(',')}&rows=5`)
         const data = (await res.json()) as MultiPreviewData & { error?: string }
         if (!alive) return
         setRefPreview(data.error ? null : data)
@@ -582,7 +581,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     return () => {
       alive = false
     }
-  }, [rbRefDatasetIds, rbOperatorRole])
+  }, [rbRefDatasetIds])
 
   const refColumnsByDataset = useMemo(
     () => new Map((refPreview?.previews ?? []).map((p) => [p.datasetId, p.columns])),
@@ -2419,7 +2418,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
 
       {/* ===================== TAB 4: DASHBOARD — 5 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Regulation / Risk / Data Classification) ===================== */}
       <TabsContent value="dashboard" className="mt-4">
-        <DqDashboard datasets={datasets} reloadTick={reloadTick} onRefetch={refetch} onGoMlCenter={() => onViewChange('ml-center')} />
+        <DqDashboard datasets={datasets} reloadTick={reloadTick} onRefetch={refetch} onGoMlCenter={() => onViewChange('ml-center')} onGoCompliance={() => onViewChange('compliance-assessment')} />
       </TabsContent>
     </Tabs>
   )

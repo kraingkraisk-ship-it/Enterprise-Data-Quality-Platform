@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { resolveViewerRole } from '@/lib/operator'
 import { isDimensionKey, maskValueByRole, type Row } from '@/lib/dq'
 
 /**
  * GET /api/dq/failures — รายการแถวข้อมูลที่ล้มเหลวรายแถว (Failed Records)
- * query: datasetId?, status? (NEW|FIXED|IGNORED), dimension?, severity?, search?, page?, operatorEmail?
- * - snapshot ของแถวถูกปิดบัง PII ตามบทบาทของผู้ชม (PDPA-first) — ไม่ระบุผู้ชม = ปิดบังเข้มสุด (BUSINESS_USER)
+ * query: datasetId?, status? (NEW|FIXED|IGNORED), dimension?, severity?, search?, page?
+ * - snapshot ของแถวถูกปิดบัง PII ตามบทบาทของผู้ชม (PDPA-first)
+ * - v0.34.0 — บทบาทผู้ชมอ่านจาก session ผู้เข้าสู่ระบบจริง (เดิมรับ operatorEmail จาก query — ปลอมได้)
+ *   นโยบาย: เห็น PII ไม่ปิดบังได้เฉพาะเจ้าของข้อมูล (DATA_OWNER) · ไม่มี session = ปิดบังเข้มสุด
  */
 export async function GET(req: NextRequest) {
   try {
@@ -18,15 +21,10 @@ export async function GET(req: NextRequest) {
     const pageRaw = Number(sp.get('page') ?? '1')
     const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1
     const perPage = 25
-    const operatorEmail = sp.get('operatorEmail')?.trim() ?? ''
 
-    // ผู้ชม — ใช้บทบาทจริงถ้าระบุอีเมล (ACTIVE เท่านั้น) ไม่งั้นใช้บทบาทเข้มสุดเพื่อ PDPA-first
-    let role = 'BUSINESS_USER'
+    // ผู้ชม — จาก session จริงเท่านั้น (deny หลังปิดบังเข้มสุดเพื่อ PDPA-first)
+    const role = await resolveViewerRole()
     let piiEnabled = true
-    if (operatorEmail) {
-      const user = await db.user.findUnique({ where: { email: operatorEmail }, select: { role: true, status: true } })
-      if (user && user.status === 'ACTIVE') role = user.role
-    }
 
     const where = {
       ...(datasetId ? { datasetId } : {}),

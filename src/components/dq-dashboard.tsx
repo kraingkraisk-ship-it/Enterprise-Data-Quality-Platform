@@ -379,11 +379,13 @@ interface DqDashboardProps {
   onRefetch: () => void
   /** v0.32.0 — ลิงก์ไปศูนย์ ML (ML ทั้ง 4 ตัวอยู่ที่นั่นจุดเดียว — ลดความซ้ำซ้อน) */
   onGoMlCenter: () => void
+  /** v0.34.0 — ลิงก์ไปประเมินความสอดคล้อง (ความเสี่ยงรายมาตรฐานย้ายไปรวมที่นั่นจุดเดียว) */
+  onGoCompliance: () => void
 }
 
-export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCenter }: DqDashboardProps) {
+export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCenter, onGoCompliance }: DqDashboardProps) {
   const { toast } = useToast()
-  const { user, roleKey } = useCurrentUser()
+  const { user } = useCurrentUser()
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [section, setSection] = useState<DashboardSection>('overview')
@@ -397,8 +399,8 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
   const [fwDataset, setFwDataset] = useState('all')
   const [regTab, setRegTab] = useState<'datasets' | 'clauses'>('datasets')
 
-  // section 4 — risk
-  const [riskScope, setRiskScope] = useState<'dimension' | 'framework' | 'classification'>('dimension')
+  // section 4 — risk (v0.34.0 — แท็บ "รายมาตรฐาน" ย้ายไปรวมที่เมนู ประเมินความสอดคล้อง จุดเดียว)
+  const [riskScope, setRiskScope] = useState<'dimension' | 'classification'>('dimension')
   const [matrixView, setMatrixView] = useState<'residual' | 'inherent'>('residual')
   const [methodologyOpen, setMethodologyOpen] = useState(true)
 
@@ -429,13 +431,13 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
     void loadAnalytics()
   }, [loadAnalytics, reloadTick])
 
-  // PII preview (ภาพรวม) — ใช้บทบาทผู้ใช้ปัจจุบันจาก header (v0.32.0)
+  // PII preview (ภาพรวม) — บทบาทผู้ชมอ่านฝั่ง backend จาก session ผู้เข้าสู่ระบบ (v0.34.0 — client ไม่ส่ง role)
   useEffect(() => {
     if (!previewDataset || !user) return
     let alive = true
     ;(async () => {
       try {
-        const res = await fetch(`/api/dq/sample-preview?datasetId=${encodeURIComponent(previewDataset)}&role=${roleKey}`)
+        const res = await fetch(`/api/dq/sample-preview?datasetId=${encodeURIComponent(previewDataset)}`)
         const json = await res.json()
         if (!alive) return
         setPreview(json.error ? null : json)
@@ -446,7 +448,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
     return () => {
       alive = false
     }
-  }, [previewDataset, roleKey, user])
+  }, [previewDataset, user])
 
   /* ------------------------------ actions -------------------------------- */
 
@@ -534,6 +536,13 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
   // ================= ส่วนที่ 4 — Risk: Inherent vs Residual =================
   const inherent = data?.risks.inherent ?? null
 
+  /** ความเสี่ยงรายมาตรฐาน (ใช้บนการ์ดเลือกกรอบของส่วน Regulation — v0.34.0 ยุบส่วนแสดงซ้ำออก) */
+  const fwRiskMap = useMemo(() => {
+    const m = new Map<string, RiskInherentSummary['byFramework'][number]>()
+    for (const row of inherent?.byFramework ?? []) m.set(row.frameworkId, row)
+    return m
+  }, [inherent])
+
   // แถวความเสี่ยงรายขอบเขต ตาม switcher — เรียงจาก Residual สูงสุดไปต่ำสุด
   const inherentScopeRows: RiskInherentScopeRow[] = useMemo(() => {
     if (!inherent) return []
@@ -543,16 +552,6 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
         key: r.dimension,
         label: r.th,
         sub: r.en,
-        rulesCount: r.rulesCount,
-        inherentAvg: r.inherentAvg,
-        residualAvg: r.residualAvg,
-        reductionPct: r.reductionPct,
-      }))
-    } else if (riskScope === 'framework') {
-      rows = inherent.byFramework.map((r) => ({
-        key: r.frameworkId,
-        label: r.name,
-        sub: r.no,
         rulesCount: r.rulesCount,
         inherentAvg: r.inherentAvg,
         residualAvg: r.residualAvg,
@@ -597,6 +596,31 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
     [data, selectedCls],
   )
   const selectedClsDef = DATA_CLASSIFICATIONS.find((c) => c.id === selectedCls)
+
+  /** v0.34.0 — ความเสี่ยงรวมรายประเภทข้อมูล (แท็บ "รายประเภทข้อมูล" ของส่วน Risk — เนื้อหาต่างจากแท็บรายมิติ DQ) */
+  const clsRiskRows = useMemo(() => {
+    const groups = new Map<
+      string,
+      { id: string; no: string; th: string; count: number; maxScore: number; maxBand: { band: string; label: string; className: string }; failedRows: number; top: RiskItem | null }
+    >()
+    for (const item of data?.risks.items ?? []) {
+      const label = classificationLabel(item.classification ?? '')
+      const band = riskBandOf(item.riskScore)
+      const g = groups.get(label.th)
+      if (g) {
+        g.count += 1
+        if (item.riskScore > g.maxScore) {
+          g.maxScore = item.riskScore
+          g.maxBand = { band: band.band, label: band.label, className: band.className }
+          g.top = item
+        }
+        g.failedRows += item.failedRows
+      } else {
+        groups.set(label.th, { id: item.classification ?? UNCLASSIFIED, no: label.no, th: label.th, count: 1, maxScore: item.riskScore, maxBand: { band: band.band, label: band.label, className: band.className }, failedRows: item.failedRows, top: item })
+      }
+    }
+    return [...groups.values()].sort((a, b) => b.maxScore - a.maxScore)
+  }, [data])
 
   const measuredClauses = data ? data.overall.dimensions.filter((d) => d.score !== null).length : 0
 
@@ -794,9 +818,13 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <EyeOff className="size-4 text-emerald-700" aria-hidden="true" />
-                    ตัวอย่างการปิดบัง PII ตามบทบาท (Live — ฝั่งเซิร์ฟเวอร์)
+                    ตัวอย่างการปิดบัง PII (Live — ฝั่งเซิร์ฟเวอร์)
                   </CardTitle>
-                  <CardDescription>ข้อมูลส่วนบุคคลถูกปิดบังเป็นค่าเริ่มต้น — ประเมินฝั่ง backend ตามบทบาท สอดคล้อง PDPA</CardDescription>
+                  <CardDescription>
+                    ข้อมูลส่วนบุคคลถูกปิดบังเป็นค่าเริ่มต้น — ตั้งแต่ v0.34.0 เห็นข้อมูลจริงได้
+                    <strong className="text-slate-700">เฉพาะเจ้าของข้อมูล (Data Owner) เท่านั้น</strong> ตามหลัก least privilege สอดคล้อง PDPA
+                    (ตรวจบทบาทจาก session ผู้เข้าสู่ระบบฝั่ง backend — client ปลอมไม่ได้)
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -817,7 +845,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      {/* v0.32.0 — บทบาทผู้ชม PII ใช้ผู้ใช้ปัจจุบันจาก header จุดเดียว (เดิมมี selector แยกในหน้า) */}
+                      {/* v0.34.0 — บทบาทผู้ชม PII อ่านจาก session ผู้เข้าสู่ระบบ (เจ้าของข้อมูลเท่านั้นที่เห็น PII) */}
                       <Label htmlFor="pv-role">มุมมองผู้ใช้ปัจจุบัน</Label>
                       <div
                         id="pv-role"
@@ -829,7 +857,8 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                         </span>
                       </div>
                       <p className="text-[10.5px] leading-relaxed text-muted-foreground">
-                        เปลี่ยนมุมมองบทบาทได้ที่ตัวเลือก “ผู้ใช้งาน” มุมขวาบนของระบบ — ข้อมูลส่วนบุคคลจะถูกปิดบังตามสิทธิ์ของผู้ใช้นั้น
+                        บทบาทมาจากบัญชีที่เข้าสู่ระบบ (มุมขวาบนของระบบ) — มีเฉพาะบทบาท “เจ้าของข้อมูล” (Data Owner)
+                        ที่เห็นข้อมูลส่วนบุคคลแบบไม่ปิดบัง · บทบาทอื่นทั้งหมดเห็นเวอร์ชันปิดบังเสมอ
                       </p>
                     </div>
                   </div>
@@ -863,11 +892,11 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                     <p className="text-xs" role="status">
                       {preview.piiMasked ? (
                         <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">
-                          ปิดบัง PII อยู่ — บทบาทนี้ไม่มีสิทธิ์เห็นข้อมูลส่วนบุคคล
+                          ปิดบัง PII อยู่ — เห็นข้อมูลส่วนบุคคลได้เฉพาะเจ้าของข้อมูล (Data Owner) เท่านั้น
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">
-                          แสดงข้อมูลจริง — บทบาทนี้มีสิทธิ์เห็น PII (ตามนโยบาย least privilege)
+                          แสดงข้อมูลจริง — คุณเข้าสู่ระบบด้วยบทบาทเจ้าของข้อมูล (บทบาทเดียวที่มีสิทธิ์เห็น PII)
                         </Badge>
                       )}
                     </p>
@@ -1004,10 +1033,14 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
           {/* ================================================================ */}
           {section === 'regulation' && (
             <div className="space-y-4">
-              {/* เลือกกรอบมาตรฐาน — แสดงคะแนนรวมถ่วงน้ำหนักจากการประเมินล่าสุด + จำนวนข้อกำหนดที่วัดได้รายกรอบ */}
+              {/* v0.34.0 — เลือกกรอบมาตรฐานจุดเดียว: การ์ดเดียวรวมคะแนนรวมถ่วงน้ำหนัก + ความเสี่ยง Inherent→Residual
+                  (เดิมมีการแสดงมาตรฐานซ้ำ 2 จุด: การ์ดเลือกด้านบน + ส่วน "ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน" — ยุบรวมตาม feedback ผู้ใช้) */}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5" role="radiogroup" aria-label="เลือกกรอบมาตรฐาน">
                 {regFws.map((f) => {
                   const active = f.id === fwId
+                  const rk = fwRiskMap.get(f.id)
+                  const bandIH = rk ? riskBandOf(rk.inherentAvg) : null
+                  const bandRS = rk ? riskBandOf(rk.residualAvg) : null
                   return (
                     <button
                       key={f.id}
@@ -1040,6 +1073,38 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                       <p className="mt-1 text-[10px] text-muted-foreground">
                         วัดได้ {f.measuredDomains}/{f.totalDomains} ข้อกำหนด
                       </p>
+                      {/* ความเสี่ยง Inherent → Residual ของมาตรฐานนี้ (จากกฎ DQ ที่แมปกับมาตรฐาน) */}
+                      {rk && bandIH && bandRS ? (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                          <span
+                            className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${bandIH.className}`}
+                            title={`Inherent ระดับ${bandIH.label} (คะแนน ${rk.inherentAvg.toFixed(1)}/25)`}
+                          >
+                            {bandIH.label}
+                          </span>
+                          <span className="shrink-0 font-mono text-[10.5px] font-semibold text-rose-700">{rk.inherentAvg.toFixed(1)}</span>
+                          <ArrowRight className="size-3 shrink-0 text-slate-400" aria-hidden="true" />
+                          <span
+                            className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${bandRS.className}`}
+                            title={`Residual ระดับ${bandRS.label} (คะแนน ${rk.residualAvg.toFixed(1)}/25)`}
+                          >
+                            {bandRS.label}
+                          </span>
+                          <span className="shrink-0 font-mono text-[10.5px] font-bold text-emerald-700">{rk.residualAvg.toFixed(1)}</span>
+                          <span className="shrink-0 text-[9.5px] text-slate-400">/25</span>
+                          {rk.reductionPct > 0 ? (
+                            <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 font-mono text-[10px] text-emerald-800">
+                              −{Math.round(rk.reductionPct)}%
+                            </Badge>
+                          ) : rk.reductionPct < 0 ? (
+                            <Badge variant="outline" className="shrink-0 border-amber-200 bg-amber-50 font-mono text-[10px] text-amber-900">
+                              +{Math.round(-rk.reductionPct)}%
+                            </Badge>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="mt-1.5 text-[10px] text-muted-foreground">ความเสี่ยง: ยังไม่มีกฎแมปมาตรฐานนี้</p>
+                      )}
                     </button>
                   )
                 })}
@@ -1070,94 +1135,13 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* v0.24.2 — ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน (แทนสรุปคะแนนก่อน–หลังตั้งกฎ DQ เดิม)
-                      Inherent/Residual คำนวณจาก lib/regulation.ts — chip ระดับความเสี่ยงจาก riskBandOf คลิกเลือกมาตรฐานได้ */}
-                  {inherent && inherent.byFramework.length > 0 ? (
-                    <section
-                      aria-label="ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน"
-                      className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
-                    >
-                      <h4 className="text-xs font-semibold text-slate-800">
-                        ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน
-                      </h4>
-                      <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                        ค่าเฉลี่ยความเสี่ยง (เต็ม 25) ของกฎ DQ ที่แมปกับแต่ละมาตรฐาน — Inherent = ความเสี่ยงตั้งต้น · Residual = ความเสี่ยงคงเหลือจากผลตรวจล่าสุด · คลิกรายการเพื่อเลือกดูรายละเอียดมาตรฐาน
-                      </p>
-                      <ul className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                        {inherent.byFramework.map((row) => {
-                          const bandIH = riskBandOf(row.inherentAvg)
-                          const bandRS = riskBandOf(row.residualAvg)
-                          const selected = row.frameworkId === fwId
-                          return (
-                            <li key={row.frameworkId}>
-                              <button
-                                type="button"
-                                onClick={() => setFwId(row.frameworkId)}
-                                aria-pressed={selected}
-                                aria-label={`ประเมินความเสี่ยง ${row.name} — Inherent ${row.inherentAvg.toFixed(1)} ระดับ${bandIH.label}, Residual ${row.residualAvg.toFixed(1)} ระดับ${bandRS.label}`}
-                                className={`w-full rounded-md border bg-white px-2.5 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-                                  selected ? 'border-emerald-300 ring-2 ring-emerald-300' : 'hover:border-emerald-200'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <p className="truncate text-xs font-medium text-slate-800" title={`${row.no} ${row.name}`}>
-                                      {row.name}
-                                    </p>
-                                    <p className="truncate font-mono text-[10px] text-muted-foreground">{row.no}</p>
-                                  </div>
-                                  {row.reductionPct > 0 ? (
-                                    <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 font-mono text-[10px] text-emerald-800">
-                                      ลดลง −{Math.round(row.reductionPct)}%
-                                    </Badge>
-                                  ) : row.reductionPct === 0 ? (
-                                    <Badge variant="outline" className="shrink-0 border-slate-200 bg-slate-50 text-[10px] text-slate-600">
-                                      ทรงตัว
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="outline" className="shrink-0 border-amber-200 bg-amber-50 font-mono text-[10px] text-amber-900">
-                                      เพิ่มขึ้น +{Math.round(-row.reductionPct)}%
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                                  <span
-                                    className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${bandIH.className}`}
-                                    title={`Inherent ระดับ${bandIH.label} (คะแนน ${row.inherentAvg.toFixed(1)}/25)`}
-                                  >
-                                    {bandIH.label}
-                                  </span>
-                                  <span className="shrink-0 font-mono text-xs font-semibold tabular-nums text-rose-700">
-                                    {row.inherentAvg.toFixed(1)}
-                                  </span>
-                                  <ArrowRight className="size-3 shrink-0 text-slate-400" aria-hidden="true" />
-                                  <span
-                                    className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${bandRS.className}`}
-                                    title={`Residual ระดับ${bandRS.label} (คะแนน ${row.residualAvg.toFixed(1)}/25)`}
-                                  >
-                                    {bandRS.label}
-                                  </span>
-                                  <span className="shrink-0 font-mono text-xs font-bold tabular-nums text-emerald-700">
-                                    {row.residualAvg.toFixed(1)}
-                                  </span>
-                                  <span className="shrink-0 text-[10px] text-slate-400">/25</span>
-                                </div>
-                              </button>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                      <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                        ระดับความเสี่ยง: สูงมาก ≥15 · สูง ≥8 · ปานกลาง ≥4 · ต่ำ &lt;4 — เกณฑ์ทั้งหมดอยู่ใน{' '}
-                        <span className="font-mono">lib/regulation.ts</span> · ดูรายละเอียดรายข้อที่เมนู{' '}
-                        <span className="font-medium text-slate-700">ภาพรวม → ประเมินความสอดคล้อง</span>
-                      </p>
-                    </section>
-                  ) : (
-                    <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                      ยังไม่มีข้อมูลประเมินความเสี่ยงรายมาตรฐาน — เพิ่มกฎ DQ ที่อ้างอิงมาตรฐานและรันตรวจเพื่อเริ่มประเมิน
-                    </p>
-                  )}
+                  {/* v0.34.0 — ส่วน "ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน" ถูกยุบรวมเข้าการ์ดเลือกกรอบด้านบน (แก้มาตรฐานซ้ำ 2 จุด)
+                      และความเสี่ยงรายมาตรฐานเจาะลึกรายข้ออยู่ที่เมนู "ประเมินความสอดคล้อง" จุดเดียว */}
+                  <p className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                    คะแนนความเสี่ยง Inherent→Residual รายมาตรฐานแสดงบนการ์ดเลือกด้านบน · เจาะลึกรายข้อกำหนดพร้อมประวัติผลรันที่เมนู{' '}
+                    <span className="font-medium text-slate-700">ภาพรวม → ประเมินความสอดคล้อง</span> (จุดเดียวของระบบ) — ระดับความเสี่ยง: สูงมาก ≥15 · สูง ≥8 · ปานกลาง ≥4 · ต่ำ &lt;4 ตามเกณฑ์ใน{' '}
+                    <span className="font-mono">lib/regulation.ts</span>
+                  </p>
 
                   {/* sub-tabs 2 มุมมอง: ชุดข้อมูล (default) / รายละเอียดข้อกำหนด */}
                   <div role="tablist" aria-label="มุมมองของมาตรฐานที่เลือก" className="inline-flex max-w-full overflow-x-auto rounded-lg border bg-slate-50 p-0.5">
@@ -1421,10 +1405,20 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                       รอข้อมูลสรุปความเสี่ยง Inherent/Residual จากเซิร์ฟเวอร์
                     </Badge>
                   )}
+                  {/* v0.34.0 — ลิงก์ไปความเสี่ยงรายมาตรฐานที่เมนู ประเมินความสอดคล้อง (จุดเดียว แทนแท็บรายมาตรฐานเดิม) */}
+                  <button
+                    type="button"
+                    onClick={onGoCompliance}
+                    className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10.5px] font-medium text-emerald-800 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    aria-label="ไปที่เมนู ประเมินความสอดคล้อง — ความเสี่ยงรายมาตรฐาน"
+                  >
+                    ความเสี่ยงรายมาตรฐาน → ประเมินความสอดคล้อง
+                    <ArrowRight className="size-3" aria-hidden="true" />
+                  </button>
                 </div>
               </section>
 
-              {/* ตารางความเสี่ยงรายขอบเขต 3 มุม: มิติ DQ / มาตรฐาน / ประเภทข้อมูล */}
+              {/* v0.34.0 — ตารางความเสี่ยงรายขอบเขต 2 มุม: มิติ DQ / ประเภทข้อมูล (มุมมาตรฐาน → เมนู ประเมินความสอดคล้อง) */}
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
@@ -1439,10 +1433,11 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                       aria-label="เลือกขอบเขตการแบ่งกลุ่มความเสี่ยง"
                       className="inline-flex min-w-0 max-w-full overflow-x-auto rounded-lg border bg-slate-50 p-0.5"
                     >
+                      {/* v0.34.0 — เหลือ 2 มุมมองที่เนื้อหาต่างกันชัดเจน: รายมิติ DQ (มี Risk Matrix) / รายประเภทข้อมูล
+                          มุมมอง "รายมาตรฐาน" ย้ายไปรวมที่เมนู ประเมินความสอดคล้อง จุดเดียว (แก้ความซ้ำซ้อนตาม feedback ผู้ใช้) */}
                       {(
                         [
                           { id: 'dimension', label: 'รายมิติ DQ' },
-                          { id: 'framework', label: 'รายมาตรฐาน' },
                           { id: 'classification', label: 'รายประเภทข้อมูล' },
                         ] as const
                       ).map((s) => (
@@ -1472,7 +1467,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                       <table className="w-full min-w-[640px] text-left text-xs">
                         <caption className="sr-only">
                           ตารางความเสี่ยงราย
-                          {riskScope === 'dimension' ? 'มิติ DQ' : riskScope === 'framework' ? 'มาตรฐาน' : 'ประเภทข้อมูล'}
+                          {riskScope === 'dimension' ? 'มิติ DQ' : 'ประเภทข้อมูล'}
                           — เทียบค่าเฉลี่ย Inherent กับ Residual และ % ความเสี่ยงที่ลดลง
                         </caption>
                         <thead className="bg-slate-50 text-slate-700">
@@ -1569,6 +1564,8 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                 ))}
               </div>
 
+{/* v0.34.0 — Risk Matrix + Data Quality Impact อยู่เฉพาะแท็บ "รายมิติ DQ" (จุดเดียวของระบบ — แก้ 3 แท็บแสดงซ้ำเดิม) */}
+              {riskScope === 'dimension' && (
               <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
                 {/* แผนที่ความเสี่ยง */}
                 <Card className="min-w-0">
@@ -1723,6 +1720,94 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                   </CardContent>
                 </Card>
               </div>
+              )}
+
+              {riskScope === 'classification' && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {/* ความเสี่ยงเด่นรายประเภทข้อมูล — ข้อมูลมุมประเภทข้อมูล (ไม่ซ้ำกับแท็บรายมิติ DQ) */}
+                  <Card className="min-w-0">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">ความเสี่ยงเด่นรายประเภทข้อมูล</CardTitle>
+                      <CardDescription>รวมกฎที่ล้มเหลวล่าสุดตามประเภทข้อมูลที่จำแนก — เรียงจากคะแนนความเสี่ยงสูงสุด</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {clsRiskRows.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-muted-foreground">ยังไม่มีกฎที่ล้มเหลว — ไม่พบความเสี่ยงจากผลตรวจล่าสุด</p>
+                      ) : (
+                        <div className="max-h-[26rem] space-y-2.5 overflow-y-auto pr-1">
+                          {clsRiskRows.map((g) => (
+                            <div key={g.id} className="rounded-lg border p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                  <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10.5px] text-slate-700">
+                                    {g.no !== '—' ? `${g.no} ` : ''}
+                                    {g.th}
+                                  </Badge>
+                                  <Badge variant="outline" className={`text-[10.5px] ${g.maxBand.className}`}>
+                                    {g.maxBand.label} · {g.maxScore}
+                                  </Badge>
+                                </div>
+                                <span className="shrink-0 font-mono text-xs font-semibold text-slate-700">{g.count} กฎไม่ผ่าน</span>
+                              </div>
+                              <div className="mt-2 flex items-center gap-2">
+                                <ScoreBar score={Math.min(100, g.maxScore * 4)} />
+                              </div>
+                              {g.top && (
+                                <p className="mt-1.5 truncate text-[11px] text-slate-600">
+                                  เสี่ยงสูงสุด: {g.top.datasetName} · {g.top.column} — {g.top.conditionName} (ล้มเหลว {g.top.failedRows} แถว)
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p className="mt-3 rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                        มุมประเภทข้อมูล: เหมาะสำหรับวางลำดับการแก้ไขตามมูลค่าทางธุรกิจของประเภทข้อมูล · เกณฑ์คะแนนเดียวกับแท็บรายมิติ DQ (lib/regulation.ts)
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  {/* ผลกระทบธุรกิจรายประเภทข้อมูล — จาก Data Classification mapping มาตรฐาน */}
+                  <Card className="min-w-0">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">ผลกระทบธุรกิจรายประเภทข้อมูล</CardTitle>
+                      <CardDescription>ผลกระทบที่อาจเกิดเมื่อข้อมูลประเภทนั้นมีคุณภาพต่ำ + คะแนนเฉลี่ยและกฎครอบคลุม</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="max-h-[26rem] space-y-2.5 overflow-y-auto pr-1">
+                        {data.classification.categories.map((c) => (
+                          <div key={c.id} className="rounded-lg border p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                <p className="text-sm font-medium text-slate-800">{c.no} {c.th}</p>
+                                <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10.5px] text-slate-600">
+                                  {c.datasetCount} ชุดข้อมูล
+                                </Badge>
+                              </div>
+                              <span className={`shrink-0 font-mono text-sm font-bold ${scoreColor(c.avgScore)}`}>
+                                {c.avgScore !== null ? c.avgScore.toFixed(0) : '—'}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {c.impacts.slice(0, 4).map((im) => (
+                                <Badge key={im} variant="outline" className="border-slate-200 bg-slate-50 text-[10px] font-normal text-slate-600">
+                                  {im}
+                                </Badge>
+                              ))}
+                            </div>
+                            <p className="mt-1 text-[10.5px] text-muted-foreground">
+                              กฎครอบคลุมมิติโฟกัส {c.focusRulesCount} ข้อ · คะแนนมิติโฟกัส {c.focusScore !== null ? c.focusScore.toFixed(0) : '—'}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-3 rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                        ผลกระทบและมิติโฟกัสมาจาก Data Classification mapping (จำแนก 11 ประเภท — แท็บ Data Classification)
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
               {/* v0.24.1 — วิธีการประเมินความเสี่ยง (Risk Methodology): เกณฑ์ทุกขั้นที่ระบบใช้ตัดสิน
                   แสดงค่าจาก LIKELIHOOD_BANDS / SEVERITY_WEIGHT / RISK_BANDS ใน lib/regulation.ts โดยตรง

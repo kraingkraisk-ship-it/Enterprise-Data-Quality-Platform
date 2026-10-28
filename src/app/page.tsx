@@ -22,6 +22,7 @@ import DqIssues from '@/components/dq/issues'
 import MlCenter from '@/components/dq/ml-center'
 import ExecutiveDashboard from '@/components/dq/executive-dashboard'
 import ComplianceAssessment from '@/components/dq/compliance-assessment'
+import DqProjectPlan from '@/components/dq/project-plan'
 import { CurrentUserProvider, AccountMenu, useCurrentUser } from '@/components/user-context'
 import LoginScreen from '@/components/login-screen'
 import { APP_VERSION, VIEWS, isConsoleView, type ViewKey } from '@/lib/views'
@@ -180,13 +181,22 @@ function HomeShell() {
             <ExecutiveDashboard active={view === 'exec-dashboard'} />
           </div>
 
-          {/* ประเมินความสอดคล้อง — Risk-first รายมาตรฐาน (v0.24.0)
+          {/* ประเมินความสอดคล้อง — จุดเดียวของความเสี่ยงรายมาตรฐาน (v0.24.0 · v0.34.0 รวมแท็บรายมาตรฐานของ Risk มาที่นี่)
               คง mounted ไว้เสมอ สลับด้วย visibility — โหลด/รีเฟรชข้อมูลเมื่อ active */}
           <div
             className={view === 'compliance-assessment' ? '' : 'hidden'}
             aria-hidden={view !== 'compliance-assessment'}
           >
             <ComplianceAssessment active={view === 'compliance-assessment'} />
+          </div>
+
+          {/* แผนงาน DQ — แผนแม่บททวนสอบ 2026–2030 + Progress ถ่วงน้ำหนัก (v0.34.0)
+              คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลเมื่อ active */}
+          <div
+            className={view === 'project-plan' ? '' : 'hidden'}
+            aria-hidden={view !== 'project-plan'}
+          >
+            <DqProjectPlan active={view === 'project-plan'} />
           </div>
 
           {/* RBAC Console — คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
