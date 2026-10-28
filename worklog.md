@@ -1837,3 +1837,18 @@ Work Log:
 Stage Summary:
 - หน้า "เกี่ยวกับแพลตฟอร์ม" สอดคล้องระบบปัจจุบัน (v0.32.1) ครบทุกหัวข้อ + ได้แก้บั๊ก CTA จอว่างที่ซ่อนอยู่โดยไม่คาดคิด + กัน overflow mobile เชิงโครงสร้าง
 - บทเรียน: หน้าประเมินคงที่ (about) ควรได้รับการตรวจสอบความตรงกันเวลา bump เวอร์ชันใหญ่ — ข้อความถูก derive จากโค้ดแหล่งเดียว (DIMENSIONS) บางส่วนแล้ว ส่วน FEATURES/WORKFLOW/SOURCES เขียนตรงแบบ (ต้องดูแลเอง)
+
+---
+Task ID: 59
+Agent: Z.ai Code (main orchestrator)
+Task: รับ PAT ใหม่ (rotate ตาม pattern Task 51/57) — ตรวจอ่าน+เขียนผ่าน · ยืนยัน v0.32.1 sync ครบ ไม่มีงานค้าง
+
+Work Log:
+- ผู้ใช้ส่ง PAT ใหม่ — ตรวจ read: GET /user ได้ 200 · ตรวจ write: POST /git/blobs ได้ 201 (blob probe ไม่กระทบ repo)
+- ยืนยันสถานะ: local main = af1695e (v0.32.1) = remote main = tag v0.32.1 บน GitHub API ทุกจุดตรงกัน · working tree clean · ไม่มีงานค้าง push
+- สถานะเวิร์กโฟลว์ก่อนหน้า: Task 58 (v0.32.1 หน้าเกี่ยวกับแพลตฟอร์ม) ปิดวงจร push แล้วเมื่อ session ที่แล้ว (แก้ sandbox rollback ด้วย rebase --onto สำเร็จ)
+- PAT ใหม่ไม่ถูกบันทึกลง git config หรือไฟล์ใดๆ — ใช้ inline เท่านั้น (commit นี้ใช้ PAT ใหม่ push พิสูจน์การทำงานจริง)
+
+Stage Summary:
+- PAT ใหม่ใช้งานได้ครบ (อ่าน 200 + เขียน 201 + push สำเร็จ) พร้อมใช้เวิร์กโฟลว์ถัดไป
+- ระบบอยู่ที่ v0.32.1 สมบูรณ์: sync 100% ไม่มีงานค้าง push · 18 หน้า · รอคำสั่งถัดไปจากผู้ใช้
