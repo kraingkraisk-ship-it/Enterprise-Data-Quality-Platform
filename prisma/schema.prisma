@@ -9,13 +9,14 @@ datasource db {
 
 // ผู้ใช้งานระบบ — แต่ละคนมีบทบาทเดียวตามหลัก RBAC
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  role      String // DATA_OWNER | DATA_STEWARD | DQ_ANALYST | DATA_ENGINEER | COMPLIANCE_OFFICER | BUSINESS_USER | EXECUTIVE | SYS_ADMIN
-  status    String   @default("ACTIVE") // ACTIVE | SUSPENDED
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  role         String // DATA_OWNER | DATA_STEWARD | DQ_ANALYST | DATA_ENGINEER | COMPLIANCE_OFFICER | BUSINESS_USER | EXECUTIVE | SYS_ADMIN
+  status       String   @default("ACTIVE") // ACTIVE | SUSPENDED
+  passwordHash String? // scrypt (v0.33.0) — null = ยังไม่ได้ตั้งรหัสผ่าน (เข้าสู่ระบบไม่ได้จนกว่าจะตั้ง)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([role])
 }

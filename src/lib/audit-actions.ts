@@ -87,6 +87,9 @@ export const AUDIT_ACTIONS: Record<string, { th: string; group: AuditGroupKey }>
   GRANT_ACCESS: { th: 'มอบสิทธิ์', group: RBAC },
   REVOKE_ACCESS: { th: 'ยกเลิกสิทธิ์', group: RBAC },
   SET_ACCESS_LEVEL: { th: 'ปรับระดับสิทธิ์', group: RBAC },
+  LOGIN_SUCCESS: { th: 'เข้าสู่ระบบสำเร็จ', group: RBAC },
+  LOGIN_FAILED: { th: 'เข้าสู่ระบบไม่สำเร็จ', group: RBAC },
+  LOGOUT: { th: 'ออกจากระบบ', group: RBAC },
 
   /* ------------------------------ ข้อมูลและโดเมน ------------------------------ */
   IMPORT_DATA_ASSET: { th: 'นำเข้าข้อมูล', group: ASSET },

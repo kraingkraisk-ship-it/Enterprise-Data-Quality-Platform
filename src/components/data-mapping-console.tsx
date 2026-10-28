@@ -11,7 +11,8 @@
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Info, Loader2, Network, Plus, RefreshCw, Search, Waypoints } from 'lucide-react'
+import { Info, Loader2, Network, Plus, RefreshCw, Search, Waypoints, UserRound } from 'lucide-react'
+import { useCurrentUser } from '@/components/user-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -57,8 +58,10 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
   const [users, setUsers] = useState<UserRow[]>([])
   const [domains, setDomains] = useState<PickerDomain[]>([])
   const [elements, setElements] = useState<PickerElement[]>([])
-  const [operatorEmail, setOperatorEmail] = useState('preecha.engineer@company.co.th')
-  const [approverEmail, setApproverEmail] = useState('')
+  // v0.33.0 — ผู้ดำเนินการ/ผู้อนุมัติ = ผู้เข้าสู่ระบบเสมอ (session) — API บังคับทุก action
+  const { user: sessionUser } = useCurrentUser()
+  const operatorEmail = sessionUser?.email ?? ''
+  const approverEmail = operatorEmail
   /* v0.22.0 — Mapping Detail Dialog (หน้ารวม): id ของ mapping ที่กำลังดูรายละเอียด */
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -134,18 +137,11 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
   }, [active, loadMappings, loadElements])
 
   const operators = useMemo(() => users.filter((u) => MANAGE_ROLES.includes(u.role)), [users])
-  /** ผู้มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) — สิทธิ์เดิมของระบบ */
+  /** ผู้มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) — ใช้บอกสถานะบัญชีปัจจุบันว่ากดอนุมัติได้ไหม (v0.33.0) */
   const approvers = useMemo(
     () => users.filter((u) => ROLES[u.role as RoleKey]?.permissions.includes('APPROVE_EXCEPTIONS')),
     [users],
   )
-
-  // เลือกผู้อนุมัติเริ่มต้น — ถ้าผู้ดำเนินการหน้าหลักมีสิทธิ์อนุมัติให้ใช้คนนั้น ไม่งั้นใช้รายแรก
-  useEffect(() => {
-    if (approvers.length === 0) return
-    if (approverEmail && approvers.some((u) => u.email === approverEmail)) return
-    setApproverEmail(approvers.find((u) => u.email === operatorEmail)?.email ?? approvers[0].email)
-  }, [approverEmail, approvers, operatorEmail])
 
   /* ------------------------- แผนผัง lineage ------------------------- */
   const loadLineage = useCallback(async (elementId: string, depth: number) => {
@@ -234,30 +230,14 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={operatorEmail} onValueChange={setOperatorEmail}>
-            <SelectTrigger className="h-9 w-full sm:w-60" aria-label="ผู้ดำเนินการจัดการ mapping (สิทธิ์จัดการชุดข้อมูล)">
-              <SelectValue placeholder="— ผู้ดำเนินการ —" />
-            </SelectTrigger>
-            <SelectContent>
-              {operators.map((u) => (
-                <SelectItem key={u.email} value={u.email}>
-                  {u.name} · {ROLES[u.role as RoleKey]?.th ?? u.role}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={approverEmail} onValueChange={setApproverEmail}>
-            <SelectTrigger className="h-9 w-full sm:w-60" aria-label="ผู้อนุมัติ mapping (สิทธิ์อนุมัติข้อยกเว้น)">
-              <SelectValue placeholder="— ผู้อนุมัติ —" />
-            </SelectTrigger>
-            <SelectContent>
-              {approvers.map((u) => (
-                <SelectItem key={u.email} value={u.email}>
-                  {u.name} · {ROLES[u.role as RoleKey]?.th ?? u.role}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* v0.33.0 — ผู้ดำเนินการ/ผู้อนุมัติ = บัญชีผู้เข้าสู่ระบบ (แสดงเพื่อแจ้งเท่านั้น) */}
+          <span
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-muted/50 px-2.5 text-xs text-muted-foreground"
+            title="ผู้ดำเนินการและผู้อนุมัติคือบัญชีที่เข้าสู่ระบบอยู่ (แก้ได้ที่เมนูบัญชีบน header)"
+          >
+            <UserRound className="size-3.5" aria-hidden="true" />
+            {sessionUser ? `${sessionUser.name} · ${sessionUser.roleTh}` : '— กำลังโหลด —'}
+          </span>
           <Button variant="outline" size="icon" className="size-9" onClick={refreshAll} aria-label="โหลดข้อมูลใหม่">
             <RefreshCw className="size-4" aria-hidden="true" />
           </Button>

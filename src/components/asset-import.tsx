@@ -30,6 +30,7 @@ import { useToast } from '@/hooks/use-toast'
 import { parseCsv, parseJsonData } from '@/lib/asset'
 import { buildDomainTree, NO_DOMAIN, type DomainItem } from '@/lib/domains'
 import { ROLES } from '@/lib/rbac'
+import { useCurrentUser } from '@/components/user-context'
 
 /* ------------------------------------------------------------------ */
 /* Import Data — นำเข้าข้อมูลจาก CSV / JSON / Database                  */
@@ -63,7 +64,9 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
   const [sourceType, setSourceType] = useState<SourceType>('CSV')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [operatorEmail, setOperatorEmail] = useState('preecha.engineer@company.co.th')
+  // v0.33.0 — ผู้ดำเนินการนำเข้า = บัญชีผู้เข้าสู่ระบบ (session) — API บังคับ ไม่ให้เลือก/ปลอม
+  const { user: sessionUser } = useCurrentUser()
+  const operatorEmail = sessionUser?.email ?? ''
   const [users, setUsers] = useState<AssetUser[]>([])
 
   // โดเมนข้อมูล (ไม่บังคับ) — จัดหมวดหมู่ตั้งแต่ตอนนำเข้า
@@ -109,10 +112,12 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
     }
   }, [])
 
+  // v0.33.0 — บทบาทที่นำเข้าได้ ยังใช้แสดงข้อความแนะนำ (ผู้ดำเนินการจริงมาจาก session เสมอ)
   const operators = useMemo(
     () => users.filter((u) => IMPORTABLE_ROLES.includes(u.role)),
     [users],
   )
+  void operators
 
   const domainTree = useMemo(() => buildDomainTree(domains), [domains])
 
@@ -423,22 +428,19 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
                 </div>
               )}
               <div className="grid gap-1.5">
-                <Label htmlFor="asset-operator">
-                  ผู้ดำเนินการนำเข้า <span className="text-rose-600">*</span>
-                </Label>
-                <Select value={operatorEmail} onValueChange={setOperatorEmail}>
-                  <SelectTrigger id="asset-operator" className="w-full sm:max-w-md">
-                    <SelectValue placeholder="เลือกบัญชีผู้ดำเนินการ" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {operators.map((u) => (
-                      <SelectItem key={u.email} value={u.email}>
-                        {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">เฉพาะบทบาทที่มีสิทธิ์จัดการข้อมูล (ตาม RBAC) — ทุกการนำเข้าถูกบันทึก Audit Trail</p>
+                <Label htmlFor="asset-operator">ผู้ดำเนินการนำเข้า <span className="text-rose-600">*</span></Label>
+                {/* v0.33.0 — ผู้ดำเนินการ = บัญชีผู้เข้าสู่ระบบ (API บังคับ — แสดงเพื่อแจ้งเท่านั้น) */}
+                <p
+                  id="asset-operator"
+                  className="inline-flex h-9 w-full items-center gap-1.5 rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground sm:max-w-md"
+                >
+                  {sessionUser
+                    ? `${sessionUser.name} · ${sessionUser.roleTh}`
+                    : users.find((u) => u.email === operatorEmail)
+                      ? `${users.find((u) => u.email === operatorEmail)!.name}`
+                      : operatorEmail || '— กำลังโหลด —'}
+                </p>
+                <p className="text-xs text-muted-foreground">บัญชีผู้เข้าสู่ระบบอัตโนมัติ (ตาม RBAC) — เปลี่ยนบัญชีได้ที่เมนูบัญชีบน header — ทุกการนำเข้าถูกบันทึก Audit Trail</p>
               </div>
             </CardContent>
           </Card>

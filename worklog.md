@@ -1852,3 +1852,21 @@ Work Log:
 Stage Summary:
 - PAT ใหม่ใช้งานได้ครบ (อ่าน 200 + เขียน 201 + push สำเร็จ) พร้อมใช้เวิร์กโฟลว์ถัดไป
 - ระบบอยู่ที่ v0.32.1 สมบูรณ์: sync 100% ไม่มีงานค้าง push · 18 หน้า · รอคำสั่งถัดไปจากผู้ใช้
+
+---
+Task ID: 60
+Agent: Z.ai Code (main orchestrator)
+Task: v0.33.0 — ระบบเข้าสู่ระบบ (Login) ครบวงจร — ผู้ใช้ขอ "ช่วยเพิ่มการ log-in เข้าระบบ"
+
+Work Log:
+- สำรวจ identity เดิมก่อนออกแบบ: UserSwitcher เลือกบุคคลผ่าน localStorage + API ยึด operatorEmail/viewer จาก client (35 API) — **จุดอ่อน: ปลอมบัญชีผ่าน body/query ได้ทุกจุด**
+- **พบ DB ถูก sandbox rollback ว่างเกือบหมด** (เหลือ admin@test.com + 1 audit) — สร้าง scripts/seed-demo.ts กู้ข้อมูลสาธิตครบ: ผู้ใช้ 8 บทบาท (รหัสผ่าน Dq@2025) · โดเมน 2 ต้นไม้ · Dataset+SampleRow 2 ชุด (ลูกค้า 21 แถว/fx 10 แถว ฝังข้อมูลผิดจงใจให้กฎจับ) · DataAsset+records · ทะเบียน RD-0001 (6 ค่า)/RD-0002 (4 ค่า) ACTIVE v1.1 · Element 4 (ผูกทะเบียน+แมปคอลัมน์) · คลังเงื่อนไข 10 ระบบ · กฎ 8 ข้อ (IN_LIST/REFERENCE_MATCH โหมดทะเบียน) · Mapping MP-0001 — กู้คืนระบบสมบูรณ์
+- **Auth core**: User.passwordHash (scrypt node:crypto — ไม่เพิ่มแพ็กเกจ) · lib/password.ts (hash/verify timingSafeEqual) · lib/session.ts (HMAC-SHA256 Web Crypto ใช้ได้ทั้ง node+edge, cookie httpOnly dq_session อายุ 7 วัน) · middleware.ts ปิดกั้น /api/** ยกเว้น login+session (ไม่ผ่าน → 401) · APIs: POST /api/auth/login (ตรวจ ACTIVE+รหัส+audit LOGIN_SUCCESS/LOGIN_FAILED) · POST /api/auth/logout (ลบ cookie+audit LOGOUT) · GET /api/auth/session (user|null)
+- **ปิดจุดอ่อนปลอมตัว**: resolveOperator ยึด session เป็นความจริง (rawEmail ≠ session → 403) แก้จุดเดียวครบ 35 API · executive/summary ยึด viewer จาก session (เดิม query viewer ปลอมเป็นผู้บริหารแล้วเห็น 200 — ตรวจพบตอน E2E และแก้)
+- **UI**: LoginScreen (อีเมล+รหัส+show/hide+ข้อความไทยชัด+การ์ดบัญชีทดลองคลิกกรอกเร็ว) · AuthGate ใน page.tsx (ตรวจ session→login/app) · AccountMenu แทน UserSwitcher (ชื่อ+บทบาท+ออกจากระบบ reload ให้ AuthGate ตรวจใหม่สะอาด) · ล้าง localStorage เก่า · ลบ selector ผู้ดำเนินการ/ผู้อนุมัติที่ปลอมได้ใน asset-import/data-domain-console/data-mapping-console/mapping-form → chip readonly จาก session + ปุ่มอนุมัติ disabled ถ้าบัญชีไม่มีสิทธิ์
+- แก้บั๊กระหว่างทาง: (1) logout กดแล้ว UI ไม่สลับ (session ถูกลบจริง) → ให้ reload หลัง logout เหมือน login (2) dev server โหลด prisma client เก่าไม่รู้จัก passwordHash → รีสตาร์ทตามบทเรียน Task 54 (setsid+disown)
+- E2E พิสูจน์สด: curl 6 เส้น (401 ไม่มี session/401 รหัสผิด/login ok/RBAC 200/ปลอม operator 403) + browser: หน้า login→คลิกบัญชีทดลอง→เข้าแอป (สมชาย·เจ้าของข้อมูล)→รัน validation จริง 2 ชุด (93.3 ดี)→logout→login นิรัน (BUSINESS_USER)→exec 403→ปลอม viewer 403→login วิศิษฐ์ (EXECUTIVE)→exec 200 คะแนน 93.3→audit center มี LOGIN_SUCCESS/LOGIN_FAILED/LOGOUT ครบทุกเหตุการณ์→mobile 375 no overflow ทั้ง login/แอป · 0 console error · lint ผ่าน · dev.log สะอาด
+
+Stage Summary:
+- ระบบมีการพิสูจน์ตัวตนจริง: เข้าสู่ระบบด้วยอีเมล+รหัสผ่าน (cookie httpOnly signed) · ทุก API ปิดสำหรับผู้ไม่ได้ login · identity ปลอมไม่ได้อีกต่อไปทั้ง operator/viewer · RBAC บังคับจริงทั้งหน้าจอและ API · ทุกเหตุการณ์เข้า/ออก/ล้มเหลวอยู่ใน Audit Trail
+- รหัสผ่านเริ่มต้นข้อมูลสาธิต Dq@2025 (แสดงในหน้า login เพื่อทดลอง — ควรเปลี่ยนเมื่อใช้จริง) · ระบบอยู่ที่ v0.33.0 · เสนองานถัดไป: เปลี่ยนรหัสผ่านเอง/จัดการผู้ใช้พร้อมรหัส/remember me/2FA

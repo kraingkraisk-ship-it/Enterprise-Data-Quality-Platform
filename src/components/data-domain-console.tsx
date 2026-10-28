@@ -30,7 +30,9 @@ import {
   Trash2,
   Waypoints,
   XCircle,
+  UserRound,
 } from 'lucide-react'
+import { useCurrentUser } from '@/components/user-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -430,7 +432,9 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [domainsLoading, setDomainsLoading] = useState(true)
   const [assets, setAssets] = useState<AssetItem[]>([])
   const [users, setUsers] = useState<AssetUser[]>([])
-  const [operatorEmail, setOperatorEmail] = useState('preecha.engineer@company.co.th')
+  // v0.33.0 — ผู้ดำเนินการ = ผู้เข้าสู่ระบบเสมอ (session) — ไม่ให้เลือก/ปลอมบัญชีอื่น
+  const { user: sessionUser } = useCurrentUser()
+  const operatorEmail = sessionUser?.email ?? ''
 
   /* ---------- เลือกโดเมนจากต้นไม้ + แท็บ ---------- */
   const [selectedDomainId, setSelectedDomainId] = useState<string>('')
@@ -449,7 +453,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [deleteElementId, setDeleteElementId] = useState<string | null>(null)
   const [elementBusy, setElementBusy] = useState(false)
   const [workflowBusy, setWorkflowBusy] = useState(false)
-  const [approverEmail, setApproverEmail] = useState('')
   const [workflowNote, setWorkflowNote] = useState('')
 
   /* ---------- Data Mapping ของ element (แท็บ 5 — v0.21.0) ---------- */
@@ -619,16 +622,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   }, [])
 
   const operators = useMemo(() => users.filter((u) => MANAGE_ROLES.includes(u.role)), [users])
-  /** ผู้ที่มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) — ใช้เลือกผู้อนุมัติใน workflow (สิทธิ์เดิม ไม่เพิ่มบทบาทใหม่) */
+  // ผู้ที่มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) — ใช้แสดงให้ทราบว่าใครกดอนุมัติได้ (v0.33.0: ผู้อนุมัติ = ผู้เข้าสู่ระบบกดปุ่มเอง)
   const approvers = useMemo(() => users.filter((u) => ROLES[u.role as keyof typeof ROLES]?.permissions.includes('APPROVE_EXCEPTIONS')), [users])
-
-  // เลือกผู้อนุมัติเริ่มต้น — ถ้าผู้ดำเนินการหน้าหลักมีสิทธิ์อนุมัติให้ใช้คนนั้น ไม่งั้นใช้รายแรกที่มีสิทธิ์
-  useEffect(() => {
-    if (!detailOpen || approvers.length === 0) return
-    if (approverEmail && approvers.some((u) => u.email === approverEmail)) return
-    const def = approvers.find((u) => u.email === operatorEmail)?.email ?? approvers[0].email
-    setApproverEmail(def)
-  }, [detailOpen, approverEmail, approvers, operatorEmail])
 
   /* ------------------------- Data Mapping ของ element (แท็บ 5 — v0.21.0) ------------------------- */
   const loadDetailMappings = useCallback(async (id: string) => {
@@ -968,7 +963,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   /* ------------------------- workflow อนุมัติ (v0.20.0) — สิทธิ์เดิม: ส่ง = MANAGE_DATASETS · อนุมัติ/เลิกใช้ = APPROVE_EXCEPTIONS ------------------------- */
   async function doWorkflowAction(action: 'SUBMIT_APPROVAL' | 'APPROVE' | 'REJECT_APPROVAL' | 'DEPRECATE', note = '') {
     if (!detail) return
-    const operator = action === 'SUBMIT_APPROVAL' ? operatorEmail : approverEmail
+    const operator = operatorEmail
     if (!operator) {
       toast({ title: 'กรุณาเลือกผู้ดำเนินการก่อน', variant: 'destructive' })
       return
@@ -1224,18 +1219,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={operatorEmail} onValueChange={setOperatorEmail}>
-            <SelectTrigger className="h-9 w-full sm:w-64" aria-label="ผู้ดำเนินการจัดการโดเมน">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {operators.map((u) => (
-                <SelectItem key={u.email} value={u.email}>
-                  {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* v0.33.0 — ผู้ดำเนินการ = บัญชีผู้เข้าสู่ระบบ (API บังคับ — แสดงเพื่อแจ้งเท่านั้น) */}
+          <span
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-muted/50 px-2.5 text-xs text-muted-foreground"
+            title="ผู้ดำเนินการคือบัญชีที่เข้าสู่ระบบอยู่ (แก้ได้ที่เมนูบัญชีบน header)"
+          >
+            <UserRound className="size-3.5" aria-hidden="true" />
+            {sessionUser ? `${sessionUser.name} · ${sessionUser.roleTh}` : '— กำลังโหลด —'}
+          </span>
           <Button
             variant="outline"
             size="icon"
@@ -2017,20 +2008,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                       {detail.pendingApproval ? (
                         <div className="mt-3 grid gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2.5">
                           <p className="text-xs text-sky-900">
-                            element นี้รอการตัดสิน — เลือกผู้อนุมัติ (ต้องมีสิทธิ์ &quot;อนุมัติข้อยกเว้น&quot;: เจ้าของข้อมูล / เจ้าหน้าที่กำกับดูแล / ผู้บริหาร)
+                            element นี้รอการตัดสิน — อนุมัติด้วยบัญชีที่เข้าสู่ระบบ (ต้องมีสิทธิ์ &quot;อนุมัติข้อยกเว้น&quot;: เจ้าของข้อมูล / เจ้าหน้าที่กำกับดูแล / ผู้บริหาร)
                           </p>
-                          <Select value={approverEmail} onValueChange={setApproverEmail}>
-                            <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือกผู้อนุมัติ">
-                              <SelectValue placeholder="— เลือกผู้อนุมัติ —" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {approvers.map((u) => (
-                                <SelectItem key={u.email} value={u.email}>
-                                  {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <p className="text-xs font-medium text-sky-900" aria-label="ผู้อนุมัติจากเซสชันปัจจุบัน">
+                            ผู้อนุมัติ: {sessionUser ? `${sessionUser.name} · ${sessionUser.roleTh}` : '— กำลังโหลด —'}
+                            {!sessionUser || !approvers.some((u) => u.email === sessionUser.email) ? (
+                              <span className="ml-1 font-normal text-amber-700">(บัญชีนี้ไม่มีสิทธิ์อนุมัติ — เข้าสู่ระบบด้วยบัญชีที่มีสิทธิ์)</span>
+                            ) : null}
+                          </p>
                           <Input
                             value={workflowNote}
                             onChange={(ev) => setWorkflowNote(ev.target.value)}
@@ -2042,7 +2027,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                             <Button
                               size="sm"
                               className="bg-emerald-600 text-white hover:bg-emerald-700"
-                              disabled={workflowBusy || !approverEmail}
+                              disabled={workflowBusy || !operatorEmail || !approvers.some((u) => u.email === operatorEmail)}
                               onClick={() => void doWorkflowAction('APPROVE')}
                             >
                               {workflowBusy ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-3.5" aria-hidden="true" />}
@@ -2052,7 +2037,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                               size="sm"
                               variant="outline"
                               className="border-rose-300 text-rose-700 hover:bg-rose-50"
-                              disabled={workflowBusy || !approverEmail}
+                              disabled={workflowBusy || !operatorEmail || !approvers.some((u) => u.email === operatorEmail)}
                               onClick={() => void doWorkflowAction('REJECT_APPROVAL', workflowNote)}
                             >
                               <XCircle className="size-3.5" aria-hidden="true" /> ส่งกลับให้แก้ไข
@@ -2078,18 +2063,9 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                       ) : detail.status === 'ACTIVE' ? (
                         <div className="mt-3 grid gap-2 rounded-lg border bg-muted/40 p-2.5">
                           <p className="text-xs text-muted-foreground">เลิกใช้ element นี้ — กฎที่ผูกจะไม่ถูกรันในรอบโดเมนถัดไป (ต้องมีสิทธิ์อนุมัติ)</p>
-                          <Select value={approverEmail} onValueChange={setApproverEmail}>
-                            <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือกผู้ดำเนินการเลิกใช้">
-                              <SelectValue placeholder="— เลือกผู้ดำเนินการ (ต้องมีสิทธิ์อนุมัติ) —" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {approvers.map((u) => (
-                                <SelectItem key={u.email} value={u.email}>
-                                  {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <p className="text-xs font-medium" aria-label="ผู้ดำเนินการเลิกใช้จากเซสชันปัจจุบัน">
+                            ผู้ดำเนินการ: {sessionUser ? `${sessionUser.name} · ${sessionUser.roleTh}` : '— กำลังโหลด —'}
+                          </p>
                           <Input
                             value={workflowNote}
                             onChange={(ev) => setWorkflowNote(ev.target.value)}
@@ -2101,7 +2077,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                             size="sm"
                             variant="outline"
                             className="w-fit border-amber-300 text-amber-800 hover:bg-amber-50"
-                            disabled={workflowBusy || !approverEmail}
+                            disabled={workflowBusy || !operatorEmail || !approvers.some((u) => u.email === operatorEmail)}
                             onClick={() => void doWorkflowAction('DEPRECATE', workflowNote)}
                           >
                             <Archive className="size-3.5" aria-hidden="true" /> เลิกใช้ (DEPRECATED)
@@ -2193,7 +2169,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                     mapping={m}
                                     elementId={detail.id}
                                     operatorEmail={operatorEmail}
-                                    approverEmail={approverEmail}
+                                    approverEmail={operatorEmail}
                                     onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
                                     onOpenDetail={(id) => {
                                       setMappingDetailId(id)
@@ -2223,7 +2199,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                     mapping={m}
                                     elementId={detail.id}
                                     operatorEmail={operatorEmail}
-                                    approverEmail={approverEmail}
+                                    approverEmail={operatorEmail}
                                     onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
                                     onOpenDetail={(id) => {
                                       setMappingDetailId(id)
@@ -2243,7 +2219,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                       open={mappingDetailOpen}
                       onOpenChange={setMappingDetailOpen}
                       operatorEmail={operatorEmail}
-                      approverEmail={approverEmail}
+                      approverEmail={operatorEmail}
                       onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
                     />
                     <Dialog open={mapAddOpen} onOpenChange={setMapAddOpen}>

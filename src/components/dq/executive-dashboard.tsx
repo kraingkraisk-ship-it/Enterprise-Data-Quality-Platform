@@ -128,7 +128,8 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
     setLoading(true)
     setDenied(null)
     try {
-      const res = await fetch(`/api/executive/summary?viewer=${encodeURIComponent(viewer)}&days=${days}&issuesMode=${issuesMode}`)
+      // v0.33.0 — ผู้เข้าชม = เซสชันของผู้เข้าสู่ระบบ (API ตรวจจาก cookie เสมอ — ไม่ส่ง viewer ทาง query อีกต่อไป)
+      const res = await fetch(`/api/executive/summary?days=${days}&issuesMode=${issuesMode}`)
       const json = await res.json()
       if (!res.ok) {
         setDenied(json.error ?? `HTTP ${res.status}`)

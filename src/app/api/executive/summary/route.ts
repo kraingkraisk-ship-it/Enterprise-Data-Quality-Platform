@@ -4,10 +4,13 @@ import { hasPermission, ROLES } from '@/lib/rbac'
 import { buildRuleSentence, isDimensionKey, DIMENSION_LABELS } from '@/lib/dq'
 import { gradeOf } from '@/lib/dama'
 import { ELEMENT_FLAG_BELOW_THRESHOLD, rollupByElement, type RollupRunInput } from '@/lib/elements'
+import { cookies } from 'next/headers'
+import { SESSION_COOKIE, verifySession } from '@/lib/session'
 
 /**
  * GET /api/executive/summary — ข้อมูลแดชบอร์ดผู้บริหาร (v0.17.0 · byDomain Element Rollup ใน v0.19.0 · governance ธง CDE/การเงินใน v0.20.0)
- * query: viewer=<email> (บังคับ — ตรวจสิทธิ์ VIEW_EXEC_DASHBOARD) · days=30|90|180|365 · issuesMode=open|all
+ * ตรวจสิทธิ์: ผู้เข้าชม = ผู้เข้าสู่ระบบจากเซสชันเสมอ (v0.33.0 — ปิดช่องปลอม viewer ผ่าน query)
+ * query: days=30|90|180|365 · issuesMode=open|all
  *
  * นิยามคะแนน (ตรงกับหน้าบัตรคะแนน DQ — คำนวณจากผลรันจริง DqRun):
  * - คะแนนชุดข้อมูล = เฉลี่ย passRate ของผลรันล่าสุดรายกฎ (×100)
@@ -30,10 +33,13 @@ const ALLOWED_DAYS = [30, 90, 180, 365]
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const viewerEmail = String(searchParams.get('viewer') ?? '').trim().toLowerCase()
-    if (!viewerEmail) {
-      return NextResponse.json({ error: 'กรุณาระบุผู้เข้าชม (viewer) เพื่อตรวจสิทธิ์ตาม RBAC' }, { status: 400 })
+    // v0.33.0 — ผู้เข้าชม = บัญชีผู้เข้าสู่ระบบจากเซสชันเสมอ (ไม่เชื่อ query viewer ที่ปลอมได้)
+    const store = await cookies()
+    const session = await verifySession(store.get(SESSION_COOKIE)?.value)
+    if (!session) {
+      return NextResponse.json({ error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' }, { status: 401 })
     }
+    const viewerEmail = session.e
 
     const viewer = await db.user.findUnique({ where: { email: viewerEmail } })
     if (!viewer || viewer.status !== 'ACTIVE') {

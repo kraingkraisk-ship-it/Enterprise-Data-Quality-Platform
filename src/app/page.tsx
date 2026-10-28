@@ -22,7 +22,8 @@ import DqIssues from '@/components/dq/issues'
 import MlCenter from '@/components/dq/ml-center'
 import ExecutiveDashboard from '@/components/dq/executive-dashboard'
 import ComplianceAssessment from '@/components/dq/compliance-assessment'
-import { CurrentUserProvider, UserSwitcher } from '@/components/user-context'
+import { CurrentUserProvider, AccountMenu, useCurrentUser } from '@/components/user-context'
+import LoginScreen from '@/components/login-screen'
 import { APP_VERSION, VIEWS, isConsoleView, type ViewKey } from '@/lib/views'
 
 /* ------------------------------------------------------------------ */
@@ -37,6 +38,36 @@ import { APP_VERSION, VIEWS, isConsoleView, type ViewKey } from '@/lib/views'
 /* ------------------------------------------------------------------ */
 
 export default function Home() {
+  return (
+    <CurrentUserProvider>
+      <AuthGate />
+    </CurrentUserProvider>
+  )
+}
+
+/**
+ * AuthGate (v0.33.0) — ประตูเข้าสู่ระบบของทั้งแอป
+ * กำลังตรวจเซสชัน → จอโหลด · ยังไม่เข้าสู่ระบบ → หน้าเข้าสู่ระบบ · เข้าแล้ว → แอปเต็ม
+ */
+function AuthGate() {
+  const { user, loading } = useCurrentUser()
+  if (loading) {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-background" role="status" aria-live="polite">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <span className="flex size-12 animate-pulse items-center justify-center rounded-xl bg-emerald-600 text-white">
+            <ShieldCheck className="size-6" aria-hidden="true" />
+          </span>
+          <p className="text-sm">กำลังตรวจสอบการเข้าสู่ระบบ…</p>
+        </div>
+      </div>
+    )
+  }
+  if (!user) return <LoginScreen />
+  return <HomeShell />
+}
+
+function HomeShell() {
   const [view, setView] = useState<ViewKey>('dashboard')
   const mainRef = useRef<HTMLElement>(null)
 
@@ -77,8 +108,8 @@ export default function Home() {
             <span className="inline-block size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
             {meta.en}
           </span>
-          {/* ผู้ใช้ปัจจุบัน (v0.32.0) — ตัวเลือกเดียวของทั้งระบบ: มุมมอง/สิทธิ์/ผู้ดำเนินการตามผู้ใช้นี้ */}
-          <UserSwitcher />
+          {/* บัญชีผู้เข้าสู่ระบบปัจจุบัน (v0.33.0) — มุมมอง/สิทธิ์/ผู้ดำเนินการยึดบัญชีนี้เสมอ */}
+          <AccountMenu />
           <Badge
             variant="outline"
             className="shrink-0 border-emerald-300 bg-emerald-50 font-mono text-xs text-emerald-800"

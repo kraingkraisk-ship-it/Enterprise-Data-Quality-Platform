@@ -128,7 +128,9 @@ function ElementCascade({
 }
 
 export function MappingForm({ operators, defaultOperator, domains, elements, fixedElement, onCreated, onCancel }: MappingFormProps) {
-  const [operatorEmail, setOperatorEmail] = useState(defaultOperator ?? '')
+  // v0.33.0 — ผู้ดำเนินการ = บัญชีผู้เข้าสู่ระบบ (defaultOperator มาจาก session เสมอ) — แสดงเพื่อแจ้งเท่านั้น
+  const operatorEmail = defaultOperator ?? ''
+  const currentOperator = operators.find((u) => u.email === operatorEmail)
   const [direction, setDirection] = useState<'source' | 'target'>('target') // target = เพิ่มปลายทาง (element ปัจจุบันเป็นต้นทาง)
   const [mappingType, setMappingType] = useState<MappingTypeKey>('DIRECT')
   const [transformNote, setTransformNote] = useState('')
@@ -155,14 +157,6 @@ export function MappingForm({ operators, defaultOperator, domains, elements, fix
       alive = false
     }
   }, [])
-
-  // เลือกผู้ดำเนินการเริ่มต้นให้เองเมื่อรายชื่อโหลดมา (คนแรกที่มีสิทธิ์จัดการ)
-  useEffect(() => {
-    if (operators.length === 0) return
-    if (operatorEmail && operators.some((u) => u.email === operatorEmail)) return
-    const def = defaultOperator && operators.some((u) => u.email === defaultOperator) ? defaultOperator : operators[0].email
-    setOperatorEmail(def)
-  }, [operators, operatorEmail, defaultOperator])
 
   // โหมด fixed: element ตายตัวอยู่ฝั่งใดฝั่งหนึ่งตามทิศที่เลือก
   const resolvedSourceId = fixedElement ? (direction === 'source' ? source.elementId : fixedElement.id) : source.elementId
@@ -217,18 +211,13 @@ export function MappingForm({ operators, defaultOperator, domains, elements, fix
       {/* ผู้ดำเนินการ — เฉพาะบทบาทที่มีสิทธิ์จัดการชุดข้อมูล (MANAGE_DATASETS) */}
       <div className="grid gap-1.5">
         <Label htmlFor="mp-operator">ผู้ดำเนินการ (ต้องมีสิทธิ์ &quot;จัดการชุดข้อมูล&quot;)</Label>
-        <Select value={operatorEmail} onValueChange={setOperatorEmail}>
-          <SelectTrigger id="mp-operator" className="h-8 w-full text-xs" aria-label="ผู้ดำเนินการสร้าง mapping">
-            <SelectValue placeholder={operators.length === 0 ? 'ไม่พบผู้มีสิทธิ์' : '— เลือกผู้ดำเนินการ —'} />
-          </SelectTrigger>
-          <SelectContent>
-            {operators.map((u) => (
-              <SelectItem key={u.email} value={u.email}>
-                {u.name} · {ROLES[u.role as RoleKey]?.th ?? u.role}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* v0.33.0 — ผู้ดำเนินการ = บัญชีผู้เข้าสู่ระบบ (API บังคับ — แสดงเพื่อแจ้งเท่านั้น) */}
+        <p
+          id="mp-operator"
+          className="inline-flex h-8 w-full items-center gap-1.5 rounded-md border bg-muted/50 px-2.5 text-xs text-muted-foreground"
+        >
+          {currentOperator ? `${currentOperator.name} · ${currentOperator.role}` : operatorEmail || '— กำลังโหลด —'}
+        </p>
       </div>
 
       {/* เลือกทิศ (เฉพาะโหมดจาก Dialog element) */}
