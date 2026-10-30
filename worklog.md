@@ -1981,3 +1981,18 @@ Work Log:
 Stage Summary:
 - ระบบไม่มี "workflow อนุมัติ" แล้วทั้งแพลตฟอร์ม: ไม่มีคิวรอ · ไม่มีสิทธิ์อนุมัติพิเศษ · ผู้มีบทบาทลงมือตรงตามสิทธิ์ของงาน (ขอข้อยกเว้น = ใช้ทันทีจนหมดอายุ · เปิดใช้งานทะเบียน = MANAGE_DATASETS · ปิดปัญหา = MANAGE_ISSUES) — การกำกับดูแลอยู่ที่: RBAC deny-by-default + Audit Trail 100% + วันหมดอายุข้อยกเว้น + เวอร์ชันสเปกอัตโนมัติเมื่อแก้ขณะใช้งานอยู่
 - v0.36.0: ลบ ~350 บรรทัด logic อนุมัติ เพิ่ม flow ตรงกระชับกว่า · 18+1 หน้า · สิทธิ์ 12 รายการ · tag v0.36.0 · ระบบพร้อมคำสั่งถัดไปจากผู้ใช้
+
+---
+Task ID: 65-a
+Agent: Z.ai Code (main orchestrator)
+Task: รับ PAT ใหม่ (rotate ครั้งที่ 9 ตาม pattern Task 51/57/59/61/63/64-b) — ตรวจอ่าน+เขียนผ่าน · ยืนยัน Task 65 ส่งมอบครบแล้วบน remote (commit efa5667 + tag v0.36.0) · ไม่มีงานค้าง push
+
+Work Log:
+- ผู้ใช้ส่ง PAT ใหม่ (ต่างจาก PAT รอบ Task 64-b) — ตรวจ read: GET repo ได้ 200 · ตรวจสิทธิ์: permissions = push/admin/maintain/triage/pull ครบ true · ตรวจ write: POST /git/blobs ได้ 201 (blob probe ไม่กระทบ repo) · ไม่บันทึกลง git config หรือไฟล์ใดๆ — ใช้ inline เท่านั้น
+- ยืนยันสถานะ Task 65 จาก session ก่อน ส่งมอบครบแล้ว: commit efa5667 (v0.36.0 ลบ workflow อนุมัติทั้งระบบ → RBAC ตามบทบาทล้วน + worklog Task 65 ใน commit เดียว · 401 insertions 807 deletions) อยู่บน remote main แล้ว · tag v0.36.0 → efa5667 อยู่บน remote แล้ว (ตรวจผ่าน git ls-remote) · local = remote in sync สมบูรณ์ · working tree clean
+- dev server ยังทำงาน: GET / ได้ 200
+- ไม่มีงานค้างจาก session ก่อน — commit worklog นี้คือการพิสูจน์ push ด้วย PAT รอบใหม่
+
+Stage Summary:
+- PAT รอบที่ 9 ใช้งานได้ครบ (อ่าน 200 + สิทธิ์ push/admin/maintain true + เขียน 201 + push worklog สำเร็จ — ยืนยันผ่าน GitHub API หลัง commit นี้)
+- v0.36.0 (Task 65 ลบ workflow อนุมัติ) สมบูรณ์ทั้ง local/remote/tag · working tree clean · ระบบรอคำสั่งถัดไปจากผู้ใช้
