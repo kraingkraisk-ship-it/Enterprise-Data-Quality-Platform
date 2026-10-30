@@ -177,6 +177,16 @@ export const AUDIT_ACTIONS: Record<string, { th: string; group: AuditGroupKey }>
   /* ------------------------------ ML · สัญญาณอัจฉริยะ ------------------------------ */
   UPDATE_ML_SETTINGS: { th: 'ปรับเกณฑ์ค่าคงที่ ML', group: ML },
   CREATE_SAMPLE_PLAN: { th: 'สร้างแผนสุ่มตรวจ', group: ML },
+  ML_TRAIN: { th: 'เทรนโมเดล ML', group: ML },
+  ML_ACTIVATE: { th: 'ตั้งโมเดล ACTIVE', group: ML },
+  ML_ARCHIVE: { th: 'เก็บโมเดลเข้าคลัง', group: ML },
+  ML_DELETE_VERSION: { th: 'ลบเวอร์ชันโมเดล', group: ML },
+  ML_FLAG_LABEL: { th: 'ตรวจ label ข้อมูล ML', group: ML },
+  ML_AUDIT_CREATE: { th: 'สุ่มตรวจข้อมูล (ML)', group: ML },
+  ML_AUDIT_VERDICT: { th: 'ตัดสินผลสุ่มตรวจ', group: ML },
+  SET_ML_SETTINGS: { th: 'ตั้งค่า ML Studio', group: ML },
+  ML_IMPORT: { th: 'นำเข้าโมเดล ML', group: ML },
+  ML_EXPORT: { th: 'ส่งออกโมเดล ML', group: ML },
 
   /* ------------------------------ ระบบ · บันทึกตรวจสอบ ------------------------------ */
   SET_AUDIT_RETENTION: { th: 'ตั้งนโยบายเก็บรักษา', group: SYSTEM },

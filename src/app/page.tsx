@@ -19,7 +19,7 @@ import DqScorecard from '@/components/dq/scorecard'
 import DqFailedRecords from '@/components/dq/failed-records'
 import DqProfiling from '@/components/dq/profiling'
 import DqIssues from '@/components/dq/issues'
-import MlCenter from '@/components/dq/ml-center'
+import MlStudio from '@/components/dq/ml-studio'
 import ExecutiveDashboard from '@/components/dq/executive-dashboard'
 import ComplianceAssessment from '@/components/dq/compliance-assessment'
 import DqProjectPlan from '@/components/dq/project-plan'
@@ -170,10 +170,10 @@ function HomeShell() {
             <DqIssues active={view === 'issues'} />
           </div>
 
-          {/* ศูนย์ ML — แดชบอร์ดสรุป ML ศูนย์กลาง + ปรับเกณฑ์ค่าคงที่ (v0.28.0)
+          {/* ML Studio — ผู้ช่วย ML บนหลัก Train/Test (v0.35.0 แทนศูนย์ ML เดิม)
               คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลใหม่เมื่อ active */}
-          <div className={view === 'ml-center' ? '' : 'hidden'} aria-hidden={view !== 'ml-center'}>
-            <MlCenter active={view === 'ml-center'} />
+          <div className={view === 'ml-studio' ? '' : 'hidden'} aria-hidden={view !== 'ml-studio'}>
+            <MlStudio active={view === 'ml-studio'} />
           </div>
 
           {/* หน้าระดับผู้บริหาร — แดชบอร์ด (พิมพ์/PDF จากปุ่มในหน้า) สิทธิ์ตรวจใน API (v0.32.0 ยุบ exec-reports) */}

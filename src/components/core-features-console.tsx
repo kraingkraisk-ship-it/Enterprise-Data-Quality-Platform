@@ -181,6 +181,7 @@ interface ApiSignal {
 }
 
 interface RunResponse {
+  batchId?: string
   datasetName: string
   rowsCount: number
   rulesCount: number
@@ -389,6 +390,13 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rbReferenceSets, setRbReferenceSets] = useState<ReferenceSetOption[]>([])
   /* Rule Builder wizard (v0.18.1) — ขั้นตอนปัจจุบัน 1–4 */
   const [rbStep, setRbStep] = useState(1)
+  // B1 (v0.35.0) — คำแนะนำเงื่อนไขจาก ML Studio ตอนเลือกคอลัมน์ใน Rule Builder
+  const [rbRecs, setRbRecs] = useState<{
+    dataType: string
+    modelVersion: number | null
+    recommendations: Array<{ condition: string; th: string; dimensionTh: string; confidence: string; reason: string }>
+  } | null>(null)
+  const [rbRecsLoading, setRbRecsLoading] = useState(false)
 
   // tab 2 — condition library
   const [cnName, setCnName] = useState('')
@@ -404,6 +412,14 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   // tab 3 — run + review
   const [runDataset, setRunDataset] = useState('')
   const [runResult, setRunResult] = useState<RunResponse | null>(null)
+  // B2 (v0.35.0) — สรุปหลังตรวจจาก ML Studio (ผู้ช่วยเสนอแนะ — ไม่ตัดสินแทนคะแนนกฎ)
+  const [mlSummary, setMlSummary] = useState<{
+    summaryText: string
+    modelVersion: number | null
+    advice: string[]
+    commonCauses: Array<{ signature: string; failedRows: number; hypothesis: string }>
+  } | null>(null)
+  const [mlSummaryOpen, setMlSummaryOpen] = useState(true)
 
 
   const refetch = useCallback(() => setReloadTick((t) => t + 1), [])
@@ -858,6 +874,80 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       setBusy(null)
     }
   }
+
+  // B2 (v0.35.0) — โหลดสรุปหลังตรวจจาก ML Studio เมื่อรันเสร็จ (ผู้ช่วยเสนอแนะ — ล้มเหลวแล้วไม่กระทบผลตรวจ)
+  useEffect(() => {
+    if (!runResult?.batchId) {
+      setMlSummary(null)
+      return
+    }
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/ml/run-summary?batchId=${runResult.batchId}`)
+        if (!res.ok) {
+          if (alive) setMlSummary(null)
+          return
+        }
+        const data = (await res.json()) as {
+          summary?: { summaryText: string; modelVersion: number | null; advice: string[]; commonCauses: Array<{ signature: string; failedRows: number; hypothesis: string }> } | null
+        }
+        if (alive && data?.summary) {
+          setMlSummary({
+            summaryText: data.summary.summaryText,
+            modelVersion: data.summary.modelVersion,
+            advice: data.summary.advice ?? [],
+            commonCauses: data.summary.commonCauses ?? [],
+          })
+          setMlSummaryOpen(true)
+        } else if (alive) {
+          setMlSummary(null)
+        }
+      } catch {
+        /* สรุป ML ใช้ไม่ได้ — แสดงผลตรวจปกติ */
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [runResult?.batchId])
+
+  // B1 (v0.35.0) — คำแนะนำเงื่อนไขจาก ML Studio เมื่อเลือกคอลัมน์ใน Rule Builder (ขั้นที่ 3)
+  useEffect(() => {
+    if (rbStep !== 3 || !rbColumn) {
+      setRbRecs(null)
+      return
+    }
+    const datasetId = rbPreviewDataset || rbDatasets[0] || ''
+    if (!datasetId) {
+      setRbRecs(null)
+      return
+    }
+    let alive = true
+    setRbRecsLoading(true)
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/ml/recommend-rules?datasetId=${datasetId}&column=${encodeURIComponent(rbColumn)}`)
+        const data = (await res.json().catch(() => null)) as {
+          dataType?: string
+          modelVersion?: number | null
+          recommendations?: Array<{ condition: string; th: string; dimensionTh: string; confidence: string; reason: string }>
+        } | null
+        if (alive && res.ok && data?.recommendations) {
+          setRbRecs({ dataType: data.dataType ?? 'TEXT', modelVersion: data.modelVersion ?? null, recommendations: data.recommendations })
+        } else if (alive) {
+          setRbRecs(null)
+        }
+      } catch {
+        if (alive) setRbRecs(null)
+      } finally {
+        if (alive) setRbRecsLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [rbStep, rbColumn, rbPreviewDataset, rbDatasets])
 
   async function handleReviewSignal(id: string, action: 'CONFIRM' | 'DISMISS') {
     const ok = await patchJson(
@@ -1330,6 +1420,58 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     ต้องการเงื่อนไขเฉพาะขององค์กร? สร้างได้ในแท็บ “คลังเงื่อนไข (must)” แล้วกลับมาเลือกที่นี่
                   </p>
               </div>
+
+              {/* B1 (v0.35.0) — ML Studio แนะนำเงื่อนไขตามชนิดข้อมูล + 9 มิติ + สิ่งที่โมเดลเรียนรู้ (กดเลือกได้ทันที) */}
+              {rbColumn && (
+                <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-teal-900">
+                    <BrainCircuit className="size-3.5" aria-hidden="true" />
+                    ML Studio แนะนำสำหรับคอลัมน์ “{rbColumn}”
+                    {rbRecsLoading && <span className="font-normal text-teal-700"> — กำลังวิเคราะห์…</span>}
+                    {rbRecs && !rbRecsLoading && (
+                      <span className="font-normal text-teal-700">
+                        (ชนิดข้อมูล {rbRecs.dataType}
+                        {rbRecs.modelVersion ? ` · อ้างอิงโมเดล v${rbRecs.modelVersion}` : ' · ยังไม่มีโมเดลเทรน — แนะนำจากหลักชนิดข้อมูล'})
+                      </span>
+                    )}
+                  </p>
+                  {rbRecs && rbRecs.recommendations.length > 0 && (
+                    <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                      {rbRecs.recommendations.map((r, i) =>
+                        r.condition === '—' ? (
+                          <p key={i} className="text-[11px] text-teal-800 [overflow-wrap:anywhere]">
+                            {r.th}
+                          </p>
+                        ) : (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => {
+                              setRbCondition(r.condition)
+                              setRbParams({})
+                            }}
+                            className={`rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors ${
+                              rbCondition === r.condition
+                                ? 'border-teal-500 bg-white ring-1 ring-teal-400'
+                                : 'border-teal-200 bg-white hover:border-teal-400'
+                            }`}
+                            title={r.reason}
+                          >
+                            <span className="font-semibold text-slate-900">{r.th}</span>{' '}
+                            <span className={r.confidence === 'HIGH' ? 'text-emerald-700' : 'text-slate-500'}>
+                              {r.confidence === 'HIGH' ? '· แนะนำแรง' : r.confidence === 'MEDIUM' ? '· แนะนำ' : '· พิจารณาเพิ่ม'}
+                            </span>
+                            <span className="block text-[10.5px] text-muted-foreground [overflow-wrap:anywhere]">{r.reason}</span>
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  )}
+                  <p className="mt-1.5 text-[10.5px] text-muted-foreground">
+                    ML เป็นผู้ช่วยเสนอแนะ — การตัดสินใจเลือกเงื่อนไขเป็นของผู้กำหนดกฎเสมอ
+                  </p>
+                </div>
+              )}
 
               {rbTemplate && (
                 <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-emerald-50/50 px-3 py-2 text-xs text-emerald-900">
@@ -2173,6 +2315,49 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   </p>
                 </div>
 
+                {/* B2 (v0.35.0) — สรุปหลังตรวจ + ขั้นตอนถัดไปจาก ML Studio (ผู้ช่วยเสนอแนะ) */}
+                {mlSummary && (
+                  <div className="rounded-lg border border-teal-200 bg-teal-50/40 p-3">
+                    <button
+                      type="button"
+                      className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+                      onClick={() => setMlSummaryOpen((o) => !o)}
+                      aria-expanded={mlSummaryOpen}
+                    >
+                      <span className="flex items-center gap-1.5 text-xs font-semibold text-teal-900">
+                        <BrainCircuit className="size-3.5" aria-hidden="true" />
+                        ผู้ช่วย ML สรุปหลังตรวจ
+                        {mlSummary.modelVersion ? ` (โมเดล v${mlSummary.modelVersion})` : ' (ยังไม่มีโมเดลเทรน)'}
+                      </span>
+                      <span className="text-[10.5px] text-teal-700">{mlSummaryOpen ? 'ซ่อน' : 'แสดง'}</span>
+                    </button>
+                    {mlSummaryOpen && (
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs text-teal-900 [overflow-wrap:anywhere]">{mlSummary.summaryText}</p>
+                        {mlSummary.commonCauses.length > 0 && (
+                          <ul className="list-inside list-disc space-y-0.5 text-[11.5px] text-slate-700">
+                            {mlSummary.commonCauses.slice(0, 3).map((c) => (
+                              <li key={c.signature} className="[overflow-wrap:anywhere]">
+                                <span className="font-medium">{c.signature}</span> — {c.hypothesis}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
+                          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-amber-800">ขั้นตอนถัดไปที่แนะนำ</p>
+                          <ul className="mt-0.5 list-inside list-disc space-y-0.5 text-[11.5px] text-amber-900">
+                            {mlSummary.advice.map((a, i) => (
+                              <li key={i} className="[overflow-wrap:anywhere]">
+                                {a}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* บัตรคะแนนรายมาตรา 9 ใบ — เรียงมาตรา 1–9 ตามลำดับ DAMA-DMBOK */}
                 <div>
                   <p className="mb-2 text-xs font-semibold text-slate-700">
@@ -2418,7 +2603,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
 
       {/* ===================== TAB 4: DASHBOARD — 5 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Regulation / Risk / Data Classification) ===================== */}
       <TabsContent value="dashboard" className="mt-4">
-        <DqDashboard datasets={datasets} reloadTick={reloadTick} onRefetch={refetch} onGoMlCenter={() => onViewChange('ml-center')} onGoCompliance={() => onViewChange('compliance-assessment')} />
+        <DqDashboard datasets={datasets} reloadTick={reloadTick} onRefetch={refetch} onGoMlCenter={() => onViewChange('ml-studio')} onGoCompliance={() => onViewChange('compliance-assessment')} />
       </TabsContent>
     </Tabs>
   )

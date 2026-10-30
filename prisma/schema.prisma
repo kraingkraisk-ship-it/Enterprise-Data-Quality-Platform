@@ -40,11 +40,8 @@ model Dataset {
   signals    DqSignal[]
   exceptions DqException[]
   batches    DqValidationBatch[]
-  anomalies  DqAnomaly[]
   profileRuns DqProfileRun[]
   issues     DqIssue[]
-  samplePlans DqSamplePlan[] @relation("samplePlans")
-  forecasts  DqForecast[]
   domain     DataDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
 
   @@index([status])
@@ -138,9 +135,6 @@ model DqRule {
   datasets   RuleDataset[]
   runs       DqRun[]
   exceptions DqException[]
-  anomalies  DqAnomaly[]
-  samplePlans DqSamplePlan[] @relation("samplePlans")
-  forecasts  DqForecast[]
   element    DataElement? @relation(fields: [dataElementId], references: [id], onDelete: SetNull)
 
   @@index([dataElementId])
@@ -186,10 +180,6 @@ model DqValidationBatch {
 
   dataset  Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
   failures DqFailureRecord[]
-  anomalies DqAnomaly[]
-  failureClusters DqFailureCluster[]
-  samplePlans DqSamplePlan[] @relation("samplePlans")
-  forecasts DqForecast[]
 
   @@index([datasetId, createdAt])
   @@index([groupRunId])
@@ -618,137 +608,111 @@ model DataAssetRecord {
 }
 
 // ---------------------------------------------------------------------------
-// ML Evaluations (v0.25.0) — ① Anomaly Detection + ④ Root Cause Clustering
-// ผล ML เป็น "สัญญาณรอทบทวน" เท่านั้น — ไม่แตะการตัดสินผ่าน/ไม่ผ่าน (DqRun.status) เดิมเด็ดขาด
-// คำนวณอัตโนมัติหลังรัน validation จบแต่ละ batch (try/catch แยก — ML ล้มเหลว = การรันยังสำเร็จ)
-// ค่าคงที่ทั้งหมดอยู่ที่ src/lib/ml.ts (single source of truth — UI แสดงจากตารางเดียวกัน)
+// ML Studio (v0.35.0) — สร้างใหม่ทั้งหมดบนหลัก Train/Test (แทนระบบ ML เดิม v0.25–v0.28)
+// หลักการ: ML เป็น "ผู้ช่วย (Assistant)" เท่านั้น — ความถูกต้องและความแม่นยำขึ้นอยู่กับการเทรน 3 อย่าง:
+//   1) ข้อมูล (Data Asset)  2) DQ Rule (ผู้ติดป้าย — บอกว่าไม่ถูกต้องอย่างไรและเพราะอะไร)  3) คนสอน (human-in-the-loop)
+// ชุดฝึก (Train set) = ข้อมูลจริงจาก Data Asset แยกตาม Data Domain
+// ชุดทดสอบ (Test set) = แบ่งแถวตาม % ที่ตั้งค่า — ใช้วัดความแม่นยำของโมเดล (accuracy/precision/recall/F1)
+// ทุกการเทรนสร้าง "เวอร์ชัน" ใหม่เก็บในระบบ — โดเมนไหนมีข้อมูล/label มาก เทรนบ่อย แม่นขึ้น
+// ข้อมูลเทรนอยู่ในระบบเสมอ export/import เฉพาะ "พารามิเตอร์โมเดล" (สถิติรวม ไม่มีข้อมูลดิบ/PII)
 // ---------------------------------------------------------------------------
 
-// ผลประเมินความผิดปกติรายกฎรายชุดข้อมูลรายรอบ — baseline = มัธยฐาน W รอบก่อนหน้า + MAD
-model DqAnomaly {
-  id         String   @id @default(cuid())
-  batchId    String // batch รอบปัจจุบันที่ประเมิน
-  ruleId     String
-  datasetId  String
-  method     String   @default("MEDIAN_MAD_Z") // วิธีคำนวณ (โชว์บนหน้าจอเพื่อตรวจย้อน)
-  failRate   Float // อัตราล้มเหลวรอบปัจจุบัน (0–1)
-  baseline   Float // มัธยฐานอัตราล้มเหลว W รอบก่อนหน้า
-  mad        Float // Median Absolute Deviation × 1.4826 (≈ SD) — มีค่าพื้นฐาน MIN_MAD กันหารศูนย์
-  zScore     Float // |failRate − baseline| / mad
-  level      String   @default("NORMAL") // CRITICAL | HIGH | MEDIUM | NORMAL | INSUFFICIENT_HISTORY
-  driftSlope Float? // ความชัน linear regression ของ W รอบ (บวก = แนวโน้มแย่ลง)
-  driftR2    Float? // คุณภาพเส้น drift — R² ≥ DRIFT_R2_MIN จึงถือว่ามีนัยสำคัญ
-  windowSize Int      @default(0) // จำนวนรอบประวัติที่ใช้จริง
-  createdAt  DateTime @default(now())
+// เวอร์ชันโมเดล 1 รายการต่อการเทรน 1 ครั้ง — แยกตาม Data Domain
+model MlModelVersion {
+  id          String    @id @default(cuid())
+  version     Int       // ลำดับเวอร์ชันรายโดเมน (1, 2, 3, …)
+  domainId    String    @default("") // DataDomain.id — "" = รวมทุกโดเมน (ทั่วทั้งระบบ)
+  status      String    @default("TRAINED") // TRAINED | ACTIVE | ARCHIVED — ACTIVE ได้ 1 เวอร์ชันต่อโดเมน
+  trainPct    Int       // % แบ่งชุดฝึก ณ ตอนเทรน (70 = ฝึก 70% / ทดสอบ 30%)
+  // คุณภาพที่วัดจากชุดทดสอบ (test split) — ตัวเลขจริง ไม่ประมาณ
+  accuracy    Float? // (TP+TN) / ทั้งหมด
+  precision   Float? // TP / (TP+FP) — ตัดสิน "ไม่ถูกต้อง" แม่นแค่ไหน
+  recall      Float? // TP / (TP+FN) — จับ "ไม่ถูกต้อง" ได้ครบแค่ไหน
+  f1          Float?
+  // ขนาดข้อมูลที่ใช้เทรนจริง
+  trainRows   Int       @default(0)
+  testRows    Int       @default(0)
+  assetCount  Int       @default(0)
+  ruleCount   Int       @default(0) // จำนวนกฎที่ทำหน้าที่ผู้ติดป้าย (ไม่นับกฎที่ข้ามเพราะต้องใช้บริบทภายนอก)
+  labelCount  Int       @default(0) // จำนวน label จากมนุษย์ (CONFIRMED/OVERRIDDEN) + สุ่มตรวจ ที่ถูกใช้ในการเทรนนี้
+  // พารามิเตอร์โมเดล = เกณฑ์ที่เรียนรู้จากชุดฝึก (สถิติรวมรายคอลัมน์/รายมิติ — ไม่มีข้อมูลดิบ ไม่มี PII)
+  paramsJson  String    @default("{}")
+  // สถิติประกอบการอธิบาย (โปรไฟล์รายคอลัมน์ 9 มิติ + สาเหตุที่พบบ่อย)
+  statsJson   String    @default("{}")
+  trainedBy   String    // email ผู้เทรน
+  note        String    @default("")
+  activatedAt DateTime?
+  createdAt   DateTime  @default(now())
 
-  rule    DqRule            @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  dataset Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
-  batch   DqValidationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-
-  @@unique([batchId, ruleId, datasetId])
-  @@index([batchId])
-  @@index([level])
+  @@unique([domainId, version])
+  @@index([domainId, status])
 }
 
-// กลุ่มสาเหตุร่วมรายรอบ — จัดกลุ่มแบบ exact-match ด้วยลายเซ็น (แหล่งข้อมูล, ชุดข้อมูล, มิติ)
-// ทุกกลุ่มอธิบายสมาชิกได้ครบ (ตั้งใจไม่ใช้ k-means — เลี่ยงกล่องดำ)
-model DqFailureCluster {
-  id              String   @id @default(cuid())
-  batchId         String
-  signatureKey    String // "{sourceType}|{datasetId}|{dimension}" — ลายเซ็นกลุ่ม
-  sourceType      String   @default("") // แหล่งข้อมูลของชุดข้อมูล (Dataset.sourceType)
-  datasetId       String
-  dimension       String
-  memberRunsJson  String   @default("[]") // JSON [{ruleId, column, conditionName, dimension, failedRows, totalRows}]
-  groupFailedRows Int      @default(0) // แถวล้มรวมของกลุ่ม (จาก DqRun.failedRows — ไม่ติด cap 200)
-  totalFailedRows Int      @default(0) // แถวล้มรวมทั้งรอบ (ฐานคำนวณ sharePct)
-  sharePct        Float    @default(0) // สัดส่วนความล้มเหลวที่กลุ่มนี้อธิบาย (0–100)
-  hypothesis      String   @default("") // สมมติฐานสาเหตุ (ภาษาคน) — แสดงเมื่อ sharePct ≥ CLUSTER_SHARE_MIN×100
-  createdAt       DateTime @default(now())
+// คลัง label — คำตัดสินของโมเดลรายแถว + การตรวจยืนยันโดยมนุษย์ (human-in-the-loop)
+// มนุษย์ flag: CONFIRMED = เห็นด้วยกับ ML · OVERRIDDEN = แก้คำตัดสิน ML → ทั้งคู่เป็น "ข้อมูลสอน" สำหรับ retrain
+// เก็บแยกจากเวอร์ชัน (versionId เป็น string ไม่ผูก FK) — ลบเวอร์ชันเก่าแล้วข้อมูลสอนยังอยู่
+model MlLabelItem {
+  id            String    @id @default(cuid())
+  versionId     String    // เวอร์ชันโมเดลที่ตัดสิน (string — ไม่ผูก FK เพื่อเก็บข้อมูลสอนถาวร)
+  version       Int       @default(0) // เลขเวอร์ชัน (แสดงง่าย)
+  domainId      String    @default("")
+  assetId       String    // DataAsset ต้นทางของแถว
+  assetName     String    @default("") // ชื่อ asset (snapshot — แสดงโดยไม่ต้อง join)
+  rowNo         Int       // ลำดับแถวใน Data Asset
+  rowDataJson   String    // snapshot คอลัมน์ → ค่า (mask ตามบทบาทตอนอ่าน เช่นเดียวกับ DqFailureRecord)
+  mlVerdict     String    // INCORRECT | CORRECT | SUSPECT
+  mlReason      String    @default("") // เหตุผลภาษามนุษย์ เช่น "คอลัมน์ email ว่าง = ไม่ถูกต้องเพราะไม่มีข้อมูล"
+  mlScore       Float     @default(0) // ความเชื่อมั่น 0–1
+  humanFlag     String?   // null = ยังไม่ตรวจ | CONFIRMED | OVERRIDDEN
+  humanNote     String    @default("")
+  labeledBy     String?   // email ผู้ตรวจ (human-in-the-loop)
+  labeledAt     DateTime?
+  usedInVersion Int       @default(0) // เวอร์ชันล่าสุดที่ label นี้ถูกใช้เทรน (กันนับซ้ำข้ามการเทรน)
+  createdAt     DateTime  @default(now())
 
-  batch DqValidationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-
-  @@unique([batchId, signatureKey])
-  @@index([batchId])
+  @@unique([versionId, assetId, rowNo])
+  @@index([domainId, humanFlag])
+  @@index([assetId, rowNo])
 }
 
-// แผนสุ่มตรวจตามความเสี่ยง (v0.26.0) — จัดสรร "งบการทบทวน" รายกฎ×ชุดข้อมูล ตามคะแนนความเสี่ยง
-// คะแนน = โอกาสจากอัตราล้มเหลว × น้ำหนัก severity (สเกลเดียวกับ Risk Methodology) + คะแนนเสริมจากตารางคงที่
-// (ML anomaly ทิศแย่ลง / drift / PII) — เกณฑ์ทั้งหมดใน src/lib/sampling.ts (single source of truth)
-// สุ่มรายแถวแบบ deterministic (seed จาก batch+นโยบาย+กลุ่ม) — นโยบายเดิม + สถานะแถวเดิม = ชุดแถวเดิมเป๊ะ ตรวจย้อนได้
-model DqSamplePlan {
-  id            String   @id @default(cuid())
-  batchId       String
-  policy        String // FULL | P10 | P5 | P1 (ตาราง SAMPLING_POLICIES ใน src/lib/sampling.ts)
-  ruleId        String
-  datasetId     String
-  dimension     String
-  riskScore     Float // คะแนนความเสี่ยงรวม (2–RISK_SCORE_MAX = 30)
-  factorsJson   String   @default("{}") // JSON {likelihood, likelihoodLabel, impact, mlBoost, driftBoost, piiBoost, zScore?}
-  failRate      Float // อัตราล้มเหลวของกลุ่มใน batch นี้ (0–1)
-  failedRows    Int // แถวล้มจาก DqRun.failedRows (ไม่ติด cap)
-  reviewableRows Int    @default(0) // แถวที่เก็บ snapshot ทบทวนได้จริง (DqFailureRecord — cap 200/กฎ)
-  sampleSize    Int      @default(0) // จำนวนแถวที่ได้รับงบจริง
-  included      Boolean  @default(true) // false = งบไม่พอถึงกลุ่มนี้ (เรียงความเสี่ยงแล้วจึงตัดที่กลุ่มท้าย)
-  sampledRecordIdsJson String @default("[]") // JSON string[] — id ของ DqFailureRecord ที่ถูกเลือก
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+// สุ่มตรวจ — สุ่มแถวจาก Data Asset ให้ "มนุษย์เป็นผู้ตัดสิน" (ML ให้คำแนะนำประกอบเท่านั้น)
+// คำตัดสินของมนุษย์ = ความจริง (ground truth) ที่สอนโมเดล → เข้าชุดฝึกในการเทรนถัดไป
+model MlAuditSample {
+  id            String    @id @default(cuid())
+  batchNo       Int       // รอบสุ่มที่ (1, 2, … — นับรวมทั้งระบบ)
+  domainId      String    @default("")
+  assetId       String
+  assetName     String    @default("")
+  rowNo         Int
+  rowDataJson   String    // snapshot แถว (mask ตามบทบาทตอนอ่าน)
+  mlAdvice      String    @default("") // คำแนะนำจากเวอร์ชัน ACTIVE ณ ตอนสุ่ม (ว่าง = ยังไม่มีโมเดล)
+  mlScore       Float     @default(0)
+  mlVerdict     String    @default("") // คำตัดสินที่ ML เสนอ: INCORRECT | CORRECT | "" (ไม่มีคำแนะนำ)
+  humanVerdict  String?   // CORRECT | INCORRECT — ตัดสินโดยมนุษย์ = ความจริง
+  humanReason   String    @default("")
+  dimension     String    @default("") // มิติที่เกี่ยว (เมื่อตัดสินไม่ถูกต้อง) — DimensionKey
+  auditedBy     String?   // email ผู้ตัดสิน
+  auditedAt     DateTime?
+  usedInVersion Int       @default(0)
+  createdAt     DateTime  @default(now())
 
-  rule    DqRule            @relation("samplePlans", fields: [ruleId], references: [id], onDelete: Cascade)
-  dataset Dataset           @relation("samplePlans", fields: [datasetId], references: [id], onDelete: Cascade)
-  batch   DqValidationBatch @relation("samplePlans", fields: [batchId], references: [id], onDelete: Cascade)
-
-  @@unique([batchId, ruleId, datasetId])
-  @@index([batchId])
+  @@unique([batchNo, assetId, rowNo])
+  @@index([batchNo])
+  @@index([domainId, humanVerdict])
 }
 
-// พยากรณ์แนวโน้มคุณภาพข้อมูล (v0.27.0) — ข้อเสนอ ML ③ ต่อกฎ×ชุดข้อมูล
-// regress อัตราล้มเหลว 10 รอบล่าสุด (linear trend) → คาด 1/3/5 รอบข้างหน้า = รอบล่าสุด + slope×k (clamp 0–1)
-// ความเชื่อมั่นจาก R² · ส่งสัญญาณเฉพาะทิศแย่ลง + R² ≥ 0.6 + แถวโอกาสของค่าคาด ≥ ปานกลาง
-// เกณฑ์ทั้งหมดใน src/lib/forecast.ts (single source of truth) — เป็นสัญญาณล่วงหน้า ไม่ตัดสินแทน threshold เดิม
-model DqForecast {
-  id         String   @id @default(cuid())
-  batchId    String
-  ruleId     String
-  datasetId  String
-  method     String   @default("LINEAR_TREND_FORECAST")
-  failRate   Float // อัตราล้มเหลวรอบล่าสุด (จุดตั้งต้นของการพยากรณ์)
-  slope      Float // ความชันต่อรอบ (บวก = คาดว่าจะแย่ลง)
-  r2         Float // คุณภาพการพองามของเส้น trend (0–1)
-  confidence String   @default("LOW") // HIGH | MEDIUM | LOW (จาก R² — ตารางใน src/lib/forecast.ts)
-  direction  String   @default("STABLE") // WORSE | BETTER | STABLE (จาก slope เทียบ F_MIN_SLOPE)
-  forecast1  Float? // คาดรอบถัดไป (null เมื่อประวัติไม่พอ)
-  forecast3  Float? // คาดอีก 3 รอบ
-  forecast5  Float? // คาดอีก 5 รอบ
-  windowSize Int      @default(0) // จำนวนรอบในหน้าต่างที่ใช้จริง
-  createdAt  DateTime @default(now())
-
-  rule    DqRule            @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  dataset Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
-  batch   DqValidationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-
-  @@unique([batchId, ruleId, datasetId])
-  @@index([batchId])
-  @@index([direction])
-}
-
-// เกณฑ์ค่าคงที่ของ ML (v0.28.0) — singleton แถวเดียวของระบบ (id = 1)
-// ค่าเริ่มต้นอ้างอิงตารางค่าคงที่เดิมใน src/lib/ml.ts + src/lib/forecast.ts (แหล่งตัวเลขจริงแหล่งเดียว)
-// ปรับได้ผ่านหน้า "ศูนย์ ML" (ต้องมีสิทธิ์ REVIEW_SIGNALS) ทุกการเปลี่ยนแปลงบันทึก Audit Trail
-model DqMlSettings {
-  id              Int      @id @default(1)
-  mlWindow        Int      @default(10) // จำนวนรอบประวัติสูงสุดต่อการคำนวณ baseline/trend
-  mlMinHistory    Int      @default(5) // ประวัติน้อยกว่านี้ = ยังไม่ประเมิน (INSUFFICIENT_HISTORY)
-  zCritical       Float    @default(3) // z ≥ ค่านี้ = สูงมาก (CRITICAL)
-  zHigh           Float    @default(2) // z ≥ ค่านี้ = สูง (HIGH)
-  zMedium         Float    @default(1) // z ≥ ค่านี้ = ปานกลาง (MEDIUM) — ต่ำกว่า = ปกติ
-  driftR2Min      Float    @default(0.6) // R² ต่ำสุดที่ถือว่า drift/trend มีนัยสำคัญ
-  clusterShareMin Float    @default(0.4) // สัดส่วนความล้มเหลวขั้นต่ำที่กลุ่มเสนอเป็นสมมติฐานสาเหตุร่วม
-  fR2High         Float    @default(0.8) // R² ที่ถือว่าเส้นพยากรณ์แม่นยำสูง
-  fMinSlope       Float    @default(0.01) // ความชันขั้นต่ำที่ถือว่า "มีทิศทาง" (0.01 = 1 จุด% ต่อรอบ)
-  fMinSignalBand  Int      @default(3) // แถวโอกาสขั้นต่ำของค่าคาดรอบถัดไปที่จะส่งสัญญาณ (3 = ปานกลาง)
-  updatedBy       String? // email ผู้บันทึกล่าสุด (audit trail)
-  updatedAt       DateTime @updatedAt
+// เกณฑ์ของ ML Studio (v0.35.0) — singleton แถวเดียวของระบบ (id = 1) — แทน DqMlSettings เดิม
+// ทุกการแก้ค่าบันทึก AuditLog (action: SET_ML_SETTINGS)
+model MlSettings {
+  id               Int      @id @default(1)
+  trainPct         Int      @default(70) // % ชุดฝึกเริ่มต้น (70 = ฝึก 70 / ทดสอบ 30) — ปรับรายการเทรนได้
+  minTrainRows     Int      @default(30) // แถวชุดฝึกขั้นต่ำที่จะเทรนได้
+  minTestRows      Int      @default(10) // แถวชุดทดสอบขั้นต่ำที่วัดคุณภาพได้ (ต่ำกว่า = ยังไม่รายงานคุณภาพ)
+  confidenceHigh   Float    @default(0.8) // คะแนนความเชื่อมั่นตั้งแต่ค่านี้ขึ้นไป = HIGH
+  confidenceMedium Float    @default(0.6) // ตั้งแต่ค่านี้ถึงความสูง = MEDIUM (ต่ำกว่า = LOW)
+  auditSampleSize  Int      @default(20) // จำนวนแถวต่อรอบสุ่มตรวจ (10–100)
+  updatedBy        String? // email ผู้บันทึกล่าสุด (audit trail)
+  updatedAt        DateTime @updatedAt
 }
 
 // นโยบายการเก็บรักษา Audit Log (v0.30.0) — singleton แถวเดียวของระบบ (id = 1)

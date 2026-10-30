@@ -22,8 +22,6 @@ import {
   type DimensionResultView,
 } from '@/lib/dama'
 import { resolveOperator } from '@/lib/operator'
-import { evaluateBatch } from '@/lib/ml-engine'
-import { evaluateForecastBatch } from '@/lib/forecast-engine'
 
 /** จำกัดจำนวนแถวล้มเหลวที่เก็บ snapshot ต่อกฎต่อรอบ (คุมขนาดฐานข้อมูล — เกินนี้นับเฉพาะสรุปรวม) */
 const MAX_FAILURE_ROWS_PER_RULE = 200
@@ -420,25 +418,6 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // ---------- ML ประเมินอัตโนมัติหลังรันจบ (v0.25.0 — ① anomaly + ④ cluster) ----------
-    // ห่อ try/catch แยก: ML ล้มเหลว = การรัน validation ยังสำเร็จปกติ (บันทึก ml ผลเป็น null)
-    let ml: { anomalies: number; clusters: number } | null = null
-    try {
-      const mlResult = await evaluateBatch(batch.id)
-      ml = { anomalies: mlResult.anomalies.length, clusters: mlResult.clusters.length }
-    } catch (mlErr) {
-      console.error('ML evaluation failed (non-blocking)', mlErr)
-    }
-
-    // ---------- พยากรณ์แนวโน้มอัตโนมัติหลังรันจบ (v0.27.0 — ③ forecast) — try/catch แยกเช่นเดียวกับ ML ----------
-    let forecastCount = 0
-    try {
-      const fcResult = await evaluateForecastBatch(batch.id)
-      forecastCount = fcResult.forecasts.length
-    } catch (fcErr) {
-      console.error('Forecast evaluation failed (non-blocking)', fcErr)
-    }
-
     await db.auditLog.create({
       data: {
         action: 'RUN_VALIDATION',
@@ -456,7 +435,6 @@ export async function POST(req: NextRequest) {
       skipped,
       results,
       newSignals,
-      ml,
       overallScore,
       overallGrade: overallGrade
         ? { band: overallGrade.band, label: overallGrade.label, badgeClass: overallGrade.badgeClass, textClass: overallGrade.textClass }

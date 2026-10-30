@@ -14,8 +14,6 @@ import {
 import { buildRuleVerdict, DAMA_STANDARDS, ENGINE_FAILURE_REASONS, fixHintFor, gradeOf } from '@/lib/dama'
 import { resolveOperator } from '@/lib/operator'
 import { aggregateRollups, rollupByElement, type RollupRunInput } from '@/lib/elements'
-import { evaluateBatch } from '@/lib/ml-engine'
-import { evaluateForecastBatch } from '@/lib/forecast-engine'
 
 /** จำกัดจำนวนแถวล้มเหลวที่เก็บ snapshot ต่อกฎต่อรอบ (เช่นเดียวกับ /api/dq/run) */
 const MAX_FAILURE_ROWS_PER_RULE = 200
@@ -555,19 +553,7 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // ---------- ML ประเมินอัตโนมัติราย batch (v0.25.0) — try/catch แยก ไม่กระทบการรัน ----------
-      try {
-        await evaluateBatch(batch.id)
-      } catch (mlErr) {
-        console.error('ML evaluation failed (non-blocking)', mlErr)
-      }
-
-      // ---------- พยากรณ์แนวโน้มราย batch (v0.27.0 — ③) — try/catch แยกเช่นเดียวกับ ML ----------
-      try {
-        await evaluateForecastBatch(batch.id)
-      } catch (fcErr) {
-        console.error('Forecast evaluation failed (non-blocking)', fcErr)
-      }
+      // v0.35.0 — ผล ML ย้ายไป ML Studio (เทรนจาก Data Asset + กฎ DQ + คนสอน) — ไม่ประเมิน anomaly/forecast อัตโนมัติที่นี่อีก
     }
 
     const rollup = buildRollup(
