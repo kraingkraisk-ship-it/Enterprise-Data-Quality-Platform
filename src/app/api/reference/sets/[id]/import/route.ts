@@ -3,7 +3,7 @@
  * body: { operatorEmail, csv } — รูปแบบ value,labelTh,labelEn,definition (ข้าม header อัตโนมัติถ้าแถวแรกเป็น "value,...")
  * โหมด merge: ค่าที่มีอยู่แล้ว (ACTIVE หรือ RETIRED) = ข้าม (รายงานจำนวน) — ไม่ทับของเดิมเงียบ ๆ
  * ข้อจำกัด: สูงสุด REFERENCE_IMPORT_MAX_ROWS แถวใหม่ต่อครั้ง · ค่ารวมในทะเบียนห้ามเกิน REFERENCE_VALUES_CAP
- * สิทธิ์: MANAGE_DATASETS · ห้ามใช้ขณะทะเบียน "รออนุมัติ" · บันทึก Audit Trail (IMPORT_REFERENCE_VALUES)
+ * สิทธิ์: MANAGE_DATASETS · นำเข้าได้ทุกสถานะ (ขณะ ACTIVE = เวอร์ชัน +0.1 อัตโนมัติ) · บันทึก Audit Trail (IMPORT_REFERENCE_VALUES)
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
@@ -11,6 +11,7 @@ import { resolveOperator } from '@/lib/operator'
 import {
   REFERENCE_IMPORT_MAX_ROWS,
   REFERENCE_VALUES_CAP,
+  bumpReferenceVersion,
   parseValuesCsv,
 } from '@/lib/reference'
 
@@ -23,11 +24,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const op = await resolveOperator(body.operatorEmail, 'MANAGE_DATASETS')
     if (!op.ok) return NextResponse.json({ error: op.message }, { status: op.status })
 
-    const set = await db.referenceSet.findUnique({ where: { id }, select: { id: true, code: true, name: true, pendingApproval: true } })
+    const set = await db.referenceSet.findUnique({ where: { id }, select: { id: true, code: true, name: true, status: true, version: true } })
     if (!set) return NextResponse.json({ error: 'ไม่พบทะเบียนข้อมูลอ้างอิงนี้ในระบบ' }, { status: 404 })
-    if (set.pendingApproval) {
-      return NextResponse.json({ error: 'ทะเบียนอยู่ในสถานะ "รออนุมัติ" — ผู้อนุมัติต้องอนุมัติหรือส่งกลับก่อนจึงจะนำเข้าค่าได้' }, { status: 409 })
-    }
 
     const csv = typeof body.csv === 'string' ? body.csv : ''
     if (csv.trim() === '') return NextResponse.json({ error: 'กรุณาวางข้อความ CSV (value,labelTh,labelEn,definition)' }, { status: 400 })
@@ -81,6 +79,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         })
       }
     })
+
+    // v0.36.0 — นำเข้าค่าขณะทะเบียนใช้งานอยู่ (ACTIVE) = เวอร์ชัน +0.1 อัตโนมัติ
+    if (set.status === 'ACTIVE') {
+      await db.referenceSet.update({ where: { id }, data: { version: bumpReferenceVersion(set.version) } })
+    }
 
     const notes: string[] = [`นำเข้า ${toCreate.length} ค่า`]
     if (skippedExisting > 0) notes.push(`ข้ามค่าที่มีอยู่แล้ว ${skippedExisting} ค่า`)

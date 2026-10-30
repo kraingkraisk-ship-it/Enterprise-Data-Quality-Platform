@@ -17,7 +17,7 @@ import type { Prisma } from '@prisma/client'
  * GET  /api/mappings?elementId=…&status=…&type=…
  *      รายการ mapping ทั้งหมด (กรองตาม element ฝั่งใดฝั่งหนึ่ง / สถานะ / ประเภท)
  *      คืน expanded: source/target พร้อมเส้นทางเต็ม โดเมนหลัก.โดเมนย่อย.ชื่อ element
- * POST /api/mappings — สร้าง mapping ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — ต้องผ่าน workflow อนุมัติจึงจะ ACTIVE)
+ * POST /api/mappings — สร้าง mapping ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — เปิดใช้งานด้วยสิทธิ์ MANAGE_DATASETS เมื่อพร้อม)
  *      body: { operatorEmail, sourceElementId, targetElementId, mappingType, transformNote?, note?, lookupSetId? (v0.31.0 — เฉพาะ LOOKUP) }
  *
  * สิทธิ์ (เฉพาะ POST): MANAGE_DATASETS — ทุกการสร้างบันทึก Audit Trail
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
       const rs = await db.referenceSet.findUnique({ where: { id: lookupSetRaw }, select: { id: true, code: true, name: true, status: true } })
       if (!rs) return NextResponse.json({ error: 'ไม่พบทะเบียนข้อมูลอ้างอิงที่เลือกในระบบ' }, { status: 404 })
       if (rs.status !== 'ACTIVE') {
-        return NextResponse.json({ error: `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — อ้างได้เฉพาะทะเบียนที่อนุมัติแล้ว (ACTIVE)` }, { status: 400 })
+        return NextResponse.json({ error: `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — อ้างได้เฉพาะทะเบียนที่เปิดใช้งานแล้ว (ACTIVE)` }, { status: 400 })
       }
       lookupSetId = rs.id
     }
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
     for (const el of elements) {
       if (el.status !== 'ACTIVE') {
         return NextResponse.json(
-          { error: `element "${el.nameTh}" (${el.code}) ไม่ใช่สถานะ ACTIVE — เฉพาะ element ที่อนุมัติแล้วจึงนำมาแมปได้` },
+          { error: `element "${el.nameTh}" (${el.code}) ไม่ใช่สถานะ ACTIVE — เปิดใช้งาน element ก่อนจึงนำมาแมปได้ (หน้า Data Domain)` },
           { status: 409 },
         )
       }
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
         action: 'CREATE_DATA_MAPPING',
         actor: op.ctx.email,
         target: created.code,
-        detail: `สร้าง Data Mapping ${created.code} (${mappingType})${lookupSetId ? ' · อ้างทะเบียนอ้างอิง' : ''} — สถานะ DRAFT รอส่งขออนุมัติ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `สร้าง Data Mapping ${created.code} (${mappingType})${lookupSetId ? ' · อ้างทะเบียนอ้างอิง' : ''} — สถานะเริ่มต้น DRAFT (เปิดใช้งานเมื่อพร้อม) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
       loadDomainMap(),
     ])
     return NextResponse.json(
-      { mapping: fresh ? mappingExpanded(fresh, domainMap) : null, message: `สร้าง Data Mapping ${created.code} แล้ว — สถานะ DRAFT รอส่งขออนุมัติ` },
+      { mapping: fresh ? mappingExpanded(fresh, domainMap) : null, message: `สร้าง Data Mapping ${created.code} แล้ว — สถานะเริ่มต้น DRAFT (เปิดใช้งานเมื่อพร้อม)` },
       { status: 201 },
     )
   } catch (e) {

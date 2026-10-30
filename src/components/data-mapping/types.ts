@@ -36,11 +36,8 @@ export interface ExpandedMapping {
   lookupSetId: string | null
   lookupSet: { id: string; code: string; name: string; status: string } | null
   status: 'DRAFT' | 'ACTIVE' | 'DEPRECATED'
-  /** เวอร์ชันสเปก (v0.22.0) — อัตโนมัติ +0.1 เมื่ออนุมัติเนื้อหาที่แก้ · ปรับมือได้ด้วยสิทธิ์อนุมัติ */
+  /** เวอร์ชันสเปก (v0.36.0) — อัตโนมัติ +0.1 เมื่อแก้เนื้อหาขณะใช้งานอยู่ (ACTIVE) · ปรับมือได้ด้วยสิทธิ์ MANAGE_DATASETS */
   version: string
-  pendingApproval: boolean
-  approvedBy: string | null
-  approvedAt: string | null
   createdBy: string
   createdAt: string
   updatedAt: string
@@ -57,7 +54,6 @@ export interface LineageEdge {
   mappingType: string
   transformNote: string
   status: string
-  pendingApproval: boolean
 }
 
 /** ผลลัพธ์แผนผัง lineage (nodes = element ทุกตัวที่เกี่ยว, edges = mapping ทุกเส้น) */
@@ -79,7 +75,6 @@ export interface PickerElement {
   nameTh: string
   nameEn: string
   status: string
-  pendingApproval: boolean
 }
 
 /** โดเมนแบบย่อสำหรับ cascade picker (จาก GET /api/domains) */

@@ -98,7 +98,6 @@ interface ElementRowLite {
   pii: boolean
   isCde: boolean
   isFinancial: boolean
-  pendingApproval: boolean
   status: string
   ruleCount: number
   mappingCount: number
@@ -228,7 +227,7 @@ interface RunResponse {
 }
 
 interface DashboardData {
-  totals: { pendingSignals: number; pendingExceptions: number; rulesEnabled: number; datasetsWithRun: number; datasetsTotal: number }
+  totals: { pendingSignals: number; activeExceptions: number; rulesEnabled: number; datasetsWithRun: number; datasetsTotal: number }
   perDataset: Array<{
     id: string
     name: string
@@ -314,7 +313,6 @@ const PERMISSIONS_BY_ACTION: Record<string, PermissionKey> = {
   MANAGE_RULES: 'MANAGE_RULES',
   RUN_VALIDATION: 'RUN_VALIDATION',
   REVIEW_SIGNALS: 'REVIEW_SIGNALS',
-  APPROVE_EXCEPTIONS: 'APPROVE_EXCEPTIONS',
 }
 
 /** ชิปแสดงผู้ดำเนินการปัจจุบัน (v0.32.0) — แทนตัวเลือก "ผู้ดำเนินการ" ที่เคยกระจายทุกแท็บ
@@ -1265,7 +1263,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     ) : (
                       <span className="text-amber-700">ยังไม่แมปคอลัมน์จริง (แมปได้ในหน้า Data Domain)</span>
                     )}
-                    {rbSelectedElement.status === 'DRAFT' && <span className="text-amber-700">element สถานะร่าง — ต้องอนุมัติก่อนรันโดเมนได้</span>}
+                    {rbSelectedElement.status === 'DRAFT' && <span className="text-amber-700">element สถานะร่าง — เปิดใช้งานที่หน้า Data Domain ก่อนรันโดเมนได้</span>}
                     {rbSelectedElement.status === 'DEPRECATED' && <span className="text-muted-foreground">element เลิกใช้ — จะไม่ถูกรันในรอบโดเมน</span>}
                   </div>
                 )}

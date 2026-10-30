@@ -1,14 +1,14 @@
 'use client'
 
 /**
- * Data Mapping — badge / แถว / ปุ่ม workflow (v0.21.0)
+ * Data Mapping — badge / แถว / ปุ่มสถานะ (v0.21.0 · v0.36.0 ไม่มีคิวอนุมัติ)
  * ใช้ร่วมกันทั้งแท็บ "การแมปข้อมูล" ใน Dialog Data Element และหน้า Data Mapping
- * สิทธิ์ deny-by-default: ปุ่มแสดงเฉพาะเมื่อผู้ดำเนินการที่เลือกมีสิทธิ์ตามบทบาท
- * (ส่ง/ลบ = MANAGE_DATASETS · อนุมัติ/ส่งกลับ/เลิกใช้ = APPROVE_EXCEPTIONS — สิทธิ์เดิมของระบบ)
+ * สิทธิ์ deny-by-default: ปุ่มแสดงเฉพาะเมื่อผู้ดำเนินการที่เลือกมีสิทธิ์ MANAGE_DATASETS
+ * (เปิดใช้งาน/เลิกใช้/ลบ = MANAGE_DATASETS ทั้งหมด — ทุก action บันทึก Audit Trail)
  */
 
 import { useState } from 'react'
-import { Archive, CheckCircle2, Clock3, Info, Loader2, Send, Trash2, XCircle } from 'lucide-react'
+import { Archive, CheckCircle2, Info, Loader2, Trash2 } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,25 +38,20 @@ import type { ExpandedMapping } from './types'
 
 /* ----------------------------- badges ----------------------------- */
 
-/** ป้ายสถานะ mapping — DRAFT ร่าง / ACTIVE ใช้งาน / DEPRECATED เลิกใช้ (+ "รออนุมัติ" เมื่อ pendingApproval) */
+/** ป้ายสถานะ mapping — DRAFT ร่าง / ACTIVE ใช้งาน / DEPRECATED เลิกใช้ */
 export const MAPPING_STATUS_META: Record<MappingStatus, { th: string; en: string; chip: string }> = {
   DRAFT: { th: 'ร่าง', en: 'Draft', chip: 'border-amber-300 bg-amber-50 text-amber-800' },
   ACTIVE: { th: 'ใช้งาน', en: 'Active', chip: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
   DEPRECATED: { th: 'เลิกใช้', en: 'Deprecated', chip: 'border-slate-300 bg-slate-100 text-slate-600' },
 }
 
-export function MappingStatusBadge({ mapping }: { mapping: Pick<ExpandedMapping, 'status' | 'pendingApproval'> }) {
+export function MappingStatusBadge({ mapping }: { mapping: Pick<ExpandedMapping, 'status'> }) {
   const meta = MAPPING_STATUS_META[mapping.status] ?? MAPPING_STATUS_META.DRAFT
   return (
     <span className="inline-flex items-center gap-1">
       <Badge variant="outline" className={`text-[10px] ${meta.chip}`}>
         {meta.th}
       </Badge>
-      {mapping.pendingApproval && (
-        <Badge variant="outline" className="border-sky-300 bg-sky-50 text-[10px] text-sky-800">
-          <Clock3 className="mr-0.5 size-2.5" aria-hidden="true" /> รออนุมัติ
-        </Badge>
-      )}
     </span>
   )
 }
@@ -79,32 +74,27 @@ export function MappingTypeBadge({ type }: { type: string }) {
 
 interface MappingActionsProps {
   mapping: ExpandedMapping
-  /** ผู้ดำเนินการฝั่งจัดการ (MANAGE_DATASETS) — เลือกที่หน้า/แท็บ หากว่าง = ไม่แสดงปุ่ม (deny-by-default) */
+  /** ผู้ดำเนินการ (MANAGE_DATASETS) — เลือกที่หน้า/แท็บ หากว่าง = ไม่แสดงปุ่ม (deny-by-default) */
   operatorEmail: string
-  /** ผู้ดำเนินการฝั่งอนุมัติ (APPROVE_EXCEPTIONS) — เลือกที่หน้า/แท็บ หากว่าง = ไม่แสดงปุ่ม */
-  approverEmail: string
   /** เรียกหลังดำเนินการสำเร็จ (parent ใช้รีเฟรชรายการ) */
   onChanged: () => void | Promise<void>
 }
 
-/** ปุ่ม workflow ราย mapping: ส่งขออนุมัติ / อนุมัติ / ส่งกลับ / เลิกใช้ / ลบ — PATCH /api/mappings/[id] */
-export function MappingActions({ mapping, operatorEmail, approverEmail, onChanged }: MappingActionsProps) {
+/** ปุ่มสถานะราย mapping: เปิดใช้งาน / เลิกใช้ / ลบ — PATCH /api/mappings/[id] (v0.36.0 ไม่มีคิวอนุมัติ) */
+export function MappingActions({ mapping, operatorEmail, onChanged }: MappingActionsProps) {
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
-  const [noteOpen, setNoteOpen] = useState<'REJECT_APPROVAL' | 'DEPRECATE' | null>(null)
+  const [noteOpen, setNoteOpen] = useState<'DEPRECATE' | null>(null)
   const [note, setNote] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const canManage = operatorEmail.length > 0
-  const canApprove = approverEmail.length > 0
-  const showSubmit = canManage && !mapping.pendingApproval && (mapping.status === 'DRAFT' || mapping.status === 'DEPRECATED')
-  const showApprove = canApprove && mapping.pendingApproval
-  const showDeprecate = canApprove && !mapping.pendingApproval && mapping.status === 'ACTIVE'
-  const showDelete = canManage && !mapping.pendingApproval
+  const showActivate = canManage && (mapping.status === 'DRAFT' || mapping.status === 'DEPRECATED')
+  const showDeprecate = canManage && mapping.status === 'ACTIVE'
+  const showDelete = canManage
 
   async function run(action: string, extra?: Record<string, unknown>) {
-    const operator = action === 'APPROVE' || action === 'REJECT_APPROVAL' || action === 'DEPRECATE' ? approverEmail : operatorEmail
-    if (!operator) {
+    if (!operatorEmail) {
       toast({ title: 'กรุณาเลือกผู้ดำเนินการก่อน', variant: 'destructive' })
       return
     }
@@ -113,7 +103,7 @@ export function MappingActions({ mapping, operatorEmail, approverEmail, onChange
       const res = await fetch(`/api/mappings/${mapping.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operatorEmail: operator, action, ...(extra ?? {}) }),
+        body: JSON.stringify({ operatorEmail, action, ...(extra ?? {}) }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -129,50 +119,22 @@ export function MappingActions({ mapping, operatorEmail, approverEmail, onChange
     }
   }
 
-  if (!showSubmit && !showApprove && !showDeprecate && !showDelete) return null
+  if (!showActivate && !showDeprecate && !showDelete) return null
 
   return (
     <>
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={`การดำเนินการ mapping ${mapping.code}`}>
-        {showSubmit && (
+        {showActivate && (
           <Button
             size="sm"
-            variant="outline"
-            className="h-7 border-emerald-300 px-2 text-[11px] text-emerald-800 hover:bg-emerald-50"
+            className="h-7 bg-emerald-600 px-2 text-[11px] text-white hover:bg-emerald-700"
             disabled={busy}
-            onClick={() => void run('SUBMIT_APPROVAL')}
-            title="ส่งขออนุมัติ (ต้องมีสิทธิ์จัดการชุดข้อมูล)"
+            onClick={() => void run('ACTIVATE')}
+            title="เปิดใช้งาน (ต้องมีสิทธิ์จัดการชุดข้อมูล)"
           >
-            {busy ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : <Send className="size-3" aria-hidden="true" />}
-            ส่งขออนุมัติ
+            {busy ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-3" aria-hidden="true" />}
+            เปิดใช้งาน
           </Button>
-        )}
-        {showApprove && (
-          <>
-            <Button
-              size="sm"
-              className="h-7 bg-emerald-600 px-2 text-[11px] text-white hover:bg-emerald-700"
-              disabled={busy}
-              onClick={() => void run('APPROVE')}
-              title="อนุมัติ (ต้องมีสิทธิ์อนุมัติข้อยกเว้น)"
-            >
-              {busy ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-3" aria-hidden="true" />}
-              อนุมัติ
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 border-rose-300 px-2 text-[11px] text-rose-700 hover:bg-rose-50"
-              disabled={busy}
-              onClick={() => {
-                setNote('')
-                setNoteOpen('REJECT_APPROVAL')
-              }}
-              title="ส่งกลับให้ผู้ดูแลแก้ไข (ระบุเหตุผลได้)"
-            >
-              <XCircle className="size-3" aria-hidden="true" /> ส่งกลับ
-            </Button>
-          </>
         )}
         {showDeprecate && (
           <Button
@@ -184,7 +146,7 @@ export function MappingActions({ mapping, operatorEmail, approverEmail, onChange
               setNote('')
               setNoteOpen('DEPRECATE')
             }}
-            title="เลิกใช้ mapping (ต้องมีสิทธิ์อนุมัติข้อยกเว้น)"
+            title="เลิกใช้ mapping (ต้องมีสิทธิ์จัดการชุดข้อมูล)"
           >
             <Archive className="size-3" aria-hidden="true" /> เลิกใช้
           </Button>
@@ -203,15 +165,13 @@ export function MappingActions({ mapping, operatorEmail, approverEmail, onChange
         )}
       </div>
 
-      {/* Dialog เหตุผล (ส่งกลับ / เลิกใช้ — ไม่บังคับกรอก) */}
+      {/* Dialog เหตุผล (เลิกใช้ — ไม่บังคับกรอก) */}
       <Dialog open={noteOpen !== null} onOpenChange={(o) => { if (!o) setNoteOpen(null) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>{noteOpen === 'REJECT_APPROVAL' ? 'ส่งกลับ mapping' : 'เลิกใช้ mapping'}</DialogTitle>
+            <DialogTitle>เลิกใช้ mapping</DialogTitle>
             <DialogDescription>
-              {noteOpen === 'REJECT_APPROVAL'
-                ? `ส่งกลับ ${mapping.code} ให้ผู้ดูแลแก้ไขแล้วส่งขออนุมัติใหม่ — คงสถานะเดิมไว้`
-                : `เลิกใช้ ${mapping.code} — สถานะเปลี่ยนเป็น DEPRECATED (กลับมาใช้ใหม่ได้ผ่านการส่งขออนุมัติ)`}
+              {`เลิกใช้ ${mapping.code} — สถานะเปลี่ยนเป็น DEPRECATED (เปิดกลับมาใช้ใหม่ได้ด้วยปุ่ม "เปิดใช้งาน")`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
@@ -230,7 +190,7 @@ export function MappingActions({ mapping, operatorEmail, approverEmail, onChange
               ยกเลิก
             </Button>
             <Button
-              className={noteOpen === 'REJECT_APPROVAL' ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-amber-600 text-white hover:bg-amber-700'}
+              className="bg-amber-600 text-white hover:bg-amber-700"
               disabled={busy}
               onClick={() => {
                 const action = noteOpen
@@ -239,7 +199,7 @@ export function MappingActions({ mapping, operatorEmail, approverEmail, onChange
               }}
             >
               {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              {noteOpen === 'REJECT_APPROVAL' ? 'ยืนยันส่งกลับ' : 'ยืนยันเลิกใช้'}
+              ยืนยันเลิกใช้
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -279,14 +239,13 @@ interface MappingSideRowProps {
   mapping: ExpandedMapping
   elementId: string
   operatorEmail: string
-  approverEmail: string
   onChanged: () => void | Promise<void>
   /** v0.22.0 — เรียกเมื่อกด "ดูรายละเอียด" (parent เปิด MappingDetailDialog) — ไม่ส่ง = ไม่แสดงปุ่ม */
   onOpenDetail?: (mappingId: string) => void
 }
 
 /** แถว mapping ในแท็บ "การแมปข้อมูล" — แสดง element อีกฝั่ง (ต้นทางที่ไหลเข้า / ปลายทางที่ไหลออก) */
-export function MappingSideRow({ mapping, elementId, operatorEmail, approverEmail, onChanged, onOpenDetail }: MappingSideRowProps) {
+export function MappingSideRow({ mapping, elementId, operatorEmail, onChanged, onOpenDetail }: MappingSideRowProps) {
   const incoming = mapping.target.id === elementId
   const other = incoming ? mapping.source : mapping.target
   const hint = mapping.transformNote || mapping.note
@@ -320,11 +279,10 @@ export function MappingSideRow({ mapping, elementId, operatorEmail, approverEmai
       <p className="mt-0.5 break-all font-mono text-[10px] text-muted-foreground">{other.path}</p>
       {hint && <p className="mt-1 text-[11px] text-foreground/80">{mapping.transformNote ? `การแปลง: ${mapping.transformNote}` : `หมายเหตุ: ${mapping.note}`}</p>}
       <p className="mt-1 text-[10px] text-muted-foreground">
-        ผู้อนุมัติ: {mapping.approvedBy ?? 'ยังไม่มีการอนุมัติ'}
-        {mapping.approvedBy ? ` · ${formatWhen(mapping.approvedAt)}` : ''}
+        สร้างโดย {mapping.createdBy} · แก้ไขล่าสุด {formatWhen(mapping.updatedAt)}
       </p>
       <div className="mt-2">
-        <MappingActions mapping={mapping} operatorEmail={operatorEmail} approverEmail={approverEmail} onChanged={onChanged} />
+        <MappingActions mapping={mapping} operatorEmail={operatorEmail} onChanged={onChanged} />
       </div>
     </li>
   )

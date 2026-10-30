@@ -4,7 +4,7 @@ import { DIMENSION_LABELS, type DimensionKey } from '@/lib/dq'
 
 export async function GET() {
   try {
-    const [datasets, pendingSignals, pendingExceptions, rulesEnabled] = await Promise.all([
+    const [datasets, pendingSignals, activeExceptions, rulesEnabled] = await Promise.all([
       db.dataset.findMany({
         where: { status: 'ACTIVE' },
         orderBy: { createdAt: 'asc' },
@@ -18,7 +18,8 @@ export async function GET() {
         },
       }),
       db.dqSignal.count({ where: { status: 'PENDING_REVIEW' } }),
-      db.dqException.count({ where: { status: 'PENDING' } }),
+      // v0.36.0 — นับข้อยกเว้นที่ใช้งานอยู่ (ขอ = ใช้ทันที ไม่มีคิวอนุมัติ) — ยกเว้นที่ถูกยกเลิก/หมดอายุไม่นับ
+      db.dqException.count({ where: { status: 'APPROVED', expiresAt: { gt: new Date() } } }),
       db.dqRule.count({ where: { enabled: true } }),
     ])
 
@@ -76,7 +77,7 @@ export async function GET() {
     return NextResponse.json({
       totals: {
         pendingSignals,
-        pendingExceptions,
+        activeExceptions,
         rulesEnabled,
         datasetsWithRun: perDataset.filter((d) => d.lastRunAt).length,
         datasetsTotal: perDataset.length,

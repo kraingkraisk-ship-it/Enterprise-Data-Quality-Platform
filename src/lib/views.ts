@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.35.0'
+export const APP_VERSION = 'v0.36.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -132,7 +132,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'issues',
     th: 'ปัญหาคุณภาพข้อมูล',
     en: 'DQ Issues',
-    desc: 'ทะเบียนปัญหาพร้อม lifecycle: เปิด → ดำเนินการ → แก้ไขแล้ว → ปิดโดยผู้อนุมัติ พร้อมแท็บข้อยกเว้น & การอนุมัติ',
+    desc: 'ทะเบียนปัญหาพร้อม lifecycle: เปิด → ดำเนินการ → แก้ไขแล้ว → ปิด (สิทธิ์ตามบทบาทล้วน) พร้อมแท็บข้อยกเว้นกฎ',
     icon: ListChecks,
   },
   'ml-studio': {
@@ -181,21 +181,21 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'asset-domain',
     th: 'Data Domain',
     en: 'Data Domain · Element · Meta',
-    desc: 'โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Element > Meta Data (ISO/IEC 11179) — Meta Data 4 กลุ่ม (Business/Technical/Operational/Governance) กรอกครั้งเดียวต่อ element + ธง CDE/การเงิน + workflow อนุมัติ (บันทึกผู้อนุมัติ+Audit Trail) + แมปคอลัมน์จริงจากคลังข้อมูล',
+    desc: 'โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Element > Meta Data (ISO/IEC 11179) — Meta Data 4 กลุ่ม (Business/Technical/Operational/Governance) กรอกครั้งเดียวต่อ element + ธง CDE/การเงิน + เปิดใช้งาน/เลิกใช้ตามสิทธิ์บทบาท (Audit Trail 100%) + แมปคอลัมน์จริงจากคลังข้อมูล',
     icon: FolderTree,
   },
   'asset-reference': {
     key: 'asset-reference',
     th: 'ข้อมูลอ้างอิง',
     en: 'Reference Data',
-    desc: 'ทะเบียนค่ามาตรฐานศูนย์กลาง (DAMA-DMBOK) — สกุลเงิน/รหัสประเทศ/กลุ่มลูกค้า แก้ที่ต้นทางจุดเดียว กฎ IN_LIST/REFERENCE_MATCH ใช้ค่าใหม่ทันที + ผูก valueDomain ของ Element + สแกนค่านอกทะเบียน + นำเข้า/ส่งออก CSV + workflow อนุมัติ',
+    desc: 'ทะเบียนค่ามาตรฐานศูนย์กลาง (DAMA-DMBOK) — สกุลเงิน/รหัสประเทศ/กลุ่มลูกค้า แก้ที่ต้นทางจุดเดียว กฎ IN_LIST/REFERENCE_MATCH ใช้ค่าใหม่ทันที + ผูก valueDomain ของ Element + สแกนค่านอกทะเบียน + นำเข้า/ส่งออก CSV + เปิดใช้งานตามสิทธิ์บทบาท',
     icon: BookMarked,
   },
   'data-mapping': {
     key: 'data-mapping',
     th: 'การแมปข้อมูล',
     en: 'Data Mapping',
-    desc: 'เส้นเชื่อม Data Element ต้นทาง→ปลายทาง ระบุว่าเป็นข้อมูลชนิดเดียวกัน ข้ามระบบ/ข้ามโดเมน พร้อมแผนผัง lineage แบบหลายขั้น (DIRECT/TRANSFORM/DERIVED/AGGREGATE/LOOKUP) + workflow อนุมัติเหมือน Data Element',
+    desc: 'เส้นเชื่อม Data Element ต้นทาง→ปลายทาง ระบุว่าเป็นข้อมูลชนิดเดียวกัน ข้ามระบบ/ข้ามโดเมน พร้อมแผนผัง lineage แบบหลายขั้น (DIRECT/TRANSFORM/DERIVED/AGGREGATE/LOOKUP) + เปิดใช้งาน/เลิกใช้ตามสิทธิ์บทบาท',
     icon: Waypoints,
   },
   rbac: {

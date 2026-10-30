@@ -55,7 +55,7 @@ const FEATURES = [
     title: 'สินทรัพย์ข้อมูลครบวงจร',
     en: 'Data Asset · Domain · Inventory',
     desc:
-      'นำเข้า CSV / JSON / ฐานข้อมูล เก็บเป็นคลังข้อมูลพร้อมพรีวิว แล้วจัดโครงสร้าง 4 ระดับ (Data Domain > Sub Domain > Data Element > Meta Data) ตามมาตรฐาน ISO/IEC 11179 พร้อมธง CDE และ workflow อนุมัติ',
+      'นำเข้า CSV / JSON / ฐานข้อมูล เก็บเป็นคลังข้อมูลพร้อมพรีวิว แล้วจัดโครงสร้าง 4 ระดับ (Data Domain > Sub Domain > Data Element > Meta Data) ตามมาตรฐาน ISO/IEC 11179 พร้อมธง CDE และการเปิดใช้งานตามสิทธิ์บทบาท',
   },
   {
     icon: BookMarked,
@@ -69,7 +69,7 @@ const FEATURES = [
     title: 'การแมปข้อมูลและ Lineage',
     en: 'Data Mapping & Lineage',
     desc:
-      'เส้นเชื่อม Element ต้นทาง→ปลายทางข้ามระบบ/ข้ามโดเมน พร้อมแผนผังหลายขั้น (DIRECT / TRANSFORM / DERIVED / AGGREGATE / LOOKUP) และ workflow อนุมัติแบบเดียวกับ Data Element',
+      'เส้นเชื่อม Element ต้นทาง→ปลายทางข้ามระบบ/ข้ามโดเมน พร้อมแผนผังหลายขั้น (DIRECT / TRANSFORM / DERIVED / AGGREGATE / LOOKUP) พร้อมเวอร์ชันสเปกอัตโนมัติเมื่อแก้เนื้อหาขณะใช้งานอยู่',
   },
   {
     icon: GitBranch,
@@ -87,10 +87,10 @@ const FEATURES = [
   },
   {
     icon: ClipboardCheck,
-    title: 'กระบวนการอนุมัติและข้อยกเว้น',
-    en: 'Approval & Exception Workflow',
+    title: 'ข้อยกเว้นและสิทธิ์ตามบทบาท',
+    en: 'Exceptions & Role-based Access',
     desc:
-      'ข้อยกเว้นและข้อมูลอ้างอิง/Element/Mapping ต้องผ่านการอนุมัติตามบทบาท พร้อมเหตุผล ผู้ดำเนินการ และวันหมดอายุที่ตรวจสอบย้อนหลังได้',
+      'ข้อยกเว้นกฎระบุเหตุผลและวันหมดอายุเสมอ — ผู้มีบทบาทตามสิทธิ์ดำเนินการตรง ทุก action บันทึก Audit Trail ตรวจสอบย้อนหลังได้ (ไม่มีคิวอนุมัติ)',
   },
   {
     icon: LayoutDashboard,
@@ -127,7 +127,7 @@ const WORKFLOW = [
     step: 2,
     title: 'จัดโครงสร้างสินทรัพย์ข้อมูล',
     en: 'Structure Assets',
-    desc: 'จัด Data Domain 4 ระดับตาม ISO/IEC 11179 ผูกทะเบียนข้อมูลอ้างอิง และแมป lineage ข้ามระบบ — ทุกอันผ่าน workflow อนุมัติ',
+    desc: 'จัด Data Domain 4 ระดับตาม ISO/IEC 11179 ผูกทะเบียนข้อมูลอ้างอิง และแมป lineage ข้ามระบบ — ทุก action บันทึก Audit Trail',
   },
   {
     step: 3,
@@ -145,7 +145,7 @@ const WORKFLOW = [
     step: 5,
     title: 'ทบทวนสัญญาณ AI และจัดการผล',
     en: 'Review & Handle Results',
-    desc: 'ทีมวิเคราะห์ทบทวนสัญญาณจากศูนย์ ML ดูรายแถวที่ไม่ผ่าน (PII ถูกปิดบังตามบทบาท) และบริหารปัญหา/ข้อยกเว้นพร้อมอนุมัติ',
+    desc: 'ทีมวิเคราะห์ทบทวนสัญญาณจาก ML Studio ดูรายแถวที่ไม่ผ่าน (PII ถูกปิดบังตามบทบาท) และบริหารปัญหา/ข้อยกเว้นตามสิทธิ์บทบาท',
   },
   {
     step: 6,
@@ -424,7 +424,7 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
           <p>
             <strong>ข้อควรทราบ:</strong> ผลการตรวจจับของ AI/ML เป็นเพียง &ldquo;สัญญาณ&rdquo; ที่ต้องผ่านการทบทวนโดยมนุษย์เสมอ
-            และระบบจะไม่แก้ไขข้อมูลต้นทางโดยอัตโนมัติ — ทุกการดำเนินการต้องมีมนุษย์อนุมัติ
+            และระบบจะไม่แก้ไขข้อมูลต้นทางโดยอัตโนมัติ — ทุกการดำเนินการทำโดยมนุษย์ตามบทบาทและบันทึก Audit Trail
           </p>
         </div>
       </section>

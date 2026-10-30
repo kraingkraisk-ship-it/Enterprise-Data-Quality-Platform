@@ -13,8 +13,7 @@ type Body = {
 
 /**
  * PATCH /api/dq/issues/[id] — เปลี่ยนสถานะ/มอบหมาย/ตั้งวันครบกำหนด (deny-by-default ตาม lifecycle + RBAC)
- * - START / RESOLVE / REOPEN / SET_DUE → ต้องมีสิทธิ์ MANAGE_ISSUES
- * - CLOSE → ต้องมีสิทธิ์ APPROVE_EXCEPTIONS (ผู้ปิดต้องไม่ใช่สายแก้ไขโดยตรง — การกำกับดูแลที่ดี)
+ * - ทุกสถานะ (START / RESOLVE / CLOSE / REOPEN) ใช้สิทธิ์ MANAGE_ISSUES เดียว (v0.36.0 — ไม่มีสิทธิ์อนุมัติแยก)
  * - SET_DUE (v0.17.0): ตั้งวันครบกำหนด (dueAt) รายปัญหา — ใช้ตรวจ "เกิน SLA" บนแดชบอร์ดผู้บริหาร · ส่งค่าว่าง = ล้างวันครบกำหนด
  */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -30,7 +29,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง' }, { status: 400 })
     }
 
-    const permission = action === 'CLOSE' ? 'APPROVE_EXCEPTIONS' : 'MANAGE_ISSUES'
+    const permission = 'MANAGE_ISSUES' // v0.36.0 — ทุกสถานะใช้สิทธิ์เดียว (RBAC ตามบทบาทล้วน)
     const op = await resolveOperator(body.operatorEmail, permission)
     if (!op.ok) {
       return NextResponse.json({ error: op.message }, { status: op.status })
@@ -118,7 +117,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           action: t.audit,
           actor: op.ctx.email,
           target: `${issue.code} — ${issue.dataset.name}`,
-          detail: `เปลี่ยนสถานะปัญหา ${issue.code} → "${toTh}"${action === 'RESOLVE' ? ` (วิธีแก้: ${String(body.note ?? '').trim()})` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh}${action === 'CLOSE' ? ' — ผู้ปิดต้องมีสิทธิ์อนุมัติ' : ''})`,
+          detail: `เปลี่ยนสถานะปัญหา ${issue.code} → "${toTh}"${action === 'RESOLVE' ? ` (วิธีแก้: ${String(body.note ?? '').trim()})` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
     }

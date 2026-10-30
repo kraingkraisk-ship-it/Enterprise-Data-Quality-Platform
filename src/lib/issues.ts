@@ -19,11 +19,11 @@ export const ISSUE_STATUS_META: Record<string, { th: string; en: string; cls: st
   CLOSED: { th: 'ปิดแล้ว', en: 'Closed', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
 }
 
-/** การเปลี่ยนสถานะที่อนุญาต — deny-by-default (นอกเส้นทางนี้ = ปฏิเสธ) */
-export const ISSUE_TRANSITIONS: Record<string, { from: string[]; to: string; permission: 'MANAGE_ISSUES' | 'APPROVE_EXCEPTIONS'; audit: string }> = {
+/** การเปลี่ยนสถานะที่อนุญาต — deny-by-default (นอกเส้นทางนี้ = ปฏิเสธ) (v0.36.0: ทุกสถานะใช้สิทธิ์ MANAGE_ISSUES — ไม่มีสิทธิ์อนุมัติแยก) */
+export const ISSUE_TRANSITIONS: Record<string, { from: string[]; to: string; permission: 'MANAGE_ISSUES'; audit: string }> = {
   START: { from: ['OPEN'], to: 'IN_PROGRESS', permission: 'MANAGE_ISSUES', audit: 'START_ISSUE' },
   RESOLVE: { from: ['IN_PROGRESS'], to: 'RESOLVED', permission: 'MANAGE_ISSUES', audit: 'RESOLVE_ISSUE' },
-  CLOSE: { from: ['RESOLVED'], to: 'CLOSED', permission: 'APPROVE_EXCEPTIONS', audit: 'CLOSE_ISSUE' },
+  CLOSE: { from: ['RESOLVED'], to: 'CLOSED', permission: 'MANAGE_ISSUES', audit: 'CLOSE_ISSUE' },
   REOPEN: { from: ['RESOLVED', 'CLOSED'], to: 'OPEN', permission: 'MANAGE_ISSUES', audit: 'REOPEN_ISSUE' },
 }
 

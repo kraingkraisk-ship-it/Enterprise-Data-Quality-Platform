@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
   try {
     const datasetFilter = req.nextUrl.searchParams.get('datasetId')?.trim() ?? ''
 
-    const [datasets, rulesEnabled, templates, runsWindow, pendingSignals, pendingExceptions, totalRuns, conditionsCount] =
+    const [datasets, rulesEnabled, templates, runsWindow, pendingSignals, activeExceptions, totalRuns, conditionsCount] =
       await Promise.all([
         db.dataset.findMany({
           where: { status: 'ACTIVE' },
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
           include: { rule: { select: { column: true, condition: true, severity: true } } },
         }),
         db.dqSignal.count({ where: { status: 'PENDING_REVIEW' } }),
-        db.dqException.count({ where: { status: 'PENDING' } }),
+        db.dqException.count({ where: { status: 'APPROVED', expiresAt: { gt: new Date() } } }),
         db.dqRun.count(),
         db.conditionTemplate.count({ where: { enabled: true } }),
       ])
@@ -550,7 +550,7 @@ export async function GET(req: NextRequest) {
           conditionsEnabled: conditionsCount,
           totalRuns,
           pendingSignals,
-          pendingExceptions,
+          activeExceptions,
           failedRulesLatest: latestRuns.filter((r) => r.status === 'FAILED').length,
           measuredRulesLatest: latestRuns.length,
         },

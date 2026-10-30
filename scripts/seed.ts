@@ -688,8 +688,6 @@ async function main() {
       requestedBy: 'preecha.engineer@company.co.th',
       status: 'APPROVED',
       expiresAt: new Date(Date.now() + 30 * 86_400_000),
-      decidedBy: 'somchai.owner@company.co.th',
-      decidedAt: new Date(Date.now() - 2 * 86_400_000),
     },
   })
 
@@ -1099,9 +1097,7 @@ async function main() {
         code: await nextElementCode(db),
         subDomainId: subDomainIdVal,
         nameTh,
-        status: 'ACTIVE', // seed สร้างเป็น element ที่ใช้งานได้ทันที (ผ่านการอนุมัติโดยระบบเริ่มต้น)
-        approvedBy: mappingSeedApprover,
-        approvedAt: new Date(),
+        status: 'ACTIVE', // seed สร้างเป็น element ที่ใช้งานได้ทันที (v0.36.0 — เปิดใช้งานตรงตามสิทธิ์บทบาท)
         createdBy: mappingSeedActor,
         ...fields,
       },
@@ -1141,8 +1137,6 @@ async function main() {
         note,
         status: 'ACTIVE',
         version: '1.0',
-        approvedBy: mappingSeedApprover,
-        approvedAt: new Date(),
         createdBy: mappingSeedActor,
       },
     })
@@ -1225,7 +1219,7 @@ async function main() {
   if (centralElement && centralElement.status !== 'ACTIVE') {
     await db.dataElement.update({
       where: { id: centralElement.id },
-      data: { status: 'ACTIVE', approvedBy: mappingSeedApprover, approvedAt: new Date() },
+      data: { status: 'ACTIVE' },
     })
   }
   if (centralElement) {

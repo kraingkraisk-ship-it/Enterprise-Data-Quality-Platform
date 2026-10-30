@@ -5,7 +5,16 @@ import {
   REFERENCE_TEXT_MAX,
   REFERENCE_VALUE_MAX,
   REFERENCE_VALUES_CAP,
+  bumpReferenceVersion,
 } from '@/lib/reference'
+
+/** v0.36.0 — แก้เนื้อหาค่าขณะทะเบียนใช้งานอยู่ (ACTIVE) = เวอร์ชัน +0.1 อัตโนมัติ (คงประวัติสเปกที่เคยใช้) */
+async function bumpSetVersionIfActive(setId: string) {
+  const s = await db.referenceSet.findUnique({ where: { id: setId }, select: { status: true, version: true } })
+  if (s?.status === 'ACTIVE') {
+    await db.referenceSet.update({ where: { id: setId }, data: { version: bumpReferenceVersion(s.version) } })
+  }
+}
 
 /**
  * Reference Values API (v0.31.0) — จัดการค่าอ้างอิงรายทะเบียน
@@ -17,7 +26,7 @@ import {
  *
  * สิทธิ์: MANAGE_DATASETS (เหมือนสร้างทะเบียน) — ทุกการเปลี่ยนแปลงบันทึก Audit Trail
  * กติกา (deny-by-default):
- * - ห้ามแตะค่าขณะทะเบียน "รออนุมัติ" (กันเนื้อหาเปลี่ยนระหว่างพิจารณา)
+ * - แก้ค่าขณะทะเบียนใช้งานอยู่ (ACTIVE) ได้ตรง — เวอร์ชันทะเบียน +0.1 อัตโนมัติ (v0.36.0 ไม่มีคิวอนุมัติ)
  * - ค่าห้ามซ้ำในทะเบียนเดียวกัน (RETIRED ก็นับ — จะกลับมาใช้ใหม่ต้อง REACTIVATE ไม่ใช่สร้างซ้ำ)
  * - จำนวนค่าสูงสุดต่อทะเบียน = REFERENCE_VALUES_CAP
  * - RETIRED ไม่ใช่การลบ — คงประวัติตรวจสอบย้อนหลัง · เอนจินกฎใช้เฉพาะค่า ACTIVE เสมอ
@@ -25,15 +34,8 @@ import {
 async function loadSetForManage(id: string, operatorEmail: unknown) {
   const op = await resolveOperator(operatorEmail, 'MANAGE_DATASETS')
   if (!op.ok) return { ok: false as const, status: op.status, message: op.message }
-  const set = await db.referenceSet.findUnique({ where: { id }, select: { id: true, code: true, name: true, status: true, pendingApproval: true } })
+  const set = await db.referenceSet.findUnique({ where: { id }, select: { id: true, code: true, name: true, status: true } })
   if (!set) return { ok: false as const, status: 404, message: 'ไม่พบทะเบียนข้อมูลอ้างอิงนี้ในระบบ' }
-  if (set.pendingApproval) {
-    return {
-      ok: false as const,
-      status: 409,
-      message: 'ทะเบียนอยู่ในสถานะ "รออนุมัติ" — ผู้อนุมัติต้องอนุมัติหรือส่งกลับก่อนจึงจะแตะค่าได้',
-    }
-  }
   return { ok: true as const, op, set }
 }
 
@@ -89,6 +91,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       },
     })
 
+    await bumpSetVersionIfActive(id)
+
     await db.auditLog.create({
       data: {
         action: 'CREATE_REFERENCE_VALUE',
@@ -128,6 +132,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (action === 'RETIRE') {
       if (row.status !== 'ACTIVE') return NextResponse.json({ error: `ค่า "${row.value}" เลิกใช้อยู่แล้ว` }, { status: 409 })
       await db.referenceValue.update({ where: { id: row.id }, data: { status: 'RETIRED' } })
+      await bumpSetVersionIfActive(id)
       await db.auditLog.create({
         data: {
           action: 'RETIRE_REFERENCE_VALUE',
@@ -142,6 +147,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (action === 'REACTIVATE') {
       if (row.status !== 'RETIRED') return NextResponse.json({ error: `ค่า "${row.value}" ใช้งานอยู่แล้ว` }, { status: 409 })
       await db.referenceValue.update({ where: { id: row.id }, data: { status: 'ACTIVE' } })
+      await bumpSetVersionIfActive(id)
       await db.auditLog.create({
         data: {
           action: 'REACTIVATE_REFERENCE_VALUE',
@@ -175,6 +181,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           : {}),
       },
     })
+    await bumpSetVersionIfActive(id)
+
     await db.auditLog.create({
       data: {
         action: 'UPDATE_REFERENCE_VALUE',

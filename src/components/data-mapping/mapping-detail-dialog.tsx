@@ -236,10 +236,8 @@ export interface MappingDetailDialogProps {
   mappingId: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** ผู้ดำเนินการฝั่งจัดการ (MANAGE_DATASETS) — ส่งต่อให้ MappingActions */
+  /** ผู้ดำเนินการ (MANAGE_DATASETS) — ส่งต่อให้ MappingActions + ปรับเวอร์ชัน */
   operatorEmail: string
-  /** ผู้ดำเนินการฝั่งอนุมัติ (APPROVE_EXCEPTIONS) — ปุ่ม workflow + ปรับเวอร์ชัน */
-  approverEmail: string
   /** เรียกหลังเนื้อหาเปลี่ยน (parent ใช้รีเฟรชรายการ) */
   onChanged?: () => void | Promise<void>
 }
@@ -249,7 +247,6 @@ export function MappingDetailDialog({
   open,
   onOpenChange,
   operatorEmail,
-  approverEmail,
   onChanged,
 }: MappingDetailDialogProps) {
   const { toast } = useToast()
@@ -301,7 +298,7 @@ export function MappingDetailDialog({
       const res = await fetch(`/api/mappings/${mappingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operatorEmail: approverEmail, action: 'SET_VERSION', version }),
+        body: JSON.stringify({ operatorEmail, action: 'SET_VERSION', version }),
       })
       const data = (await res.json()) as { message?: string; error?: string }
       if (!res.ok) {
@@ -320,7 +317,6 @@ export function MappingDetailDialog({
   }
 
   const m = detail?.mapping ?? null
-  const canApprove = approverEmail.length > 0
   const typeMeta = m && isMappingType(m.mappingType) ? MAPPING_TYPES[m.mappingType] : null
 
   return (
@@ -498,15 +494,15 @@ export function MappingDetailDialog({
                     <span className="flex flex-wrap items-center gap-1.5">
                       <MappingStatusBadge mapping={m} />
                       <span className="text-[11px] text-muted-foreground">
-                        {m.status === 'ACTIVE' ? 'อนุมัติแล้ว ใช้งานได้ (Approved)' : m.status === 'DRAFT' ? 'ร่าง — ต้องส่งขออนุมัติ' : 'เลิกใช้งาน'}
+                        {m.status === 'ACTIVE' ? 'เปิดใช้งานแล้ว ใช้งานได้ (Active)' : m.status === 'DRAFT' ? 'ร่าง — เปิดใช้งานเมื่อพร้อม' : 'เลิกใช้งาน'}
                       </span>
                     </span>
                   </SpecRow>
                   <SpecRow label="เวอร์ชัน">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-[13px] font-medium">v{m.version}</span>
-                      <span className="text-[10px] text-muted-foreground">อัตโนมัติ +0.1 เมื่ออนุมัติเนื้อหาที่แก้ไข</span>
-                      {canApprove && !versionEditing && (
+                      <span className="text-[10px] text-muted-foreground">อัตโนมัติ +0.1 เมื่อแก้เนื้อหาขณะใช้งานอยู่</span>
+                      {operatorEmail && !versionEditing && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -515,7 +511,7 @@ export function MappingDetailDialog({
                             setVersionInput(m.version)
                             setVersionEditing(true)
                           }}
-                          title="ปรับเวอร์ชันด้วยมือ (ต้องมีสิทธิ์อนุมัติข้อยกเว้น) — บันทึกใน Audit Trail"
+                          title="ปรับเวอร์ชันด้วยมือ (ต้องมีสิทธิ์จัดการชุดข้อมูล) — บันทึกใน Audit Trail"
                         >
                           <PencilLine className="size-3" aria-hidden="true" /> ปรับเวอร์ชัน
                         </Button>
@@ -548,9 +544,6 @@ export function MappingDetailDialog({
                       </span>
                     </SpecRow>
                   )}
-                  <SpecRow label="ผู้อนุมัติล่าสุด">
-                    {m.approvedBy ? `${m.approvedBy} · ${formatWhen(m.approvedAt)}` : 'ยังไม่มีการอนุมัติ'}
-                  </SpecRow>
                   <SpecRow label="ผู้สร้าง">
                     {m.createdBy} · {formatWhen(m.createdAt)}
                   </SpecRow>
@@ -559,15 +552,14 @@ export function MappingDetailDialog({
                 <MappingActions
                   mapping={m}
                   operatorEmail={operatorEmail}
-                  approverEmail={approverEmail}
                   onChanged={async () => {
                     await load()
                     await onChanged?.()
                   }}
                 />
-                {!operatorEmail && !approverEmail && (
+                {!operatorEmail && (
                   <p className="mt-1 text-[10px] text-muted-foreground">
-                    เลือก "ผู้ดำเนินการ" และ "ผู้อนุมัติ" ด้านบนหน้าเพื่อแสดงปุ่มดำเนินการ (deny-by-default)
+                    เลือก &quot;ผู้ดำเนินการ&quot; ด้านบนหน้าเพื่อแสดงปุ่มดำเนินการ (deny-by-default)
                   </p>
                 )}
               </div>

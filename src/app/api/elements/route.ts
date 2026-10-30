@@ -11,11 +11,11 @@ import {
 } from '@/lib/elements'
 
 /**
- * Data Element API (v0.18.0 · meta 4 กลุ่ม + workflow อนุมัติ ใน v0.20.0) — องค์ประกอบข้อมูลเชิงตรรกะภายใต้โดเมนย่อย (ISO/IEC 11179)
+ * Data Element API (v0.18.0 · meta 4 กลุ่ม · v0.36.0 ไม่มีคิวอนุมัติ) — องค์ประกอบข้อมูลเชิงตรรกะภายใต้โดเมนย่อย (ISO/IEC 11179)
  *
  * GET  /api/elements?subDomainId=… — รายการ element ทั้งหมด (หรือกรองตามโดเมนย่อย)
- *      คืน flat list พร้อม ruleCount/mappingCount ธง CDE/Financial + สถานะ workflow และข้อมูลโดเมนย่อย+โดเมนหลัก (client ประกอบ path เอง)
- * POST /api/elements — สร้าง element ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — ต้องผ่าน workflow อนุมัติจึงจะ ACTIVE ใช้งานได้)
+ *      คืน flat list พร้อม ruleCount/mappingCount ธง CDE/Financial + สถานะและข้อมูลโดเมนย่อย+โดเมนหลัก (client ประกอบ path เอง)
+ * POST /api/elements — สร้าง element ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — เปิดใช้งานเป็น ACTIVE ด้วยสิทธิ์ MANAGE_DATASETS เมื่อพร้อม)
  *      body: { operatorEmail, subDomainId, nameTh, nameEn?, definition?, examples?, dataType?,
  *              formatPattern?, valueDomain?, maxLength?, unit?, ownerId?, stewardId?, custodianId?,
  *              pii?, classification?, isCde?, isFinancial?, opUpdateFrequency?, opNotes?, customFields?,
@@ -80,7 +80,6 @@ export async function GET(req: NextRequest) {
         classification: e.classification,
         isCde: e.isCde,
         isFinancial: e.isFinancial,
-        pendingApproval: e.pendingApproval,
         status: e.status,
         position: e.position,
         ruleCount: rulesByElement.get(e.id) ?? 0,
@@ -236,7 +235,7 @@ export async function POST(req: NextRequest) {
         nameTh,
         position,
         createdBy: op.ctx.email,
-        status: 'DRAFT', // v0.20.0: workflow อนุมัติ — element ใหม่เริ่มที่ DRAFT เสมอ ต้องผ่านการอนุมัติจึงจะ ACTIVE
+        status: 'DRAFT', // v0.36.0: element ใหม่เริ่มที่ DRAFT เสมอ — เปิดใช้งานเป็น ACTIVE ด้วยสิทธิ์ MANAGE_DATASETS เมื่อพร้อม
         referenceSetId: refSet.id,
         ...metaFieldsFrom(body),
       },
@@ -247,7 +246,7 @@ export async function POST(req: NextRequest) {
         action: 'CREATE_DATA_ELEMENT',
         actor: op.ctx.email,
         target: `${created.code} ${created.nameTh}`,
-        detail: `สร้าง Data Element "${created.nameTh}" (${created.code}) ภายใต้โดเมนย่อย "${subDomain.name}" — สถานะเริ่มต้น DRAFT (รอส่งขออนุมัติ)${created.isCde ? ' · CDE' : ''}${created.isFinancial ? ' · การเงิน' : ''}${refSet.id ? ' · ผูกทะเบียนอ้างอิง' : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `สร้าง Data Element "${created.nameTh}" (${created.code}) ภายใต้โดเมนย่อย "${subDomain.name}" — สถานะเริ่มต้น DRAFT (เปิดใช้งานเมื่อพร้อม)${created.isCde ? ' · CDE' : ''}${created.isFinancial ? ' · การเงิน' : ''}${refSet.id ? ' · ผูกทะเบียนอ้างอิง' : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 

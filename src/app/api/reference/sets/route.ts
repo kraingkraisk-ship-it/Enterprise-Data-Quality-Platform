@@ -75,7 +75,7 @@ export async function GET() {
     const stats = {
       total: sets.length,
       active: sets.filter((s) => s.status === 'ACTIVE').length,
-      pending: sets.filter((s) => s.pendingApproval).length,
+      draft: sets.filter((s) => s.status === 'DRAFT').length,
       valuesTotal: [...allBySet.values()].reduce((a, b) => a + b, 0),
     }
 
@@ -92,9 +92,6 @@ export async function GET() {
         ownerId: s.ownerId,
         stewardId: s.stewardId,
         status: s.status,
-        pendingApproval: s.pendingApproval,
-        approvedBy: s.approvedBy,
-        approvedAt: s.approvedAt,
         version: s.version,
         valueCount: allBySet.get(s.id) ?? 0,
         activeValueCount: activeBySet.get(s.id) ?? 0,

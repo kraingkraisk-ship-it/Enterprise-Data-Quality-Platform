@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
     const nodes = new Map<string, ReturnType<typeof elementSummary>>()
     nodes.set(start.id, elementSummary(start, domainMap))
-    const edges = new Map<string, { id: string; code: string; sourceId: string; targetId: string; mappingType: string; transformNote: string; status: string; pendingApproval: boolean }>()
+    const edges = new Map<string, { id: string; code: string; sourceId: string; targetId: string; mappingType: string; transformNote: string; status: string }>()
 
     let frontier: string[] = [start.id]
     for (let level = 0; level < depth && frontier.length > 0; level++) {
@@ -54,7 +54,6 @@ export async function GET(req: NextRequest) {
             mappingType: m.mappingType,
             transformNote: m.transformNote,
             status: m.status,
-            pendingApproval: m.pendingApproval,
           })
         }
         for (const el of [m.source, m.target]) {

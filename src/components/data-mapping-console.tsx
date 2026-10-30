@@ -7,7 +7,7 @@
  * - ตัวกรอง: ค้นหา / สถานะ / ประเภท / โดเมน (กรอง client-side จาก GET /api/mappings ครั้งเดียว)
  * - ตาราง responsive (เลื่อนแนวนอนในกรอบตัวเองบนมือถือ 375px — ไม่ล้นหน้า)
  * - แผนผัง lineage หลายขั้น (depth 1–3) + ฟอร์มสร้าง (MappingForm ใช้ร่วมกับ Dialog element)
- * - สิทธิ์ deny-by-default: สร้าง/ส่ง/ลบ = MANAGE_DATASETS · อนุมัติ/ส่งกลับ/เลิกใช้ = APPROVE_EXCEPTIONS
+ * - สิทธิ์ deny-by-default: สร้าง/เปิดใช้งาน/เลิกใช้/ลบ = MANAGE_DATASETS (v0.36.0 ไม่มีคิวอนุมัติ)
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -58,10 +58,9 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
   const [users, setUsers] = useState<UserRow[]>([])
   const [domains, setDomains] = useState<PickerDomain[]>([])
   const [elements, setElements] = useState<PickerElement[]>([])
-  // v0.33.0 — ผู้ดำเนินการ/ผู้อนุมัติ = ผู้เข้าสู่ระบบเสมอ (session) — API บังคับทุก action
+  // ผู้ดำเนินการ = ผู้เข้าสู่ระบบเสมอ (session) — API บังคับทุก action
   const { user: sessionUser } = useCurrentUser()
   const operatorEmail = sessionUser?.email ?? ''
-  const approverEmail = operatorEmail
   /* v0.22.0 — Mapping Detail Dialog (หน้ารวม): id ของ mapping ที่กำลังดูรายละเอียด */
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -128,7 +127,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
     }
   }, [loadMappings, loadDomains, loadElements])
 
-  // เปิดหน้าครั้งใดก็รีเฟรช — ข้อมูลที่เพิ่งสร้าง/อนุมัติแสดงทันที
+  // เปิดหน้าครั้งใดก็รีเฟรช — ข้อมูลที่เพิ่งสร้าง/เปิดใช้งานแสดงทันที
   useEffect(() => {
     if (active) {
       void loadMappings()
@@ -137,11 +136,6 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
   }, [active, loadMappings, loadElements])
 
   const operators = useMemo(() => users.filter((u) => MANAGE_ROLES.includes(u.role)), [users])
-  /** ผู้มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) — ใช้บอกสถานะบัญชีปัจจุบันว่ากดอนุมัติได้ไหม (v0.33.0) */
-  const approvers = useMemo(
-    () => users.filter((u) => ROLES[u.role as RoleKey]?.permissions.includes('APPROVE_EXCEPTIONS')),
-    [users],
-  )
 
   /* ------------------------- แผนผัง lineage ------------------------- */
   const loadLineage = useCallback(async (elementId: string, depth: number) => {
@@ -205,7 +199,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
     () => ({
       total: mappings.length,
       active: mappings.filter((m) => m.status === 'ACTIVE').length,
-      pending: mappings.filter((m) => m.pendingApproval).length,
+      draft: mappings.filter((m) => m.status === 'DRAFT').length,
       deprecated: mappings.filter((m) => m.status === 'DEPRECATED').length,
     }),
     [mappings],
@@ -230,10 +224,10 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* v0.33.0 — ผู้ดำเนินการ/ผู้อนุมัติ = บัญชีผู้เข้าสู่ระบบ (แสดงเพื่อแจ้งเท่านั้น) */}
+          {/* ผู้ดำเนินการ = บัญชีผู้เข้าสู่ระบบ (แสดงเพื่อแจ้งเท่านั้น) */}
           <span
             className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-muted/50 px-2.5 text-xs text-muted-foreground"
-            title="ผู้ดำเนินการและผู้อนุมัติคือบัญชีที่เข้าสู่ระบบอยู่ (แก้ได้ที่เมนูบัญชีบน header)"
+            title="ผู้ดำเนินการคือบัญชีที่เข้าสู่ระบบอยู่ (แก้ได้ที่เมนูบัญชีบน header)"
           >
             <UserRound className="size-3.5" aria-hidden="true" />
             {sessionUser ? `${sessionUser.name} · ${sessionUser.roleTh}` : '— กำลังโหลด —'}
@@ -270,8 +264,8 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">รออนุมัติ</p>
-            <p className="mt-1 text-2xl font-bold tabular-nums text-amber-700">{stats.pending}</p>
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">ร่าง (DRAFT)</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums text-amber-700">{stats.draft}</p>
           </CardContent>
         </Card>
         <Card>
@@ -376,7 +370,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
           <p className="mt-2 text-sm font-medium">{mappings.length === 0 ? 'ยังไม่มี Data Mapping ในระบบ' : 'ไม่พบ mapping ตามเงื่อนไขที่กรอง'}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {mappings.length === 0
-              ? 'กด "สร้างการแมป" เพื่อเชื่อม Data Element ต้นทางกับปลายทาง (สร้างแล้วสถานะ DRAFT ต้องส่งขออนุมัติ)'
+              ? 'กด "สร้างการแมป" เพื่อเชื่อม Data Element ต้นทางกับปลายทาง (สร้างแล้วสถานะ DRAFT — เปิดใช้งานเมื่อพร้อม)'
               : 'ลองล้างตัวกรอง หรือค้นหาด้วยคำอื่น'}
           </p>
         </div>
@@ -388,7 +382,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
                 <TableHead className="w-20 text-xs">รหัส</TableHead>
                 <TableHead className="text-xs">เส้นทาง (ต้นทาง → ปลายทาง)</TableHead>
                 <TableHead className="w-32 text-xs">ประเภท</TableHead>
-                <TableHead className="w-40 text-xs">สถานะ / ผู้อนุมัติ</TableHead>
+                <TableHead className="w-40 text-xs">สถานะ / เวอร์ชัน</TableHead>
                 <TableHead className="w-52 text-xs">การดำเนินการ</TableHead>
               </TableRow>
             </TableHeader>
@@ -423,10 +417,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
                   </TableCell>
                   <TableCell>
                     <MappingStatusBadge mapping={m} />
-                    <p className="mt-1 text-[10px] text-muted-foreground">
-                      {m.approvedBy ? `อนุมัติโดย ${m.approvedBy}` : 'ยังไม่มีการอนุมัติ'}
-                    </p>
-                    {m.approvedAt && <p className="text-[10px] text-muted-foreground">{fmtDateTime(m.approvedAt)}</p>}
+                    <p className="mt-1 text-[10px] text-muted-foreground">v{m.version}</p>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -452,7 +443,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
                       >
                         <Waypoints className="size-3" aria-hidden="true" /> ดูแผนผัง
                       </Button>
-                      <MappingActions mapping={m} operatorEmail={operatorEmail} approverEmail={approverEmail} onChanged={loadMappings} />
+                      <MappingActions mapping={m} operatorEmail={operatorEmail} onChanged={loadMappings} />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -538,7 +529,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
           <DialogHeader>
             <DialogTitle>สร้าง Data Mapping ใหม่</DialogTitle>
             <DialogDescription>
-              เชื่อม Data Element ต้นทาง → ปลายทาง (ต้องเป็น element สถานะ ACTIVE ทั้งคู่) — สร้างแล้วสถานะ DRAFT ต้องส่งขออนุมัติจึงจะใช้งานได้
+              เชื่อม Data Element ต้นทาง → ปลายทาง (ต้องเป็น element สถานะ ACTIVE ทั้งคู่) — สร้างแล้วสถานะ DRAFT เปิดใช้งานด้วยปุ่ม "เปิดใช้งาน"
             </DialogDescription>
           </DialogHeader>
           <MappingForm
@@ -562,7 +553,6 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         operatorEmail={operatorEmail}
-        approverEmail={approverEmail}
         onChanged={loadMappings}
       />
     </div>

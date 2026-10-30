@@ -11,7 +11,7 @@ import {
 import { referenceUsage, validateStewardshipEmails } from '@/lib/reference-server'
 
 /**
- * Reference Set API — รายการเดี่ยว (v0.31.0) — workflow อนุมัติแบบเดียวกับ Data Element
+ * Reference Set API — รายการเดี่ยว (v0.31.0 · v0.36.0 ไม่มีคิวอนุมัติ)
  *
  * GET   /api/reference/sets/[id] — รายละเอียดเต็ม:
  *         - metadata + ผู้รับผิดชอบ (resolve ชื่อ+บทบาทจากผู้ใช้จริง)
@@ -19,17 +19,12 @@ import { referenceUsage, validateStewardshipEmails } from '@/lib/reference-serve
  *         - usage (กฎโหมดทะเบียน · Element ที่ผูก · Mapping LOOKUP ที่อ้าง)
  *         - auditTrail (ประวัติการทำรายการของทะเบียนนี้จาก Audit Trail)
  * PATCH /api/reference/sets/[id] — body: { operatorEmail, action, … }
- *         action: 'UPDATE' | 'DELETE' | 'SUBMIT_APPROVAL' | 'APPROVE' | 'REJECT_APPROVAL' | 'DEPRECATE'
+ *         action: 'UPDATE' | 'DELETE' | 'ACTIVATE' | 'DEPRECATE'
  *
- * สิทธิ์ (deny-by-default — แบบเดียวกับ Data Element):
- * - UPDATE / DELETE / SUBMIT_APPROVAL → MANAGE_DATASETS
- * - APPROVE / REJECT_APPROVAL / DEPRECATE → APPROVE_EXCEPTIONS
- * กติกา workflow:
- * - ทะเบียนใหม่ = DRAFT → ผู้มี MANAGE_DATASETS ส่งขออนุมัติ (SUBMIT_APPROVAL)
- *   → ผู้มี APPROVE_EXCEPTIONS อนุมัติ (status=ACTIVE + approvedBy/approvedAt) หรือส่งกลับ (คง DRAFT)
- * - เลิกใช้ (DEPRECATED) ทำผ่าน workflow เดียวกัน · ส่งขออนุมัติใหม่เพื่อกลับมาใช้
- * - ขณะ "รออนุมัติ" ห้ามแก้ metadata/ลบ/แตะค่า (กันเนื้อหาเปลี่ยนระหว่างพิจารณา)
- * - APPROVE จะ bump version +0.1 เมื่อเนื้อหาค่า/ชื่อถูกแก้หลังอนุมัติครั้งก่อน (เทียบ updatedAt vs approvedAt)
+ * สิทธิ์ (deny-by-default — RBAC ตามบทบาทล้วน): ทุก action ใช้สิทธิ์ MANAGE_DATASETS เดิม
+ * กติกาสถานะ (v0.36.0 — ไม่มีคิวอนุมัติ ทุก action บันทึก Audit Trail):
+ * - ทะเบียนใหม่ = DRAFT → ผู้มี MANAGE_DATASETS เปิดใช้งานเอง (ACTIVATE → ACTIVE — กฎโหมดทะเบียนใช้ค่าได้ทันที)
+ * - แก้เนื้อหา (ชื่อ/คำอธิบาย/ค่าอ้างอิง) ขณะใช้งานอยู่ (ACTIVE) = เวอร์ชัน +0.1 อัตโนมัติ เพื่อคงประวัติสเปก
  * - DELETE ได้เฉพาะ DRAFT ที่ยังไม่มีการใช้งาน (กฎ/Element/Mapping = 0)
  */
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -47,7 +42,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     const [usage, peopleEmails, auditEntries] = await Promise.all([
       referenceUsage(set.id),
       db.user.findMany({
-        where: { email: { in: [set.ownerId, set.stewardId, set.approvedBy].filter((v): v is string => Boolean(v)) } },
+        where: { email: { in: [set.ownerId, set.stewardId].filter((v): v is string => Boolean(v)) } },
         select: { email: true, name: true, role: true },
       }),
       db.auditLog.findMany({
@@ -80,9 +75,6 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         ownerId: set.ownerId,
         stewardId: set.stewardId,
         status: set.status,
-        pendingApproval: set.pendingApproval,
-        approvedBy: set.approvedBy,
-        approvedAt: set.approvedAt,
         version: set.version,
         createdBy: set.createdBy,
         createdAt: set.createdAt,
@@ -105,7 +97,6 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       stewardship: {
         owner: personOf(set.ownerId),
         steward: personOf(set.stewardId),
-        approvedBy: personOf(set.approvedBy),
       },
       usage,
       auditTrail: auditEntries,
@@ -123,14 +114,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!body) return NextResponse.json({ error: 'รูปแบบข้อมูลไม่ถูกต้อง' }, { status: 400 })
 
     const action = String(body.action ?? 'UPDATE').trim().toUpperCase()
-    const WORKFLOW_ACTIONS = ['SUBMIT_APPROVAL', 'APPROVE', 'REJECT_APPROVAL', 'DEPRECATE']
-    const permission = action === 'UPDATE' || action === 'DELETE' || action === 'SUBMIT_APPROVAL' ? 'MANAGE_DATASETS' : 'APPROVE_EXCEPTIONS'
+    const STATUS_ACTIONS = ['ACTIVATE', 'DEPRECATE']
+    const permission = 'MANAGE_DATASETS' // v0.36.0 — ทุก action ใช้สิทธิ์เดียว (RBAC ตามบทบาทล้วน)
 
     const op = await resolveOperator(body.operatorEmail, permission)
     if (!op.ok) return NextResponse.json({ error: op.message }, { status: op.status })
 
-    if (!['UPDATE', 'DELETE', ...WORKFLOW_ACTIONS].includes(action)) {
-      return NextResponse.json({ error: `การดำเนินการไม่ถูกต้อง (UPDATE | DELETE | ${WORKFLOW_ACTIONS.join(' | ')})` }, { status: 400 })
+    if (!['UPDATE', 'DELETE', ...STATUS_ACTIONS].includes(action)) {
+      return NextResponse.json({ error: `การดำเนินการไม่ถูกต้อง (UPDATE | DELETE | ${STATUS_ACTIONS.join(' | ')})` }, { status: 400 })
     }
 
     const set = await db.referenceSet.findUnique({
@@ -144,88 +135,24 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     const label = `${set.code} ${set.name}`
 
-    /* ---------------- workflow อนุมัติ (แบบเดียวกับ Data Element) ---------------- */
-    if (action === 'SUBMIT_APPROVAL') {
-      if (set.pendingApproval) {
-        return NextResponse.json({ error: 'ทะเบียนนี้อยู่ในสถานะ "รออนุมัติ" อยู่แล้ว' }, { status: 409 })
-      }
+    /* ---------------- เปิดใช้งาน (v0.36.0 — ตรงด้วยสิทธิ์ MANAGE_DATASETS) ---------------- */
+    if (action === 'ACTIVATE') {
       if (!['DRAFT', 'DEPRECATED'].includes(set.status)) {
-        return NextResponse.json({ error: 'เฉพาะทะเบียนสถานะ DRAFT หรือ DEPRECATED เท่านั้นที่ส่งขออนุมัติได้' }, { status: 400 })
+        return NextResponse.json({ error: 'เฉพาะทะเบียนสถานะ DRAFT หรือ DEPRECATED เท่านั้นที่เปิดใช้งานได้' }, { status: 400 })
       }
       if (set._count.values === 0) {
-        return NextResponse.json({ error: 'ทะเบียนยังไม่มีค่าอ้างอิงเลย — เพิ่มหรือนำเข้าค่าก่อนส่งขออนุมัติ' }, { status: 400 })
+        return NextResponse.json({ error: 'ทะเบียนยังไม่มีค่าอ้างอิงเลย — เพิ่มหรือนำเข้าค่าก่อนเปิดใช้งาน' }, { status: 400 })
       }
-      await db.referenceSet.update({ where: { id }, data: { pendingApproval: true } })
+      const updated = await db.referenceSet.update({ where: { id }, data: { status: 'ACTIVE' } })
       await db.auditLog.create({
         data: {
-          action: 'SUBMIT_REFERENCE_APPROVAL',
+          action: 'ACTIVATE_REFERENCE_SET',
           actor: op.ctx.email,
           target: label,
-          detail: `ส่งขออนุมัติทะเบียนข้อมูลอ้างอิง "${set.name}" (${set.code}) — ค่าอ้างอิง ${set._count.values} ค่า · รอผู้มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) ตัดสิน โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+          detail: `เปิดใช้งานทะเบียนข้อมูลอ้างอิง "${set.name}" (${set.code}) — สถานะเปลี่ยนจาก ${set.status} เป็น ACTIVE (กฎโหมดทะเบียนจะใช้ค่าของทะเบียนนี้ทันที) · ค่าอ้างอิง ${set._count.values} ค่า โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
-      return NextResponse.json({ message: `ส่งขออนุมัติ "${set.name}" แล้ว — รอผู้อนุมัติตัดสิน` })
-    }
-
-    if (action === 'APPROVE') {
-      if (!set.pendingApproval) {
-        return NextResponse.json({ error: 'ทะเบียนนี้ไม่ได้อยู่ในสถานะรออนุมัติ' }, { status: 409 })
-      }
-      // bump version +0.1 เมื่อเนื้อหาถูกแก้หลังอนุมัติครั้งก่อน (เหมือน Data Mapping v0.22.0)
-      // ตรวจจาก Audit Trail (action เนื้อหาหลัง approvedAt) — ไม่นับการส่ง/ส่งกลับเป็นการแก้เนื้อหา (anti-drift)
-      const approvedBefore = set.approvedAt ?? null
-      let bumped = false
-      if (approvedBefore) {
-        const CONTENT_ACTIONS = [
-          'UPDATE_REFERENCE_SET',
-          'CREATE_REFERENCE_VALUE',
-          'UPDATE_REFERENCE_VALUE',
-          'RETIRE_REFERENCE_VALUE',
-          'REACTIVATE_REFERENCE_VALUE',
-          'IMPORT_REFERENCE_VALUES',
-        ]
-        const editedSinceApproval = await db.auditLog.findFirst({
-          where: { target: { startsWith: `${set.code} ` }, action: { in: CONTENT_ACTIONS }, createdAt: { gt: approvedBefore } },
-          select: { id: true },
-        })
-        bumped = editedSinceApproval !== null
-      }
-      const updated = await db.referenceSet.update({
-        where: { id },
-        data: {
-          status: 'ACTIVE',
-          pendingApproval: false,
-          approvedBy: op.ctx.email,
-          approvedAt: new Date(),
-          version: bumped ? bumpReferenceVersion(set.version) : set.version,
-        },
-      })
-      await db.auditLog.create({
-        data: {
-          action: 'APPROVE_REFERENCE_SET',
-          actor: op.ctx.email,
-          target: label,
-          detail: `อนุมัติทะเบียนข้อมูลอ้างอิง "${set.name}" (${set.code}) — สถานะเปลี่ยนเป็น ACTIVE ใช้งานได้ (กฎโหมดทะเบียนจะใช้ค่าของทะเบียนนี้ทันที)${bumped ? ` · เวอร์ชัน ${set.version} → ${updated.version} (เนื้อหาแก้ไขหลังอนุมัติก่อน)` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
-        },
-      })
-      return NextResponse.json({ set: updated, message: `อนุมัติ "${set.name}" แล้ว — ใช้งานได้ (ACTIVE)` })
-    }
-
-    if (action === 'REJECT_APPROVAL') {
-      if (!set.pendingApproval) {
-        return NextResponse.json({ error: 'ทะเบียนนี้ไม่ได้อยู่ในสถานะรออนุมัติ' }, { status: 409 })
-      }
-      const note = String(body.note ?? '').trim().slice(0, REFERENCE_TEXT_MAX)
-      await db.referenceSet.update({ where: { id }, data: { pendingApproval: false } })
-      await db.auditLog.create({
-        data: {
-          action: 'REJECT_REFERENCE_APPROVAL',
-          actor: op.ctx.email,
-          target: label,
-          detail: `ส่งกลับ (ไม่อนุมัติ) ทะเบียนข้อมูลอ้างอิง "${set.name}" (${set.code}) — คงสถานะ ${set.status} ให้ผู้ดูแลแก้ไขแล้วส่งใหม่${note ? ` · เหตุผล: ${note}` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
-        },
-      })
-      return NextResponse.json({ message: `ส่งกลับ "${set.name}" แล้ว — คงสถานะ ${set.status === 'DRAFT' ? 'ร่าง (DRAFT)' : 'เลิกใช้ (DEPRECATED)'}` })
+      return NextResponse.json({ set: updated, message: `เปิดใช้งาน "${set.name}" แล้ว — ใช้งานได้ (ACTIVE)` })
     }
 
     if (action === 'DEPRECATE') {
@@ -233,7 +160,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         return NextResponse.json({ error: 'เฉพาะทะเบียนที่ใช้งานอยู่ (ACTIVE) เท่านั้นที่เลิกใช้ได้' }, { status: 400 })
       }
       const note = String(body.note ?? '').trim().slice(0, REFERENCE_TEXT_MAX)
-      const updated = await db.referenceSet.update({ where: { id }, data: { status: 'DEPRECATED', pendingApproval: false } })
+      const updated = await db.referenceSet.update({ where: { id }, data: { status: 'DEPRECATED' } })
       await db.auditLog.create({
         data: {
           action: 'DEPRECATE_REFERENCE_SET',
@@ -246,12 +173,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     if (action === 'DELETE') {
-      if (set.pendingApproval) {
-        return NextResponse.json({ error: 'ลบไม่ได้ขณะ "รออนุมัติ" — อนุมัติหรือส่งกลับก่อนจึงจะลบได้' }, { status: 409 })
-      }
       if (set.status !== 'DRAFT') {
         return NextResponse.json(
-          { error: `ลบได้เฉพาะทะเบียนสถานะ DRAFT เท่านั้น — ทะเบียนที่เคยอนุมัติให้ใช้สถานะ "เลิกใช้ (DEPRECATED)" แทน เพื่อคงประวัติตรวจสอบย้อนหลัง` },
+          { error: `ลบได้เฉพาะทะเบียนสถานะ DRAFT เท่านั้น — ทะเบียนที่เคยใช้งานให้ใช้สถานะ "เลิกใช้ (DEPRECATED)" แทน เพื่อคงประวัติตรวจสอบย้อนหลัง` },
           { status: 409 },
         )
       }
@@ -277,12 +201,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     // ---------- UPDATE (metadata เท่านั้น — ค่าอ้างอิงจัดการที่ /values) ----------
-    if (set.pendingApproval) {
-      return NextResponse.json(
-        { error: 'แก้ไขไม่ได้ขณะ "รออนุมัติ" — ผู้อนุมัติต้องอนุมัติหรือส่งกลับก่อนจึงจะแก้ได้ (กันเนื้อหาเปลี่ยนระหว่างพิจารณา)' },
-        { status: 409 },
-      )
-    }
     const name = String(body.name ?? set.name).trim()
     if (!name) return NextResponse.json({ error: 'กรุณาระบุชื่อทะเบียน' }, { status: 400 })
     if (name.length > REFERENCE_NAME_MAX) {
@@ -311,6 +229,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if ((String(body.ownerId ?? '').trim().toLowerCase() || null) !== set.ownerId) changed.push('เจ้าของข้อมูล')
     if ((String(body.stewardId ?? '').trim().toLowerCase() || null) !== set.stewardId) changed.push('ผู้ดูแลข้อมูล')
 
+    // v0.36.0 — แก้เนื้อหา (ชื่อ/คำอธิบาย) ขณะใช้งานอยู่ (ACTIVE) = เวอร์ชัน +0.1 อัตโนมัติ (คงประวัติสเปกที่เคยใช้)
+    const contentChanged = changed.includes('ชื่อ') || changed.includes('ชื่ออังกฤษ') || changed.includes('คำอธิบาย')
+    const nextVersion = contentChanged && set.status === 'ACTIVE' ? bumpReferenceVersion(set.version) : set.version
+
     const updated = await db.referenceSet.update({
       where: { id },
       data: {
@@ -319,6 +241,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         description: String(body.description ?? '').trim().slice(0, REFERENCE_TEXT_MAX),
         ownerId: String(body.ownerId ?? '').trim().toLowerCase() || null,
         stewardId: String(body.stewardId ?? '').trim().toLowerCase() || null,
+        version: nextVersion,
       },
     })
 
@@ -327,11 +250,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         action: 'UPDATE_REFERENCE_SET',
         actor: op.ctx.email,
         target: `${updated.code} ${updated.name}`,
-        detail: `แก้ไขข้อมูลทะเบียนอ้างอิง "${updated.name}" (${updated.code})${changed.length > 0 ? ` — แก้: ${changed.join(', ')}` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `แก้ไขข้อมูลทะเบียนอ้างอิง "${updated.name}" (${updated.code})${changed.length > 0 ? ` — แก้: ${changed.join(', ')}` : ''}${nextVersion !== set.version ? ` · เวอร์ชันอัตโนมัติ ${set.version} → ${nextVersion} (แก้เนื้อหาขณะใช้งานอยู่)` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 
-    return NextResponse.json({ set: updated, message: `บันทึกข้อมูลทะเบียน "${updated.name}" เรียบร้อย` })
+    return NextResponse.json({ set: updated, message: `บันทึกข้อมูลทะเบียน "${updated.name}" เรียบร้อย${nextVersion !== set.version ? ` · เวอร์ชัน ${nextVersion}` : ''}` })
   } catch (e) {
     console.error('PATCH /api/reference/sets/[id]', e)
     return NextResponse.json({ error: 'ดำเนินการกับทะเบียนข้อมูลอ้างอิงไม่สำเร็จ' }, { status: 500 })

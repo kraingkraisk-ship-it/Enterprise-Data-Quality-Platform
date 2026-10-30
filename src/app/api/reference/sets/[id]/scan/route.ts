@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return NextResponse.json({ error: `คอลัมน์ "${columnName}" ไม่พบในข้อมูล "${asset.name}"` }, { status: 400 })
     }
 
-    // ค่า ACTIVE ของทะเบียน — เฉพาะทะเบียนที่อนุมัติแล้วจึงมีค่าใช้เทียบได้จริง
+    // ค่า ACTIVE ของทะเบียน — เฉพาะทะเบียนที่เปิดใช้งานแล้วจึงมีค่าใช้เทียบได้จริง
     const activeValues = await db.referenceValue.findMany({ where: { setId: id, status: 'ACTIVE' }, select: { value: true } })
     const allowed = new Set(activeValues.map((v) => v.value.trim()).filter(Boolean))
 

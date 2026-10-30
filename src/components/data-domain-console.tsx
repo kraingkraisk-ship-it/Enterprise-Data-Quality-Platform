@@ -190,7 +190,6 @@ interface ElementRow {
   classification: string
   isCde: boolean
   isFinancial: boolean
-  pendingApproval: boolean
   status: string
   position: number
   ruleCount: number
@@ -225,9 +224,6 @@ interface ElementDetail {
   status: string
   opUpdateFrequency: string
   opNotes: string
-  pendingApproval: boolean
-  approvedBy: string | null
-  approvedAt: string | null
   customFields: string
   createdBy: string
   createdAt: string
@@ -395,11 +391,6 @@ function ElementRowCard({ e, onClick }: { e: ElementRow; onClick: () => void }) 
         {e.pii && (
           <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[9px] text-rose-700">
             <ShieldAlert className="mr-0.5 size-2.5" aria-hidden="true" /> PII
-          </Badge>
-        )}
-        {e.pendingApproval && (
-          <Badge variant="outline" className="border-sky-300 bg-sky-50 text-[9px] text-sky-800">
-            <Clock3 className="mr-0.5 size-2.5" aria-hidden="true" /> รออนุมัติ
           </Badge>
         )}
         <Badge variant="outline" className={`text-[9px] ${status.chip}`}>
@@ -622,8 +613,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   }, [])
 
   const operators = useMemo(() => users.filter((u) => MANAGE_ROLES.includes(u.role)), [users])
-  // ผู้ที่มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) — ใช้แสดงให้ทราบว่าใครกดอนุมัติได้ (v0.33.0: ผู้อนุมัติ = ผู้เข้าสู่ระบบกดปุ่มเอง)
-  const approvers = useMemo(() => users.filter((u) => ROLES[u.role as keyof typeof ROLES]?.permissions.includes('APPROVE_EXCEPTIONS')), [users])
 
   /* ------------------------- Data Mapping ของ element (แท็บ 5 — v0.21.0) ------------------------- */
   const loadDetailMappings = useCallback(async (id: string) => {
@@ -960,8 +949,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     }
   }
 
-  /* ------------------------- workflow อนุมัติ (v0.20.0) — สิทธิ์เดิม: ส่ง = MANAGE_DATASETS · อนุมัติ/เลิกใช้ = APPROVE_EXCEPTIONS ------------------------- */
-  async function doWorkflowAction(action: 'SUBMIT_APPROVAL' | 'APPROVE' | 'REJECT_APPROVAL' | 'DEPRECATE', note = '') {
+  /* ------------------------- สถานะ element (v0.36.0 — เปิดใช้งาน/เลิกใช้ตรงด้วยสิทธิ์ MANAGE_DATASETS) ------------------------- */
+  async function doWorkflowAction(action: 'ACTIVATE' | 'DEPRECATE', note = '') {
     if (!detail) return
     const operator = operatorEmail
     if (!operator) {
@@ -1737,11 +1726,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                       <ShieldAlert className="mr-0.5 size-2.5" aria-hidden="true" /> PII
                     </Badge>
                   )}
-                  {detail.pendingApproval && (
-                    <Badge variant="outline" className="border-sky-300 bg-sky-50 text-[10px] text-sky-800">
-                      <Clock3 className="mr-0.5 size-2.5" aria-hidden="true" /> รออนุมัติ
-                    </Badge>
-                  )}
                   <Badge variant="outline" className={`text-[10px] ${(ELEMENT_STATUS_LABELS[detail.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE).chip}`}>
                     {(ELEMENT_STATUS_LABELS[detail.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE).th}
                   </Badge>
@@ -1976,93 +1960,36 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                       {detail.customFields && detail.customFields !== '{}' && <MetaField label="Field เสริม" value={detail.customFields} wide />}
                     </div>
 
-                    {/* Workflow อนุมัติ — สิทธิ์เดิม: ส่ง = MANAGE_DATASETS · อนุมัติ/ส่งกลับ/เลิกใช้ = APPROVE_EXCEPTIONS */}
+                    {/* สถานะ element — v0.36.0: เปิดใช้งาน/เลิกใช้ตรงด้วยสิทธิ์ MANAGE_DATASETS (ไม่มีคิวอนุมัติ) */}
                     <div className="rounded-lg border p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="flex items-center gap-1.5 text-xs font-semibold">
-                          <ShieldCheck className="size-3.5 text-emerald-700" aria-hidden="true" /> สถานะและการอนุมัติ (Workflow)
+                          <ShieldCheck className="size-3.5 text-emerald-700" aria-hidden="true" /> สถานะและการเปิดใช้งาน
                         </p>
-                        <div className="flex items-center gap-1.5">
-                          {detail.pendingApproval && (
-                            <Badge variant="outline" className="border-sky-300 bg-sky-50 text-[10px] text-sky-800">
-                              <Clock3 className="mr-0.5 size-2.5" aria-hidden="true" /> รออนุมัติ
-                            </Badge>
-                          )}
-                          <Badge variant="outline" className={`text-[10px] ${(ELEMENT_STATUS_LABELS[detail.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE).chip}`}>
-                            {(ELEMENT_STATUS_LABELS[detail.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE).th}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        <MetaField
-                          label="ผู้อนุมัติล่าสุด"
-                          value={
-                            detail.approvedBy
-                              ? `${detail.approvedBy}${detail.approvedAt ? ` · ${fmtDateTime(detail.approvedAt)}` : ''}`
-                              : 'ไม่มีประวัติอนุมัติ (สร้างก่อนระบบ workflow หรือยังไม่เคยส่งขออนุมัติ)'
-                          }
-                          wide
-                        />
+                        <Badge variant="outline" className={`text-[10px] ${(ELEMENT_STATUS_LABELS[detail.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE).chip}`}>
+                          {(ELEMENT_STATUS_LABELS[detail.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE).th}
+                        </Badge>
                       </div>
 
-                      {detail.pendingApproval ? (
-                        <div className="mt-3 grid gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2.5">
-                          <p className="text-xs text-sky-900">
-                            element นี้รอการตัดสิน — อนุมัติด้วยบัญชีที่เข้าสู่ระบบ (ต้องมีสิทธิ์ &quot;อนุมัติข้อยกเว้น&quot;: เจ้าของข้อมูล / เจ้าหน้าที่กำกับดูแล / ผู้บริหาร)
-                          </p>
-                          <p className="text-xs font-medium text-sky-900" aria-label="ผู้อนุมัติจากเซสชันปัจจุบัน">
-                            ผู้อนุมัติ: {sessionUser ? `${sessionUser.name} · ${sessionUser.roleTh}` : '— กำลังโหลด —'}
-                            {!sessionUser || !approvers.some((u) => u.email === sessionUser.email) ? (
-                              <span className="ml-1 font-normal text-amber-700">(บัญชีนี้ไม่มีสิทธิ์อนุมัติ — เข้าสู่ระบบด้วยบัญชีที่มีสิทธิ์)</span>
-                            ) : null}
-                          </p>
-                          <Input
-                            value={workflowNote}
-                            onChange={(ev) => setWorkflowNote(ev.target.value)}
-                            placeholder="เหตุผลประกอบการส่งกลับ (ไม่บังคับ — บันทึกใน Audit Trail)"
-                            className="h-8 text-xs"
-                            aria-label="เหตุผลการส่งกลับ"
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 text-white hover:bg-emerald-700"
-                              disabled={workflowBusy || !operatorEmail || !approvers.some((u) => u.email === operatorEmail)}
-                              onClick={() => void doWorkflowAction('APPROVE')}
-                            >
-                              {workflowBusy ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-3.5" aria-hidden="true" />}
-                              อนุมัติ (ACTIVE)
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-rose-300 text-rose-700 hover:bg-rose-50"
-                              disabled={workflowBusy || !operatorEmail || !approvers.some((u) => u.email === operatorEmail)}
-                              onClick={() => void doWorkflowAction('REJECT_APPROVAL', workflowNote)}
-                            >
-                              <XCircle className="size-3.5" aria-hidden="true" /> ส่งกลับให้แก้ไข
-                            </Button>
-                          </div>
-                        </div>
-                      ) : detail.status === 'DRAFT' || detail.status === 'DEPRECATED' ? (
+                      {detail.status === 'DRAFT' || detail.status === 'DEPRECATED' ? (
                         <div className="mt-3 grid gap-2 rounded-lg border bg-muted/40 p-2.5">
                           <p className="text-xs text-muted-foreground">
-                            ส่งขออนุมัติเพื่อเปิดใช้งาน — ผู้ดำเนินการหน้านี้ ({operatorEmail || 'ยังไม่เลือก'}) ต้องมีสิทธิ์ &quot;จัดการชุดข้อมูล&quot;
-                            {detail.status === 'DEPRECATED' && ' · อนุมัติแล้วจะกลับมาใช้งาน (ACTIVE) อีกครั้ง'}
+                            เปิดใช้งาน element นี้เพื่อให้ผูกกฎ/แมป/รันในรอบโดเมนได้ — ผู้ดำเนินการ ({operatorEmail || 'ยังไม่เลือก'}) ต้องมีสิทธิ์ &quot;จัดการชุดข้อมูล&quot;
+                            {detail.status === 'DEPRECATED' && ' · เปิดใช้งานแล้วจะกลับมาใช้งาน (ACTIVE) อีกครั้ง'}
                           </p>
                           <Button
                             size="sm"
                             className="w-fit bg-emerald-600 text-white hover:bg-emerald-700"
                             disabled={workflowBusy || !operatorEmail}
-                            onClick={() => void doWorkflowAction('SUBMIT_APPROVAL')}
+                            onClick={() => void doWorkflowAction('ACTIVATE')}
                           >
-                            {workflowBusy ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <Send className="size-3.5" aria-hidden="true" />}
-                            ส่งขออนุมัติ
+                            {workflowBusy ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-3.5" aria-hidden="true" />}
+                            เปิดใช้งาน (ACTIVE)
                           </Button>
                         </div>
                       ) : detail.status === 'ACTIVE' ? (
                         <div className="mt-3 grid gap-2 rounded-lg border bg-muted/40 p-2.5">
-                          <p className="text-xs text-muted-foreground">เลิกใช้ element นี้ — กฎที่ผูกจะไม่ถูกรันในรอบโดเมนถัดไป (ต้องมีสิทธิ์อนุมัติ)</p>
+                          <p className="text-xs text-muted-foreground">เลิกใช้ element นี้ — กฎที่ผูกจะไม่ถูกรันในรอบโดเมนถัดไป (ต้องมีสิทธิ์จัดการชุดข้อมูล)</p>
                           <p className="text-xs font-medium" aria-label="ผู้ดำเนินการเลิกใช้จากเซสชันปัจจุบัน">
                             ผู้ดำเนินการ: {sessionUser ? `${sessionUser.name} · ${sessionUser.roleTh}` : '— กำลังโหลด —'}
                           </p>
@@ -2077,7 +2004,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                             size="sm"
                             variant="outline"
                             className="w-fit border-amber-300 text-amber-800 hover:bg-amber-50"
-                            disabled={workflowBusy || !operatorEmail || !approvers.some((u) => u.email === operatorEmail)}
+                            disabled={workflowBusy || !operatorEmail}
                             onClick={() => void doWorkflowAction('DEPRECATE', workflowNote)}
                           >
                             <Archive className="size-3.5" aria-hidden="true" /> เลิกใช้ (DEPRECATED)
@@ -2087,8 +2014,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
 
                       <p className="mt-2 flex items-start gap-1.5 text-[10px] text-muted-foreground">
                         <Info className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                        สิทธิ์ตาม RBAC เดิม: ส่งขออนุมัติ = จัดการชุดข้อมูล · อนุมัติ/ส่งกลับ/เลิกใช้ = อนุมัติข้อยกเว้น — ทุกครั้งบันทึกผู้ดำเนินการใน Audit Trail
-                        ขณะรออนุมัติแก้ไข Meta Data ไม่ได้
+                        สิทธิ์ตาม RBAC: เปิดใช้งาน/เลิกใช้ = จัดการชุดข้อมูล (MANAGE_DATASETS) — ทุกครั้งบันทึกผู้ดำเนินการใน Audit Trail
                       </p>
                     </div>
 
@@ -2169,7 +2095,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                     mapping={m}
                                     elementId={detail.id}
                                     operatorEmail={operatorEmail}
-                                    approverEmail={operatorEmail}
                                     onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
                                     onOpenDetail={(id) => {
                                       setMappingDetailId(id)
@@ -2199,7 +2124,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                     mapping={m}
                                     elementId={detail.id}
                                     operatorEmail={operatorEmail}
-                                    approverEmail={operatorEmail}
                                     onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
                                     onOpenDetail={(id) => {
                                       setMappingDetailId(id)
@@ -2219,7 +2143,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                       open={mappingDetailOpen}
                       onOpenChange={setMappingDetailOpen}
                       operatorEmail={operatorEmail}
-                      approverEmail={operatorEmail}
                       onChanged={() => (detail ? loadDetailMappings(detail.id) : Promise.resolve())}
                     />
                     <Dialog open={mapAddOpen} onOpenChange={setMapAddOpen}>

@@ -224,7 +224,7 @@ interface AnalyticsData {
       conditionsEnabled: number
       totalRuns: number
       pendingSignals: number
-      pendingExceptions: number
+      activeExceptions: number
       failedRulesLatest: number
       measuredRulesLatest: number
     }
@@ -713,7 +713,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 {[
                   { label: 'สัญญาณรอทบทวน', value: data.overall.totals.pendingSignals, accent: 'text-amber-700' },
-                  { label: 'คำขอข้อยกเว้นรออนุมัติ', value: data.overall.totals.pendingExceptions, accent: 'text-emerald-700' },
+                  { label: 'ข้อยกเว้นใช้งานอยู่', value: data.overall.totals.activeExceptions, accent: 'text-emerald-700' },
                   { label: 'กฎที่เปิดใช้งาน', value: data.overall.totals.rulesEnabled, accent: 'text-slate-900' },
                   {
                     label: 'ชุดข้อมูลที่รันแล้ว',

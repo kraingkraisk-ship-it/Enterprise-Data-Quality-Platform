@@ -155,7 +155,7 @@ async function validateParamsForTemplate(engineType: string, parameters: string)
       if (setId) {
         const rs = await db.referenceSet.findUnique({ where: { id: setId }, select: { id: true, code: true, name: true, status: true } })
         if (!rs) return 'ไม่พบทะเบียนข้อมูลอ้างอิงที่เลือกในระบบ'
-        if (rs.status !== 'ACTIVE') return `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — เลือกได้เฉพาะทะเบียนที่อนุมัติแล้ว (ACTIVE)`
+        if (rs.status !== 'ACTIVE') return `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — เลือกได้เฉพาะทะเบียนที่เปิดใช้งานแล้ว (ACTIVE)`
         return null
       }
       const values = String(p.values ?? '')
@@ -176,7 +176,7 @@ async function validateParamsForTemplate(engineType: string, parameters: string)
       if (setId) {
         const rs = await db.referenceSet.findUnique({ where: { id: setId }, select: { id: true, code: true, name: true, status: true } })
         if (!rs) return 'ไม่พบทะเบียนข้อมูลอ้างอิงที่เลือกในระบบ'
-        if (rs.status !== 'ACTIVE') return `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — เลือกได้เฉพาะทะเบียนที่อนุมัติแล้ว (ACTIVE)`
+        if (rs.status !== 'ACTIVE') return `ทะเบียน "${rs.name}" ยังไม่ใช้งาน (สถานะ ${rs.status}) — เลือกได้เฉพาะทะเบียนที่เปิดใช้งานแล้ว (ACTIVE)`
         return null
       }
       const values = String(p.values ?? '')

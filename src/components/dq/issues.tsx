@@ -37,8 +37,8 @@ import { ISSUE_SOURCE_LABELS, ISSUE_STATUS_META, ISSUE_TRANSITIONS } from '@/lib
 
 /* ------------------------------------------------------------------ */
 /* DQ Issues — ทะเบียนปัญหาคุณภาพข้อมูล พร้อม lifecycle                  */
-/* OPEN → IN_PROGRESS → RESOLVED → CLOSE (ผู้ปิดต้องมีสิทธิ์อนุมัติ)      */
-/* แท็บที่ 2 = ข้อยกเว้น & การอนุมัติ (ย้ายจากเมนูเดิม v0.12.0)           */
+/* OPEN → IN_PROGRESS → RESOLVED → CLOSE (สิทธิ์ MANAGE_ISSUES ทุกขั้น)  */
+/* แท็บที่ 2 = ข้อยกเว้นกฎ (v0.36.0 — ไม่มีคิวอนุมัติ)                    */
 /* ------------------------------------------------------------------ */
 
 interface ApiUser {
@@ -315,7 +315,7 @@ export default function DqIssues({ active }: { active: boolean }) {
         </TabsTrigger>
         <TabsTrigger value="exceptions" className="gap-1.5 data-[state=active]:bg-white">
           <ShieldAlert className="size-3.5" aria-hidden="true" />
-          ข้อยกเว้น &amp; การอนุมัติ
+          ข้อยกเว้นกฎ
         </TabsTrigger>
       </TabsList>
 
@@ -326,7 +326,7 @@ export default function DqIssues({ active }: { active: boolean }) {
           <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900" role="note">
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
             <p>
-              <strong>Lifecycle:</strong> เปิด → กำลังดำเนินการ → แก้ไขแล้ว → ปิด — การปิดปัญหาต้องใช้บทบาทที่มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) ซึ่งแยกจากผู้แก้ไข เพื่อการกำกับดูแลที่ดี ทุกการเปลี่ยนสถานะถูกบันทึก Audit Trail 100% และระบบไม่แก้ไขข้อมูลต้นทางโดยอัตโนมัติ
+              <strong>Lifecycle:</strong> เปิด → กำลังดำเนินการ → แก้ไขแล้ว → ปิด — ทุกสถานะใช้สิทธิ์ MANAGE_ISSUES เดียว (RBAC ตามบทบาทล้วน) ทุกการเปลี่ยนสถานะถูกบันทึก Audit Trail 100% และระบบไม่แก้ไขข้อมูลต้นทางโดยอัตโนมัติ
             </p>
           </div>
 
@@ -791,9 +791,9 @@ export default function DqIssues({ active }: { active: boolean }) {
                         className="gap-1.5 bg-slate-700 text-white hover:bg-slate-800"
                         onClick={() => void transition(detail, 'CLOSE')}
                         disabled={busy !== null}
-                        title="ต้องใช้บทบาทที่มีสิทธิ์ APPROVE_EXCEPTIONS"
+                        title="ต้องมีสิทธิ์ MANAGE_ISSUES"
                       >
-                        ปิดปัญหา (ต้องมีสิทธิ์อนุมัติ)
+                        ปิดปัญหา
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => void transition(detail, 'REOPEN')} disabled={busy !== null}>
                         ส่งกลับเปิดใหม่

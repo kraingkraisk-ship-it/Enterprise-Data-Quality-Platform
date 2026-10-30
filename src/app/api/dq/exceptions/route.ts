@@ -27,8 +27,8 @@ export async function GET() {
         requestedBy: x.requestedBy,
         status: x.status,
         expiresAt: x.expiresAt,
-        decidedBy: x.decidedBy,
-        decidedAt: x.decidedAt,
+        revokedBy: x.revokedBy,
+        revokedAt: x.revokedAt,
         createdAt: x.createdAt,
       })),
     })
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
         ruleId: ruleId || null,
         reason,
         requestedBy: op.ctx.email,
-        status: 'PENDING',
+        status: 'APPROVED', // v0.36.0 — ผู้มีสิทธิ์ขอ = ใช้ได้ทันทีจนถึงวันหมดอายุ (RBAC ตามบทบาทล้วน · ยกเลิกได้ด้วย MANAGE_ISSUES)
         expiresAt,
       },
       include: { dataset: { select: { name: true } }, rule: { select: { column: true, condition: true } } },
@@ -101,13 +101,13 @@ export async function POST(req: NextRequest) {
         action: 'REQUEST_EXCEPTION',
         actor: op.ctx.email,
         target: dataset.name,
-        detail: `ขอข้อยกเว้น: “${reason.slice(0, 80)}${reason.length > 80 ? '…' : ''}” หมดอายุ ${expiresAt.toLocaleDateString('th-TH')} (บทบาท ${op.ctx.roleTh})`,
+        detail: `ขอใช้ข้อยกเว้น: “${reason.slice(0, 80)}${reason.length > 80 ? '…' : ''}” — ใช้งานทันทีจนถึงวันหมดอายุ ${expiresAt.toLocaleDateString('th-TH')} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 
     return NextResponse.json({ exception: created }, { status: 201 })
   } catch (e) {
     console.error('POST /api/dq/exceptions', e)
-    return NextResponse.json({ error: 'ไม่สามารถสร้างคำขอข้อยกเว้นได้' }, { status: 500 })
+    return NextResponse.json({ error: 'ไม่สามารถขอใช้ข้อยกเว้นได้' }, { status: 500 })
   }
 }

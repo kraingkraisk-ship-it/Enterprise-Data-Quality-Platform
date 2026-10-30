@@ -312,17 +312,17 @@ model DqSignal {
   @@index([datasetId])
 }
 
-// คำขอข้อยกเว้น — ต้องผ่านการอนุมัติโดยมนุษย์ตามบทบาทเสมอ
+// ข้อยกเว้นกฎ (v0.36.0 — RBAC ตามบทบาทล้วน ไม่มีคิวอนุมัติ) — ผู้มีสิทธิ์ขอ = ใช้ได้ทันทีจนถึงวันหมดอายุ · ผู้มีสิทธิ์ยกเลิกหยุดใช้ได้ทันที (ทุก action บันทึก Audit Trail)
 model DqException {
   id          String    @id @default(cuid())
   datasetId   String
   ruleId      String?
   reason      String
-  requestedBy String // email ผู้ขอ
-  status      String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  requestedBy String // email ผู้ขอใช้ข้อยกเว้น
+  status      String    @default("APPROVED") // APPROVED (ใช้งานอยู่จนถึงวันหมดอายุ) | REVOKED (ยกเลิกแล้ว)
   expiresAt   DateTime // ข้อยกเว้นมีวันหมดอายุเสมอ
-  decidedBy   String?
-  decidedAt   DateTime?
+  revokedBy   String? // email ผู้ยกเลิก (บันทึก Audit Trail ทุกครั้ง)
+  revokedAt   DateTime?
   createdAt   DateTime  @default(now())
 
   dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
@@ -442,12 +442,9 @@ model DataElement {
   classification String   @default("UNCLASSIFIED") // การจำแนกข้อมูล (DataClassificationDef.id หรือ UNCLASSIFIED)
   isCde          Boolean  @default(false) // Critical Data Element — ข้อมูลวิกฤตต่อองค์กร (ผลจริง: แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำ, เตือนเมื่อยังไม่มีกฎ) (v0.20.0)
   isFinancial    Boolean  @default(false) // ผลกระทบต่อการรายงานทางการเงิน (ผลจริง: แดชบอร์ดผู้บริหารนับความเสี่ยงรายงานเงิน) (v0.20.0)
-  status         String   @default("ACTIVE") // DRAFT | ACTIVE | DEPRECATED (ISO 11179: registration status) — ACTIVE/DEPRECATED เปลี่ยนผ่าน workflow อนุมัติเท่านั้น (v0.20.0)
+  status         String   @default("ACTIVE") // DRAFT | ACTIVE | DEPRECATED (ISO 11179: registration status) — เปิดใช้งาน/เลิกใช้โดยตรงด้วยสิทธิ์ MANAGE_DATASETS (v0.36.0 ไม่มีคิวอนุมัติ)
   opUpdateFrequency String @default("") // เชิงปฏิบัติการ (กรอกมือ): ความถี่การปรับปรุง REALTIME|HOURLY|DAILY|WEEKLY|MONTHLY|ON_DEMAND (v0.20.0)
   opNotes        String   @default("") // เชิงปฏิบัติการ (กรอกมือ): หมายเหตุ เช่น ช่วงเวลาโหลด, ผู้รับผิดชอบรอบ (v0.20.0)
-  pendingApproval Boolean @default(false) // workflow อนุมัติ: รอผู้มีสิทธิ์อนุมัติตัดสินอยู่ (v0.20.0)
-  approvedBy     String? // email ผู้อนุมัติล่าสุด (workflow อนุมัติ — บันทึก Audit Trail ทุกครั้ง) (v0.20.0)
-  approvedAt     DateTime? // เวลาที่อนุมัติล่าสุด (v0.20.0)
   position       Int      @default(0) // ลำดับการแสดงผล
   customFields   String   @default("{}") // JSON object — field เสริมตามองค์กรกำหนด
   createdBy      String // email ผู้สร้าง
@@ -472,7 +469,7 @@ model DataElement {
 // เพื่อระบุว่าเป็น "ข้อมูลชนิดเดียวกัน" หรือข้อมูลที่ไหลแปลงกันข้ามระบบ/ข้ามโดเมน
 // ปลายทางต้องเป็น Data Element ที่ลงทะเบียนในระบบเท่านั้น (ตรวจใน API — deny-by-default)
 // แมปข้าม Data Domain ได้ · แต่ละคู่ (A→B) แมปได้ 1 เส้น และห้ามแมปย้อนทิศ (B→A) ซ้ำ
-// สถานะเปลี่ยนผ่าน workflow อนุมัติเท่านั้น: DRAFT → (ส่ง) รออนุมัติ → ACTIVE → DEPRECATED
+// สถานะเปลี่ยนตรงด้วยสิทธิ์ MANAGE_DATASETS: DRAFT → ACTIVE (เปิดใช้งาน) → DEPRECATED (v0.36.0 ไม่มีคิวอนุมัติ)
 // ---------------------------------------------------------------------------
 
 model DataMapping {
@@ -483,11 +480,8 @@ model DataMapping {
   mappingType     String    @default("DIRECT") // DIRECT | TRANSFORM | DERIVED | AGGREGATE | LOOKUP (ดู MAPPING_TYPES ใน lib/mappings.ts)
   transformNote   String    @default("") // รายละเอียดการแปลง/สูตร/ตารางอ้างอิง (บังคับเมื่อ mappingType != DIRECT — ตรวจใน API)
   note            String    @default("") // หมายเหตุเพิ่มเติม
-  status          String    @default("DRAFT") // DRAFT | ACTIVE | DEPRECATED — ACTIVE/DEPRECATED เปลี่ยนผ่าน workflow อนุมัติเท่านั้น
-  version         String    @default("1.0") // เวอร์ชันสเปก: อัตโนมัติ +0.1 ทุกครั้งที่อนุมัติเนื้อหาที่แก้ไข + ปรับมือได้ด้วยสิทธิ์ APPROVE_EXCEPTIONS (v0.22.0)
-  pendingApproval Boolean   @default(false) // workflow อนุมัติ: รอผู้มีสิทธิ์อนุมัติตัดสินอยู่ (ล็อกแก้ไข/ลบขณะรอ)
-  approvedBy      String? // email ผู้อนุมัติล่าสุด (workflow อนุมัติ — บันทึก Audit Trail ทุกครั้ง)
-  approvedAt      DateTime? // เวลาที่อนุมัติล่าสุด
+  status          String    @default("DRAFT") // DRAFT | ACTIVE | DEPRECATED — เปิดใช้งาน/เลิกใช้ตรงด้วยสิทธิ์ MANAGE_DATASETS (v0.36.0 ไม่มีคิวอนุมัติ)
+  version         String    @default("1.0") // เวอร์ชันสเปก: อัตโนมัติ +0.1 ทุกครั้งที่แก้เนื้อหาขณะใช้งานอยู่ (ACTIVE) + ปรับมือได้ด้วยสิทธิ์ MANAGE_DATASETS (v0.36.0)
   createdBy       String // email ผู้สร้าง
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -527,8 +521,8 @@ model DataElementColumnMapping {
 // IN_LIST/REFERENCE_MATCH (ค่าแปะในกฎแต่ละข้อ), LOOKUP mapping (อ้างข้อความลอย ๆ)
 // → รวมเป็นทะเบียนเดียว แก้ที่ต้นทางจุดเดียว กฎ/Element/Mapping ที่ผูกไว้ใช้ค่าใหม่ทันที
 // โครงสร้าง: ReferenceSet (ทะเบียน) 1 → ReferenceValue (ค่าอ้างอิง) หลายค่า
-// Workflow อนุมัติแบบเดียวกับ Data Element: DRAFT → (ส่ง) รออนุมัติ → ACTIVE → DEPRECATED
-// เวอร์ชัน +0.1 ทุกครั้งที่อนุมัติเนื้อหาค่าที่แก้ไขหลังอนุมัติครั้งก่อน (เหมือน Data Mapping v0.22.0)
+// สถานะเปลี่ยนตรงด้วยสิทธิ์ MANAGE_DATASETS: DRAFT → ACTIVE (เปิดใช้งาน) → DEPRECATED (v0.36.0 ไม่มีคิวอนุมัติ)
+// เวอร์ชัน +0.1 อัตโนมัติเมื่อแก้เนื้อหาทะเบียนขณะใช้งานอยู่ (ACTIVE)
 // เอนจิน: กฎ IN_LIST/REFERENCE_MATCH ที่ params.referenceSetId ชี้มาที่นี่ จะใช้เฉพาะค่า ACTIVE ของทะเบียน
 // ---------------------------------------------------------------------------
 
@@ -542,11 +536,8 @@ model ReferenceSet {
   subDomainId     String // ต้องเป็นโดเมนย่อย (parentId != null) — เจ้าของทะเบียน (ตรวจใน API — deny-by-default)
   ownerId         String? // email เจ้าของข้อมูล (Data Owner) — ต้องเป็นผู้ใช้ ACTIVE (ตรวจใน API)
   stewardId       String? // email ผู้ดูแลข้อมูล (Data Steward) — ต้องเป็นผู้ใช้ ACTIVE (ตรวจใน API)
-  status          String   @default("DRAFT") // DRAFT | ACTIVE | DEPRECATED — เปลี่ยนผ่าน workflow อนุมัติเท่านั้น
-  pendingApproval Boolean  @default(false) // workflow อนุมัติ: รอผู้มีสิทธิ์อนุมัติตัดสินอยู่ (ล็อกแก้ไข/ลบขณะรอ)
-  approvedBy      String? // email ผู้อนุมัติล่าสุด (workflow อนุมัติ — บันทึก Audit Trail ทุกครั้ง)
-  approvedAt      DateTime? // เวลาที่อนุมัติล่าสุด — ใช้เทียบว่าเนื้อหาค่าเปลี่ยนหลังอนุมัติ (bump version)
-  version         String   @default("1.0") // เวอร์ชันสเปก: +0.1 อัตโนมัติเมื่ออนุมัติเนื้อหาที่แก้ไข (เหมือน Mapping)
+  status          String   @default("DRAFT") // DRAFT | ACTIVE | DEPRECATED — เปิดใช้งาน/เลิกใช้ตรงด้วยสิทธิ์ MANAGE_DATASETS (v0.36.0 ไม่มีคิวอนุมัติ)
+  version         String   @default("1.0") // เวอร์ชันสเปก: +0.1 อัตโนมัติเมื่อแก้เนื้อหาขณะใช้งานอยู่ (ACTIVE)
   createdBy       String // email ผู้สร้าง
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

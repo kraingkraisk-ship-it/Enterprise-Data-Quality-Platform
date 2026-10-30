@@ -7,7 +7,7 @@
 export const MAPPING_NAME_MAX = 500
 export const MAPPING_TEXT_MAX = 500
 
-/** สถานะของ Data Mapping (เปลี่ยนผ่าน workflow อนุมัติเท่านั้น — เหมือน Data Element) */
+/** สถานะของ Data Mapping — เปิดใช้งาน/เลิกใช้ตรงด้วยสิทธิ์ MANAGE_DATASETS (v0.36.0 ไม่มีคิวอนุมัติ) */
 export const MAPPING_STATUSES = ['DRAFT', 'ACTIVE', 'DEPRECATED'] as const
 export type MappingStatus = (typeof MAPPING_STATUSES)[number]
 
@@ -125,7 +125,7 @@ export function formatMappingCode(prefix: string, seq: number): string {
   return `MAP-${prefix}-${String(seq).padStart(3, '0')}`
 }
 
-/** เวอร์ชันสเปก (v0.22.0) — อัตโนมัติ +0.1 ทุกครั้งที่อนุมัติเนื้อหาที่แก้ไขหลังอนุมัติครั้งก่อน */
+/** เวอร์ชันสเปก (v0.36.0) — อัตโนมัติ +0.1 ทุกครั้งที่แก้เนื้อหาขณะใช้งานอยู่ (ACTIVE) + ปรับมือได้ด้วยสิทธิ์ MANAGE_DATASETS */
 export const MAPPING_VERSION_PATTERN = /^\d+\.\d$/
 
 export function isValidMappingVersion(value: string): boolean {

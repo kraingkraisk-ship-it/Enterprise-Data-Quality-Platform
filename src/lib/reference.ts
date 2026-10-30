@@ -2,9 +2,9 @@
  * Reference Data helpers (v0.31.0) — ทะเบียนค่าอ้างอิงศูนย์กลาง (DAMA-DMBOK: Reference Data Management)
  * หลักการ:
  * - ค่ามาตรฐานขององค์กรอยู่ที่เดียว (ทะเบียน) — กฎ/Element/Mapping ที่ผูกไว้ใช้ค่าใหม่ทันที
- * - Workflow อนุมัติแบบเดียวกับ Data Element: DRAFT → (ส่ง) รออนุมัติ → ACTIVE → DEPRECATED
- *   (ผู้ส่ง = MANAGE_DATASETS · ผู้อนุมัติ = APPROVE_EXCEPTIONS — ไม่เพิ่มสิทธิ์ใหม่)
- * - เวอร์ชันทะเบียน +0.1 อัตโนมัติเมื่ออนุมัติเนื้อหาค่าที่แก้ไขหลังอนุมัติครั้งก่อน (เหมือน Data Mapping)
+ * - สถานะทะเบียน: DRAFT → ACTIVE (เปิดใช้งานตรงด้วยสิทธิ์ MANAGE_DATASETS) → DEPRECATED (v0.36.0 ไม่มีคิวอนุมัติ)
+ *   (ทุก action บันทึก Audit Trail — RBAC ตามบทบาทล้วน)
+ * - เวอร์ชันทะเบียน +0.1 อัตโนมัติเมื่อแก้เนื้อหาขณะใช้งานอยู่ (ACTIVE — เหมือน Data Mapping v0.36.0)
  * - ค่าเลิกใช้ด้วยสถานะ RETIRED ไม่ลบ — คงประวัติตรวจสอบย้อนหลังได้
  * - สิทธิ์จัดการ: MANAGE_DATASETS เดิม (เช่นเดียวกับ Data Element — ไม่เพิ่มสิทธิ์ใหม่)
  * ไฟล์นี้ client-safe (ไม่ import db ตรง ๆ — ฟังก์ชันที่ต้องใช้ DB รับ delegate เป็นพารามิเตอร์)
@@ -49,7 +49,7 @@ export function isReferenceValueStatus(v: string): v is ReferenceValueStatus {
   return (REFERENCE_VALUE_STATUSES as readonly string[]).includes(v)
 }
 
-/** เวอร์ชันทะเบียน (แบบเดียวกับ Data Mapping v0.22.0) — +0.1 ตอนอนุมัติเนื้อหาที่แก้ไข */
+/** เวอร์ชันทะเบียน (แบบเดียวกับ Data Mapping v0.36.0) — +0.1 เมื่อแก้เนื้อหาขณะ ACTIVE */
 export const REFERENCE_VERSION_PATTERN = /^\d+\.\d$/
 
 export function isValidReferenceVersion(value: string): boolean {
@@ -79,9 +79,6 @@ export interface ReferenceSetItem {
   ownerId: string | null
   stewardId: string | null
   status: string
-  pendingApproval: boolean
-  approvedBy: string | null
-  approvedAt: string | null
   version: string
   /** จำนวนค่าทั้งหมด (ACTIVE + RETIRED) */
   valueCount: number

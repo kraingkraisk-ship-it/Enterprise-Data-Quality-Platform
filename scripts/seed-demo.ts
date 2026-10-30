@@ -171,7 +171,7 @@ async function main() {
         data: {
           code, name, nameEn, description: 'ทะเบียนมาตรฐานขององค์กร (seed)', subDomainId,
           ownerId: 'somchai.owner@company.co.th', stewardId: 'malee.steward@company.co.th',
-          status: 'ACTIVE', approvedBy: 'somchai.owner@company.co.th', approvedAt: daysAgo(10), version: '1.1',
+          status: 'ACTIVE', version: '1.1',
           createdBy: 'sys.admin@company.co.th',
         },
       })
@@ -213,7 +213,7 @@ async function main() {
         custodianId: 'preecha.engineer@company.co.th',
         isCde: opts.isCde ?? false, pii: opts.pii ?? false,
         referenceSetId: opts.referenceSetId ?? null,
-        status: 'ACTIVE', approvedBy: 'somchai.owner@company.co.th', approvedAt: daysAgo(9),
+        status: 'ACTIVE',
         createdBy: 'preecha.engineer@company.co.th',
       },
     })
@@ -275,7 +275,7 @@ async function main() {
       data: {
         code: 'MP-0001', sourceElementId: elCustCode.id, targetElementId: elCrmCode.id,
         mappingType: 'DIRECT', note: 'รหัสลูกค้าจากระบบหลักไหลเข้า CRM โดยตรง (seed)',
-        status: 'ACTIVE', version: '1.0', approvedBy: 'somchai.owner@company.co.th', approvedAt: daysAgo(8),
+        status: 'ACTIVE', version: '1.0',
         createdBy: 'preecha.engineer@company.co.th',
       },
     })

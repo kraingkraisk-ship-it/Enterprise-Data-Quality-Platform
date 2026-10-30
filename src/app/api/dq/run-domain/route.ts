@@ -413,7 +413,7 @@ export async function POST(req: NextRequest) {
             }
             const [status, ...nameParts] = setStatus.split('|')
             if (status === 'MISSING' || status !== 'ACTIVE') {
-              // ทะเบียนไม่พบหรือยังไม่อนุมัติ — ประเมินไม่ได้ ข้ามและนับใน skipped (แบบเดียวกับ EXISTS_IN_DATASET)
+              // ทะเบียนไม่พบหรือยังไม่เปิดใช้งาน — ประเมินไม่ได้ ข้ามและนับใน skipped (แบบเดียวกับ EXISTS_IN_DATASET)
               skipped += 1
               continue
             }

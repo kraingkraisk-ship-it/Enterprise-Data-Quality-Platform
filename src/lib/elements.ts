@@ -7,6 +7,7 @@
  *   Value Domain / Administrative attributes
  * - 1 element (เชิงตรรกะ) แมปได้หลายคอลัมน์ข้ามหลาย Data Asset
  * - สิทธิ์จัดการ: MANAGE_DATASETS เดิม (ไม่เพิ่มสิทธิ์ใหม่ตามการตัดสินใจของเจ้าของระบบ)
+ * - สถานะ DRAFT/ACTIVE/DEPRECATED เปิดใช้งาน-เลิกใช้ตรงด้วยสิทธิ์ MANAGE_DATASETS (v0.36.0 ไม่มีคิวอนุมัติ)
  */
 
 /* ------------------------------------------------------------------ */
@@ -56,7 +57,7 @@ export const META_GROUPS = [
   { key: 'BUSINESS', th: 'เชิงธุรกิจ', en: 'Business', desc: 'ความหมายและขอบเขตของข้อมูล' },
   { key: 'TECHNICAL', th: 'เชิงเทคนิค', en: 'Technical', desc: 'รูปแบบข้อมูลและการแมปคอลัมน์จริง' },
   { key: 'OPERATIONAL', th: 'เชิงปฏิบัติการ', en: 'Operational', desc: 'การกรอกมือคู่กับค่าจริงจากระบบ' },
-  { key: 'GOVERNANCE', th: 'ธรรมาภิบาล', en: 'Governance', desc: 'ผู้รับผิดชอบ · PII · การอนุมัติ' },
+  { key: 'GOVERNANCE', th: 'ธรรมาภิบาล', en: 'Governance', desc: 'ผู้รับผิดชอบ · PII · การจำแนกข้อมูล' },
 ] as const
 
 /** บทบาท Data Stewardship — เลือกผู้ใช้ในระบบ คนละ 1 คนต่อบทบาท (v0.20.0) */
@@ -130,8 +131,6 @@ export interface ElementItem {
   isCde: boolean
   /** ธงผลกระทบการเงิน (v0.20.0) */
   isFinancial: boolean
-  /** กำลังรออนุมัติ (workflow v0.20.0) */
-  pendingApproval: boolean
   /** จำนวนกฎ DQ ที่ผูกกับ element นี้ */
   ruleCount: number
   /** จำนวนคอลัมน์จริงที่แมปไว้ */

@@ -3,14 +3,14 @@
 /**
  * Reference Data Center — ศูนย์ข้อมูลอ้างอิง (v0.31.0)
  * ทะเบียนค่ามาตรฐานศูนย์กลาง (DAMA-DMBOK: Reference Data Management) ในหน้าเดียว:
- *   · การ์ดสรุป: ทะเบียนทั้งหมด · ใช้งาน (ACTIVE) · รออนุมัติ · ค่าอ้างอิงทั้งหมด
+ *   · การ์ดสรุป: ทะเบียนทั้งหมด · ใช้งาน (ACTIVE) · ร่าง (DRAFT) · ค่าอ้างอิงทั้งหมด
  *   · รายการทะเบียน: กรองสถานะ + ค้นหา + badge สถานะ/workflow/เวอร์ชัน + จำนวนค่า + การใช้งาน (กฎ/Element/Mapping)
- *   · รายละเอียดทะเบียน: metadata + workflow อนุมัติแบบเดียวกับ Data Element (ส่ง → อนุมัติ/ส่งกลับ → เลิกใช้)
+ *   · รายละเอียดทะเบียน: metadata + สถานะเปิดใช้งาน/เลิกใช้ตรงด้วยสิทธิ์ MANAGE_DATASETS (v0.36.0 ไม่มีคิวอนุมัติ)
  *   · ค่าอ้างอิง: เพิ่ม/แก้ไข/เลิกใช้/เปิดใช้ซ้ำ + นำเข้า CSV + ส่งออก CSV
  *   · สแกนค่านอกทะเบียน (orphan): เทียบข้อมูลจริงในคลังกับค่า ACTIVE ของทะเบียน
  *   · การใช้งาน: กฎโหมดทะเบียน · Element ที่ผูก · Mapping LOOKUP ที่อ้าง + Audit Trail
  * แหล่งข้อมูล: /api/reference/sets (+[id] · values · import · export · scan) · /api/domains · /api/assets · /api/rbac/users
- * สิทธิ์ deny-by-default (เหมือน Data Element): จัดการ = MANAGE_DATASETS · อนุมัติ = APPROVE_EXCEPTIONS
+ * สิทธิ์ deny-by-default (เหมือน Data Element): จัดการ/เปิดใช้งาน/เลิกใช้ = MANAGE_DATASETS
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -105,7 +105,7 @@ interface PersonInfo {
 interface DetailResponse {
   set: ReferenceSetItem & { createdBy: string; createdAt: string; updatedAt: string }
   values: ReferenceValueItem[]
-  stewardship: { owner: PersonInfo | null; steward: PersonInfo | null; approvedBy: PersonInfo | null }
+  stewardship: { owner: PersonInfo | null; steward: PersonInfo | null }
   usage: UsageInfo
   auditTrail: Array<{ id: string; action: string; actor: string; detail: string; createdAt: string }>
 }
@@ -124,7 +124,7 @@ interface ScanResult {
   message: string
 }
 
-type StatusFilter = 'ALL' | 'PENDING' | ReferenceStatus
+type StatusFilter = 'ALL' | ReferenceStatus
 
 function fmtTime(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -151,7 +151,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
 
   /* ---------- ข้อมูลหลัก ---------- */
   const [sets, setSets] = useState<ReferenceSetItem[]>([])
-  const [stats, setStats] = useState<{ total: number; active: number; pending: number; valuesTotal: number } | null>(null)
+  const [stats, setStats] = useState<{ total: number; active: number; draft: number; valuesTotal: number } | null>(null)
   const [loading, setLoading] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
 
@@ -168,11 +168,8 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
   /* ---------- ผู้ใช้ / ผู้ดำเนินการ ---------- */
   const [users, setUsers] = useState<DashUser[]>([])
   const manageRoles = useMemo(() => rolesWithPermission('MANAGE_DATASETS').map((r) => r.key), [])
-  const approveRoles = useMemo(() => rolesWithPermission('APPROVE_EXCEPTIONS').map((r) => r.key), [])
   const operators = useMemo(() => users.filter((u) => u.status !== 'SUSPENDED' && manageRoles.includes(u.role as RoleKey)), [users, manageRoles])
-  const approvers = useMemo(() => users.filter((u) => u.status !== 'SUSPENDED' && approveRoles.includes(u.role as RoleKey)), [users, approveRoles])
-  const [opEmail, setOpEmail] = useState('') // ผู้ดำเนินการฝั่งจัดการ (รายละเอียด)
-  const [approverEmail, setApproverEmail] = useState('') // ผู้ดำเนินการฝั่งอนุมัติ (รายละเอียด)
+  const [opEmail, setOpEmail] = useState('') // ผู้ดำเนินการ (รายละเอียด)
   const [createOpEmail, setCreateOpEmail] = useState('') // ผู้ดำเนินการใน dialog สร้าง
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -310,8 +307,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
   const filteredSets = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return sets.filter((s) => {
-      if (statusFilter === 'PENDING' && !s.pendingApproval) return false
-      if (statusFilter !== 'ALL' && statusFilter !== 'PENDING' && s.status !== statusFilter) return false
+      if (statusFilter !== 'ALL' && s.status !== statusFilter) return false
       if (needle) {
         const hay = `${s.code} ${s.name} ${s.nameEn} ${s.description} ${s.subDomainName}`.toLowerCase()
         if (!hay.includes(needle)) return false
@@ -321,9 +317,8 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
   }, [sets, statusFilter, q])
 
   const statusCounts = useMemo(() => {
-    const c: Record<StatusFilter, number> = { ALL: sets.length, PENDING: 0, DRAFT: 0, ACTIVE: 0, DEPRECATED: 0 }
+    const c: Record<StatusFilter, number> = { ALL: sets.length, DRAFT: 0, ACTIVE: 0, DEPRECATED: 0 }
     for (const s of sets) {
-      if (s.pendingApproval) c.PENDING += 1
       if (s.status === 'DRAFT') c.DRAFT += 1
       if (s.status === 'ACTIVE') c.ACTIVE += 1
       if (s.status === 'DEPRECATED') c.DEPRECATED += 1
@@ -391,14 +386,13 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
     reload()
   }
 
-  async function setAction(action: 'SUBMIT_APPROVAL' | 'APPROVE' | 'REJECT_APPROVAL' | 'DEPRECATE' | 'DELETE', note = '') {
+  async function setAction(action: 'ACTIVATE' | 'DEPRECATE' | 'DELETE', note = '') {
     if (!detail) return
-    const isApproveSide = action === 'APPROVE' || action === 'REJECT_APPROVAL' || action === 'DEPRECATE'
-    const email = isApproveSide ? approverEmail : opEmail
+    const email = opEmail
     if (!email) {
       toast({
         title: 'ข้อมูลไม่ครบ',
-        description: isApproveSide ? 'เลือกผู้อนุมัติก่อน (ต้องมีสิทธิ์อนุมัติข้อยกเว้น)' : 'เลือกผู้ดำเนินการก่อน (ต้องมีสิทธิ์จัดการชุดข้อมูล)',
+        description: 'เลือกผู้ดำเนินการก่อน (ต้องมีสิทธิ์จัดการชุดข้อมูล)',
         variant: 'destructive',
       })
       return
@@ -553,7 +547,6 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
   }
 
   const canManage = operators.length > 0
-  const canApprove = approvers.length > 0
 
   /* ------------------------------- render ---------------------------------- */
 
@@ -573,7 +566,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
               </CardTitle>
               <CardDescription className="mt-1">
                 ค่ามาตรฐานขององค์กร (สกุลเงิน · รหัสประเทศ · กลุ่มลูกค้า · สถานะ) อยู่ที่เดียว — กฎ IN_LIST/REFERENCE_MATCH ที่เลือกทะเบียนจะใช้ค่าล่าสุดทันที
-                ผูก valueDomain ของ Data Element และ Mapping แบบ LOOKUP ได้ · workflow อนุมัติเดียวกับ Data Element
+                ผูก valueDomain ของ Data Element และ Mapping แบบ LOOKUP ได้ · เปิดใช้งานตามสิทธิ์บทบาท
               </CardDescription>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -606,8 +599,8 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">รออนุมัติ</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-700">{stats ? stats.pending : '—'}</p>
+            <p className="text-xs text-muted-foreground">ร่าง (DRAFT)</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-700">{stats ? stats.draft : '—'}</p>
           </CardContent>
         </Card>
         <Card>
@@ -625,7 +618,6 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
             {(
               [
                 ['ALL', 'ทั้งหมด'],
-                ['PENDING', 'รออนุมัติ'],
                 ['DRAFT', 'ร่าง'],
                 ['ACTIVE', 'ใช้งาน'],
                 ['DEPRECATED', 'เลิกใช้'],
@@ -684,7 +676,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">รายการทะเบียน ({filteredSets.length})</CardTitle>
-          <CardDescription className="text-xs">กดที่แถวเพื่อเปิดรายละเอียด — จัดการค่า ส่งอนุมัติ สแกนค่านอกทะเบียน</CardDescription>
+          <CardDescription className="text-xs">กดที่แถวเพื่อเปิดรายละเอียด — จัดการค่า เปิดใช้งาน สแกนค่านอกทะเบียน</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
@@ -734,12 +726,6 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                           <Badge variant="outline" className={statusChip(s.status)}>
                             {REFERENCE_STATUS_LABELS[s.status as ReferenceStatus]?.th ?? s.status}
                           </Badge>
-                          {s.pendingApproval && (
-                            <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
-                              <ShieldQuestion className="mr-1 size-3" aria-hidden="true" />
-                              รออนุมัติ
-                            </Badge>
-                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
@@ -782,11 +768,6 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                       <Badge variant="outline" className={statusChip(detail.set.status)}>
                         {REFERENCE_STATUS_LABELS[detail.set.status as ReferenceStatus]?.th ?? detail.set.status}
                       </Badge>
-                      {detail.set.pendingApproval && (
-                        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
-                          รออนุมัติ
-                        </Badge>
-                      )}
                       <Badge variant="outline" className="font-mono text-muted-foreground">
                         v{detail.set.version}
                       </Badge>
@@ -803,7 +784,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                 </div>
 
                 {/* ผู้ดำเนินการ */}
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-1">
                   <div>
                     <Label htmlFor="rc-op" className="text-xs">
                       ผู้ดำเนินการ (จัดการ — MANAGE_DATASETS)
@@ -821,32 +802,15 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label htmlFor="rc-appr" className="text-xs">
-                      ผู้อนุมัติ (APPROVE_EXCEPTIONS)
-                    </Label>
-                    <Select value={approverEmail} onValueChange={setApproverEmail}>
-                      <SelectTrigger id="rc-appr" className="mt-1 h-9">
-                        <SelectValue placeholder="เลือกบัญชีผู้อนุมัติ" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {approvers.map((u) => (
-                          <SelectItem key={u.email} value={u.email}>
-                            {u.name} ({approveRoles.includes(u.role as RoleKey) ? rolesWithPermission('APPROVE_EXCEPTIONS').find((r) => r.key === u.role)?.th ?? u.role : u.role})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
 
-                {/* Workflow อนุมัติ (แบบเดียวกับ Data Element) */}
+                {/* สถานะทะเบียน — v0.36.0: เปิดใช้งาน/เลิกใช้ตรงด้วยสิทธิ์ MANAGE_DATASETS */}
                 <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/30 p-3">
-                  {!detail.set.pendingApproval && detail.set.status === 'DRAFT' && (
+                  {detail.set.status === 'DRAFT' && (
                     <>
-                      <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setAction('SUBMIT_APPROVAL')}>
-                        {busy === 'SUBMIT_APPROVAL' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Upload className="size-4" aria-hidden="true" />}
-                        ส่งขออนุมัติ
+                      <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy !== null} onClick={() => setAction('ACTIVATE')}>
+                        {busy === 'ACTIVATE' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
+                        เปิดใช้งาน (ACTIVE)
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -878,19 +842,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                       </AlertDialog>
                     </>
                   )}
-                  {detail.set.pendingApproval && (
-                    <>
-                      <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy !== null} onClick={() => setAction('APPROVE')}>
-                        {busy === 'APPROVE' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
-                        อนุมัติ (ACTIVE)
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setAction('REJECT_APPROVAL')}>
-                        {busy === 'REJECT_APPROVAL' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <XCircle className="size-4" aria-hidden="true" />}
-                        ส่งกลับ (ไม่อนุมัติ)
-                      </Button>
-                    </>
-                  )}
-                  {!detail.set.pendingApproval && detail.set.status === 'ACTIVE' && (
+                  {detail.set.status === 'ACTIVE' && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="sm" variant="outline" className="text-rose-700 hover:bg-rose-50" disabled={busy !== null}>
@@ -920,15 +872,14 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                       </AlertDialogContent>
                     </AlertDialog>
                   )}
-                  {!detail.set.pendingApproval && detail.set.status === 'DEPRECATED' && (
-                    <span className="text-xs text-muted-foreground">
-                      ทะเบียนเลิกใช้ — กด &quot;ส่งขออนุมัติ&quot; ใหม่ไม่ได้จากหน้านี้ (สร้างทะเบียนใหม่แทน เพื่อคงประวัติ)
-                    </span>
-                  )}
-                  {detail.set.approvedBy && (
-                    <span className="ml-auto self-center text-xs text-muted-foreground">
-                      อนุมัติล่าสุดโดย {detail.stewardship.approvedBy?.name ?? detail.set.approvedBy} · {fmtTime(detail.set.approvedAt)}
-                    </span>
+                  {detail.set.status === 'DEPRECATED' && (
+                    <>
+                      <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800" disabled={busy !== null} onClick={() => setAction('ACTIVATE')}>
+                        {busy === 'ACTIVATE' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
+                        เปิดใช้งานกลับ (ACTIVE)
+                      </Button>
+                      <span className="self-center text-xs text-muted-foreground">เปิดกลับมาใช้ได้ตรง — ทุก action บันทึก Audit Trail</span>
+                    </>
                   )}
                 </div>
               </>
@@ -936,7 +887,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
           </CardHeader>
           {detail && !detailLoading && (
             <CardContent className="space-y-4">
-              {/* Metadata (แก้ได้เมื่อไม่รออนุมัติ) */}
+              {/* Metadata */}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="rc-name" className="text-xs">
@@ -945,7 +896,6 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                   <Input
                     id="rc-name"
                     value={detail.set.name}
-                    disabled={detail.set.pendingApproval}
                     onChange={(e) => setDetail({ ...detail, set: { ...detail.set, name: e.target.value } })}
                     className="mt-1 h-9"
                   />
@@ -957,7 +907,6 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                   <Input
                     id="rc-nameEn"
                     value={detail.set.nameEn}
-                    disabled={detail.set.pendingApproval}
                     onChange={(e) => setDetail({ ...detail, set: { ...detail.set, nameEn: e.target.value } })}
                     className="mt-1 h-9"
                   />
@@ -968,7 +917,6 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                   </Label>
                   <Select
                     value={detail.set.ownerId ?? 'none'}
-                    disabled={detail.set.pendingApproval}
                     onValueChange={(v) => setDetail({ ...detail, set: { ...detail.set, ownerId: v === 'none' ? null : v } })}
                   >
                     <SelectTrigger id="rc-owner" className="mt-1 h-9">
@@ -992,7 +940,6 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                   </Label>
                   <Select
                     value={detail.set.stewardId ?? 'none'}
-                    disabled={detail.set.pendingApproval}
                     onValueChange={(v) => setDetail({ ...detail, set: { ...detail.set, stewardId: v === 'none' ? null : v } })}
                   >
                     <SelectTrigger id="rc-steward" className="mt-1 h-9">
@@ -1018,13 +965,12 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                     id="rc-desc"
                     rows={2}
                     value={detail.set.description}
-                    disabled={detail.set.pendingApproval}
                     onChange={(e) => setDetail({ ...detail, set: { ...detail.set, description: e.target.value } })}
                     className="mt-1"
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <Button size="sm" variant="outline" disabled={busy !== null || detail.set.pendingApproval} onClick={updateMetadata}>
+                  <Button size="sm" variant="outline" disabled={busy !== null} onClick={updateMetadata}>
                     {busy === 'update' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
                     บันทึกข้อมูลทะเบียน
                   </Button>
@@ -1042,7 +988,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                     <span className="ml-2 text-xs font-normal text-muted-foreground">เอนจินกฎใช้เฉพาะค่าใช้งาน (ACTIVE)</span>
                   </p>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setImportOpen(true)} disabled={detail.set.pendingApproval || !canManage}>
+                    <Button size="sm" variant="outline" onClick={() => setImportOpen(true)} disabled={!canManage}>
                       <Upload className="size-4" aria-hidden="true" />
                       นำเข้า CSV
                     </Button>
@@ -1079,15 +1025,12 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                     <Input id="rc-vdef" value={vDefinition} onChange={(e) => setVDefinition(e.target.value)} className="mt-1 h-9" />
                   </div>
                   <div className="flex items-end">
-                    <Button size="sm" className="bg-teal-700 hover:bg-teal-800" disabled={busy !== null || detail.set.pendingApproval || !canManage} onClick={addValue}>
+                    <Button size="sm" className="bg-teal-700 hover:bg-teal-800" disabled={busy !== null || !canManage} onClick={addValue}>
                       {busy === 'addValue' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Plus className="size-4" aria-hidden="true" />}
                       เพิ่มค่า
                     </Button>
                   </div>
                 </div>
-                {detail.set.pendingApproval && (
-                  <p className="px-3 pt-2 text-xs text-amber-800">ทะเบียนอยู่ในสถานะรออนุมัติ — ผู้อนุมัติต้องตัดสินก่อนจึงแตะค่าได้</p>
-                )}
                 {/* ตารางค่า */}
                 <div className="max-h-96 overflow-y-auto">
                   <Table>
@@ -1126,7 +1069,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                                     size="sm"
                                     variant="ghost"
                                     className="h-8 text-xs"
-                                    disabled={detail.set.pendingApproval || !canManage || busy !== null}
+                                    disabled={!canManage || busy !== null}
                                     onClick={() => setEditValue(v)}
                                   >
                                     แก้ไข
@@ -1135,7 +1078,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                                     size="sm"
                                     variant="ghost"
                                     className="h-8 text-xs text-rose-700 hover:bg-rose-50"
-                                    disabled={detail.set.pendingApproval || !canManage || busy !== null}
+                                    disabled={!canManage || busy !== null}
                                     onClick={() => void valueAction(v.id, 'RETIRE')}
                                   >
                                     เลิกใช้
@@ -1146,7 +1089,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                                   size="sm"
                                   variant="ghost"
                                   className="h-8 text-xs"
-                                  disabled={detail.set.pendingApproval || !canManage || busy !== null}
+                                  disabled={!canManage || busy !== null}
                                   onClick={() => void valueAction(v.id, 'REACTIVATE')}
                                 >
                                   เปิดใช้ซ้ำ
@@ -1325,7 +1268,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
           <DialogHeader>
             <DialogTitle>สร้างทะเบียนข้อมูลอ้างอิง</DialogTitle>
             <DialogDescription>
-              ทะเบียนใหม่เริ่มที่สถานะร่าง (DRAFT) — เพิ่มค่าแล้วส่งขออนุมัติ ผู้มีสิทธิ์อนุมัติตัดสินจึงจะใช้งานได้ (ACTIVE)
+              ทะเบียนใหม่เริ่มที่สถานะร่าง (DRAFT) — เพิ่มค่าแล้วกด &quot;เปิดใช้งาน&quot; (ต้องมีสิทธิ์จัดการชุดข้อมูล) จึงจะใช้งานได้ (ACTIVE)
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

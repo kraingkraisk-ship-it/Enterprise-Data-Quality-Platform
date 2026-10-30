@@ -12,7 +12,7 @@ import {
 } from '@/lib/elements'
 
 /**
- * Data Element API — รายการเดี่ยว (v0.18.0 · Meta Data 4 กลุ่ม + workflow อนุมัติ ใน v0.20.0)
+ * Data Element API — รายการเดี่ยว (v0.18.0 · Meta Data 4 กลุ่ม · v0.36.0 ไม่มีคิวอนุมัติ)
  *
  * GET   /api/elements/[id] — รายละเอียดเต็ม:
  *         - Meta Data ครบทั้ง 4 กลุ่ม (Business / Technical / Operational / Governance)
@@ -20,20 +20,16 @@ import {
  *         - operational actual (ค่าจริงจากระบบ: จำนวนแมป/กฎ/ชุดข้อมูล, รอบรันล่าสุด, คะแนน element ถ่วงแถว)
  *         - auditTrail (ประวัติการทำรายการของ element นี้จาก Audit Trail)
  * PATCH /api/elements/[id] — body: { operatorEmail, action, … }
- *         action: 'UPDATE' | 'DELETE' | 'SUBMIT_APPROVAL' | 'APPROVE' | 'REJECT_APPROVAL' | 'DEPRECATE'
+ *         action: 'UPDATE' | 'DELETE' | 'ACTIVATE' | 'DEPRECATE'
  *
- * สิทธิ์ (deny-by-default):
- * - UPDATE / DELETE / SUBMIT_APPROVAL → MANAGE_DATASETS (สิทธิ์เดิม)
- * - APPROVE / REJECT_APPROVAL / DEPRECATE → APPROVE_EXCEPTIONS (สิทธิ์อนุมัติเดิม — ไม่เพิ่มสิทธิ์ใหม่)
- * กติกา workflow อนุมัติ (v0.20.0 — workflow จริง บันทึกผู้อนุมัติ + Audit Trail ทุกครั้ง):
- * - element ใหม่ = DRAFT → ผู้มี MANAGE_DATASETS ส่งขออนุมัติ (SUBMIT_APPROVAL)
- *   → ผู้มี APPROVE_EXCEPTIONS อนุมัติ (status=ACTIVE + approvedBy/approvedAt) หรือส่งกลับ (คง DRAFT)
- * - เลิกใช้ (DEPRECATED) และกลับมาใช้ใหม่ ทำผ่าน workflow เดียวกัน
- * - ขณะ "รออนุมัติ" ห้ามแก้ meta/ลบ (ต้องอนุมัติหรือส่งกลับก่อน — กันเนื้อหาเปลี่ยนระหว่างพิจารณา)
+ * สิทธิ์ (deny-by-default — RBAC ตามบทบาทล้วน): ทุก action ใช้สิทธิ์ MANAGE_DATASETS เดิม
+ * กติกาสถานะ (v0.36.0 — ไม่มีคิวอนุมัติ ทุก action บันทึก Audit Trail):
+ * - element ใหม่ = DRAFT → ผู้มี MANAGE_DATASETS เปิดใช้งานเอง (ACTIVATE → ACTIVE) หรือเลิกใช้ (DEPRECATE → DEPRECATED)
+ * - เลิกใช้ (DEPRECATED) และเปิดกลับมาใช้ใหม่ ทำได้ตรงด้วยสิทธิ์เดียวกัน
  * - DELETE ปฏิเสธเมื่อยังมีกฎผูกอยู่ · ห้ามย้ายโดเมนย่อย (ย้าย = ลบแล้วสร้างใหม่ เพื่อคงประวัติ audit)
  */
 
-/** ตรวจรูปแบบฟิลด์ meta — คืนข้อความ error หรือ null (สถานะเปลี่ยนผ่าน workflow อนุมัติเท่านั้น) */
+/** ตรวจรูปแบบฟิลด์ meta — คืนข้อความ error หรือ null (สถานะเปลี่ยนด้วย action สถานะเท่านั้น — ไม่รับจากฟอร์ม) */
 function validateMetaFields(body: Record<string, unknown>): string | null {
   const dataType = String(body.dataType ?? 'TEXT').trim()
   if (!isElementDataType(dataType)) {
@@ -216,14 +212,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!body) return NextResponse.json({ error: 'รูปแบบข้อมูลไม่ถูกต้อง' }, { status: 400 })
 
     const action = String(body.action ?? 'UPDATE').trim().toUpperCase()
-    const WORKFLOW_ACTIONS = ['SUBMIT_APPROVAL', 'APPROVE', 'REJECT_APPROVAL', 'DEPRECATE']
-    const permission = action === 'UPDATE' || action === 'DELETE' || action === 'SUBMIT_APPROVAL' ? 'MANAGE_DATASETS' : 'APPROVE_EXCEPTIONS'
+    const STATUS_ACTIONS = ['ACTIVATE', 'DEPRECATE']
+    const permission = 'MANAGE_DATASETS' // v0.36.0 — ทุก action ใช้สิทธิ์เดียว (RBAC ตามบทบาทล้วน)
 
     const op = await resolveOperator(body.operatorEmail, permission)
     if (!op.ok) return NextResponse.json({ error: op.message }, { status: op.status })
 
-    if (!['UPDATE', 'DELETE', ...WORKFLOW_ACTIONS].includes(action)) {
-      return NextResponse.json({ error: `การดำเนินการไม่ถูกต้อง (UPDATE | DELETE | ${WORKFLOW_ACTIONS.join(' | ')})` }, { status: 400 })
+    if (!['UPDATE', 'DELETE', ...STATUS_ACTIONS].includes(action)) {
+      return NextResponse.json({ error: `การดำเนินการไม่ถูกต้อง (UPDATE | DELETE | ${STATUS_ACTIONS.join(' | ')})` }, { status: 400 })
     }
 
     const element = await db.dataElement.findUnique({
@@ -235,60 +231,24 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     })
     if (!element) return NextResponse.json({ error: 'ไม่พบ Data Element นี้ในระบบ' }, { status: 404 })
 
-    /* ---------------- workflow อนุมัติ (v0.20.0) ---------------- */
-    if (action === 'SUBMIT_APPROVAL') {
-      if (element.pendingApproval) {
-        return NextResponse.json({ error: 'element นี้อยู่ในสถานะ "รออนุมัติ" อยู่แล้ว' }, { status: 409 })
-      }
+    /* ---------------- เปิดใช้งาน (v0.36.0 — ตรงด้วยสิทธิ์ MANAGE_DATASETS) ---------------- */
+    if (action === 'ACTIVATE') {
       if (!['DRAFT', 'DEPRECATED'].includes(element.status)) {
-        return NextResponse.json({ error: 'เฉพาะ element สถานะ DRAFT หรือ DEPRECATED เท่านั้นที่ส่งขออนุมัติได้' }, { status: 400 })
-      }
-      await db.dataElement.update({ where: { id }, data: { pendingApproval: true } })
-      await db.auditLog.create({
-        data: {
-          action: 'SUBMIT_DATA_ELEMENT_APPROVAL',
-          actor: op.ctx.email,
-          target: `${element.code} ${element.nameTh}`,
-          detail: `ส่งขออนุมัติ Data Element "${element.nameTh}" (${element.code}) — รอผู้มีสิทธิ์อนุมัติ (APPROVE_EXCEPTIONS) ตัดสิน โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
-        },
-      })
-      return NextResponse.json({ message: `ส่งขออนุมัติ "${element.nameTh}" แล้ว — รอผู้อนุมัติตัดสิน` })
-    }
-
-    if (action === 'APPROVE') {
-      if (!element.pendingApproval) {
-        return NextResponse.json({ error: 'element นี้ไม่ได้อยู่ในสถานะรออนุมัติ' }, { status: 409 })
+        return NextResponse.json({ error: 'เฉพาะ element สถานะ DRAFT หรือ DEPRECATED เท่านั้นที่เปิดใช้งานได้' }, { status: 400 })
       }
       const updated = await db.dataElement.update({
         where: { id },
-        data: { status: 'ACTIVE', pendingApproval: false, approvedBy: op.ctx.email, approvedAt: new Date() },
+        data: { status: 'ACTIVE' },
       })
       await db.auditLog.create({
         data: {
-          action: 'APPROVE_DATA_ELEMENT',
+          action: 'ACTIVATE_DATA_ELEMENT',
           actor: op.ctx.email,
           target: `${element.code} ${element.nameTh}`,
-          detail: `อนุมัติ Data Element "${element.nameTh}" (${element.code}) — สถานะเปลี่ยนเป็น ACTIVE ใช้งานได้ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+          detail: `เปิดใช้งาน Data Element "${element.nameTh}" (${element.code}) — สถานะเปลี่ยนจาก ${element.status} เป็น ACTIVE ใช้งานได้ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
-      return NextResponse.json({ element: updated, message: `อนุมัติ "${element.nameTh}" แล้ว — ใช้งานได้ (ACTIVE)` })
-    }
-
-    if (action === 'REJECT_APPROVAL') {
-      if (!element.pendingApproval) {
-        return NextResponse.json({ error: 'element นี้ไม่ได้อยู่ในสถานะรออนุมัติ' }, { status: 409 })
-      }
-      const note = String(body.note ?? '').trim().slice(0, ELEMENT_TEXT_MAX)
-      await db.dataElement.update({ where: { id }, data: { pendingApproval: false } })
-      await db.auditLog.create({
-        data: {
-          action: 'REJECT_DATA_ELEMENT_APPROVAL',
-          actor: op.ctx.email,
-          target: `${element.code} ${element.nameTh}`,
-          detail: `ส่งกลับ (ไม่อนุมัติ) Data Element "${element.nameTh}" (${element.code}) — คงสถานะ ${element.status} ให้ผู้ดูแลแก้ไขแล้วส่งใหม่${note ? ` · เหตุผล: ${note}` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
-        },
-      })
-      return NextResponse.json({ message: `ส่งกลับ "${element.nameTh}" แล้ว — คงสถานะ ${element.status === 'DRAFT' ? 'ร่าง (DRAFT)' : 'เลิกใช้ (DEPRECATED)'}` })
+      return NextResponse.json({ element: updated, message: `เปิดใช้งาน "${element.nameTh}" แล้ว — ใช้งานได้ (ACTIVE)` })
     }
 
     if (action === 'DEPRECATE') {
@@ -296,7 +256,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         return NextResponse.json({ error: 'เฉพาะ element ที่ใช้งานอยู่ (ACTIVE) เท่านั้นที่เลิกใช้ได้' }, { status: 400 })
       }
       const note = String(body.note ?? '').trim().slice(0, ELEMENT_TEXT_MAX)
-      const updated = await db.dataElement.update({ where: { id }, data: { status: 'DEPRECATED', pendingApproval: false } })
+      const updated = await db.dataElement.update({ where: { id }, data: { status: 'DEPRECATED' } })
       await db.auditLog.create({
         data: {
           action: 'DEPRECATE_DATA_ELEMENT',
@@ -309,9 +269,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     if (action === 'DELETE') {
-      if (element.pendingApproval) {
-        return NextResponse.json({ error: 'ลบไม่ได้ขณะ "รออนุมัติ" — อนุมัติหรือส่งกลับก่อนจึงจะลบได้' }, { status: 409 })
-      }
       if (element._count.rules > 0) {
         return NextResponse.json(
           {
@@ -342,12 +299,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     // ---------- UPDATE ----------
-    if (element.pendingApproval) {
-      return NextResponse.json(
-        { error: 'แก้ไขไม่ได้ขณะ "รออนุมัติ" — ผู้อนุมัติต้องอนุมัติหรือส่งกลับก่อนจึงจะแก้ Meta Data ได้ (กันเนื้อหาเปลี่ยนระหว่างพิจารณา)' },
-        { status: 409 },
-      )
-    }
     const nameTh = String(body.nameTh ?? element.nameTh).trim()
     if (!nameTh) return NextResponse.json({ error: 'กรุณาระบุชื่อ Data Element' }, { status: 400 })
     if (nameTh.length > ELEMENT_NAME_MAX) {
@@ -409,7 +360,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     const updated = await db.dataElement.update({
       where: { id },
-      data: { nameTh, referenceSetId: refSetIdToSave, ...metaFieldsFrom(body) }, // หมายเหตุ: status ไม่รับจากฟอร์ม — เปลี่ยนผ่าน workflow อนุมัติเท่านั้น
+      data: { nameTh, referenceSetId: refSetIdToSave, ...metaFieldsFrom(body) }, // หมายเหตุ: status ไม่รับจากฟอร์ม — เปลี่ยนด้วย action ACTIVATE/DEPRECATE เท่านั้น
     })
 
     await db.auditLog.create({
