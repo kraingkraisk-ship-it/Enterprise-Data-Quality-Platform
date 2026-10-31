@@ -4,7 +4,7 @@
  * Data Quality Check (v0.38.0) — จุดรันตรวจคุณภาพข้อมูลจุดเดียวของระบบ
  * flow 4 ขั้น: ① เลือกชุดข้อมูล → ② ดูโปรไฟล์ข้อมูล (สำรวจปัญหาก่อนตรวจ) →
  * ③ เลือกกฎที่จะตรวจ (จัดกลุ่มตามมิติ 9 มิติ — ค่าเริ่มต้นติ๊กกฎที่เปิดใช้งานทั้งหมด) →
- * ④ รันและสรุปผลรายมิติ · เจาะตรวจราย Sub Data Domain / Data Element ได้ (แท็บโดเมน)
+ * ④ รันและสรุปผลรายมิติ · เจาะตรวจราย Sub Data Domain / Data Dictionary ได้ (แท็บโดเมน)
  *
  * เดิมเป็นหน้า "โปรไฟล์ข้อมูล" อ่านอย่างเดียว (ไม่เคยถูกใช้ — 0 รอบตลอดชีวิตระบบ)
  * รวมจุดรันจากหน้า "ผลการตรวจสอบ" เดิมมาไว้ที่นี่ตามการออกแบบมิตินำ v0.38.0
@@ -350,7 +350,7 @@ export default function DqProfiling({ active, onViewChange }: { active: boolean;
           </TabsTrigger>
           <TabsTrigger value="element" className="gap-1.5 data-[state=active]:bg-white">
             <ClipboardList className="size-3.5" aria-hidden="true" />
-            เจาะตาม Data Element (Domain)
+            เจาะตาม Data Dictionary (Domain)
           </TabsTrigger>
         </TabsList>
 
@@ -779,7 +779,7 @@ export default function DqProfiling({ active, onViewChange }: { active: boolean;
           </Card>
         </TabsContent>
 
-        {/* ============ โหมด 2: เจาะตาม Data Element (Domain → Element → เลือกกฎ → rollup) ============ */}
+        {/* ============ โหมด 2: เจาะตาม Data Dictionary (Domain → Element → เลือกกฎ → rollup) ============ */}
         <TabsContent value="element" className="mt-4">
           <DomainRunPanel runOperator={user?.email ?? ''} />
         </TabsContent>

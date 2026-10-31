@@ -150,10 +150,10 @@ export const FRAMEWORKS: Framework[] = [
     name: 'ISO/IEC 11179',
     fullName: 'Metadata Registries (ทะเบียนเมทาดาทาและองค์ประกอบข้อมูล)',
     description:
-      'กรอบทะเบียนเมทาดาทาและการจัดการองค์ประกอบข้อมูล (Data Element) — ระบบแมปกับความครบถ้วนของเมทาดาทาชุดข้อมูล (ชื่อ/แหล่งข้อมูล/การจำแนกประเภท/ธง PII) และชุดค่ามาตรฐาน',
+      'กรอบทะเบียนเมทาดาทาและการจัดการองค์ประกอบข้อมูล (Data Dictionary) — ระบบแมปกับความครบถ้วนของเมทาดาทาชุดข้อมูล (ชื่อ/แหล่งข้อมูล/การจำแนกประเภท/ธง PII) และชุดค่ามาตรฐาน',
     domains: [
       { id: '11179-1', th: 'Part 1: กรอบและหลักการทั่วไป', en: 'Framework and general principles', detail: 'ทะเบียนเมทาดาทาต้องมีหลักการจัดการที่ชัดเจน ตรวจสอบย้อนหลังได้', dimensions: ['COMPLETENESS'], weight: 0.5 },
-      { id: '11179-3', th: 'Part 3: Metamodel — Data Element และ Value Domain', en: 'Registry metamodel', detail: 'ทุกองค์ประกอบข้อมูลต้องผูกกับชุดค่าที่ยอมรับ (Value Domain) — แมปกับกฎ "อยู่ในรายการค่าที่อนุญาต" ของระบบ', dimensions: ['CONSISTENCY'], weight: 1.5 },
+      { id: '11179-3', th: 'Part 3: Metamodel — Data Dictionary และ Value Domain', en: 'Registry metamodel', detail: 'ทุกองค์ประกอบข้อมูลต้องผูกกับชุดค่าที่ยอมรับ (Value Domain) — แมปกับกฎ "อยู่ในรายการค่าที่อนุญาต" ของระบบ', dimensions: ['CONSISTENCY'], weight: 1.5 },
       { id: '11179-4', th: 'Part 4: การเขียนนิยามข้อมูล', en: 'Formulating data definitions', detail: 'นิยามข้อมูลต้องครบ ชัดเจน และไม่ซ้ำกัน — แมปกับความสมบูรณ์ของเมทาดาทาในระบบ', dimensions: ['COMPLETENESS'], weight: 1.25 },
       { id: '11179-5', th: 'Part 5: การตั้งชื่อและการระบุเอกลักษณ์', en: 'Naming and identification', detail: 'ตั้งชื่อ/รหัสองค์ประกอบข้อมูลตามหลักที่กำหนด เพื่อระบุเอกลักษณ์ไม่ซ้ำ — แมปกับมิติความไม่ซ้ำซ้อน', dimensions: ['UNIQUENESS'], weight: 1.0 },
       { id: '11179-6', th: 'Part 6: การลงทะเบียน', en: 'Registration', detail: 'สถานะการลงทะเบียนขององค์ประกอบข้อมูล (Preferred/Standard/Recorded) — ตรวจด้วยความครบถ้วนของข้อมูลจำแนกประเภทในแดชบอร์ด', dimensions: ['COMPLETENESS', 'CURRENTNESS'], weight: 0.75 },

@@ -1,10 +1,10 @@
 /**
  * Data Mapping — Frontend types (v0.21.0)
  * รูปทรงข้อมูลจาก /api/mappings + /api/mappings/lineage (ต้องตรงกับ src/lib/mappings-server.ts)
- * ใช้ร่วมกันทั้งแท็บใน Dialog Data Element และหน้า Data Mapping
+ * ใช้ร่วมกันทั้งแท็บใน Dialog Data Dictionary และหน้า Data Mapping
  */
 
-/** สรุป Data Element ฝั่งใดฝั่งหนึ่งของ mapping (พร้อมเส้นทางเต็ม โดเมนหลัก.โดเมนย่อย.ชื่อ) */
+/** สรุป Data Dictionary ฝั่งใดฝั่งหนึ่งของ mapping (พร้อมเส้นทางเต็ม โดเมนหลัก.โดเมนย่อย.ชื่อ) */
 export interface MappingElementSummary {
   id: string
   code: string

@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast'
 
 /**
- * DomainRunPanel (v0.18.0) — "เลือก Data Domain ที่ต้องการตรวจ > เลือก DQ Rule ตรวจตาม Data Element"
- * รันกฎที่ผูกกับ Data Element ทั้งโดเมนในคลิกเดียว (เลือกกฎย่อยได้) พร้อมคะแนน rollup
+ * DomainRunPanel (v0.18.0) — "เลือก Data Domain ที่ต้องการตรวจ > เลือก DQ Rule ตรวจตาม Data Dictionary"
+ * รันกฎที่ผูกกับ Data Dictionary ทั้งโดเมนในคลิกเดียว (เลือกกฎย่อยได้) พร้อมคะแนน rollup
  * ระดับ Element → Sub Data Domain → Data Domain แสดงในผลรันทันที
  */
 
@@ -248,7 +248,7 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
       setRanAt(new Date().toISOString())
       toast({
         title: 'รันตรวจระดับโดเมนสำเร็จ',
-        description: `โดเมน ${data.domain.name} — ${data.runsCount} ผลรัน ครอบ ${data.byElement.length} element · คำแนะนำใหม่ ${data.newSignals} รายการ`,
+        description: `โดเมน ${data.domain.name} — ${data.runsCount} ผลรัน ครอบ ${data.byElement.length} Data Dictionary · คำแนะนำใหม่ ${data.newSignals} รายการ`,
       })
     } catch {
       toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
@@ -264,10 +264,10 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <FolderTree className="size-4 text-emerald-700" aria-hidden="true" />
-            รันตรวจตาม Data Domain — เลือกโดเมนแล้วเลือกกฎราย Data Element
+            รันตรวจตาม Data Domain — เลือกโดเมนแล้วเลือกกฎราย Data Dictionary
           </CardTitle>
           <CardDescription>
-            ระบบจะรวมทุกกฎที่ผูกกับ Data Element (ACTIVE) ใต้โดเมนย่อยทั้งหมด แล้วรันตามชุดข้อมูลที่กฎผูกไว้ —
+            ระบบจะรวมทุกกฎที่ผูกกับ Data Dictionary (ACTIVE) ใต้โดเมนย่อยทั้งหมด แล้วรันตามชุดข้อมูลที่กฎผูกไว้ —
             คะแนน rollup ระดับ Element → Sub Domain → Domain แสดงทันทีหลังรัน
           </CardDescription>
         </CardHeader>
@@ -288,7 +288,7 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
                   {domains.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.name}
-                      {(d.elementCount ?? 0) > 0 ? ` · ${d.elementCount} element` : ''}
+                      {(d.elementCount ?? 0) > 0 ? ` · ${d.elementCount} Data Dictionary` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -312,11 +312,11 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
           {domainId && (
             loadingTree ? (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลด element และกฎ…
+                <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลด Data Dictionary และกฎ…
               </div>
             ) : grouped.length === 0 ? (
               <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                โดเมนนี้ยังไม่มีกฎที่ผูกกับ Data Element — ผูกกฎกับ element ได้ในคลังกฎ (DQ Rule Library)
+                โดเมนนี้ยังไม่มีกฎที่ผูกกับ Data Dictionary — ผูกกฎกับ element ได้ในคลังกฎ (DQ Rule Library)
               </div>
             ) : (
               <div className="space-y-2">
@@ -353,7 +353,7 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
                               <span className="ml-auto text-[10px] text-muted-foreground">{elRules.length} กฎ</span>
                             </div>
                             {elRules.length === 0 ? (
-                              <p className="mt-1.5 pl-5 text-[11px] text-muted-foreground">ยังไม่มีกฎผูกกับ element นี้</p>
+                              <p className="mt-1.5 pl-5 text-[11px] text-muted-foreground">ยังไม่มีกฎผูกกับ Data Dictionary นี้</p>
                             ) : (
                               <div className="mt-1.5 space-y-1 pl-5">
                                 {elRules.map((r) => (
@@ -422,7 +422,7 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
                 </Badge>
               )}
               <p className="text-xs leading-relaxed text-slate-700 sm:border-l sm:border-emerald-200 sm:pl-3">
-                คะแนนรวมจากการ rollup คะแนนราย Data Element (อัตราผ่านถ่วงจำนวนแถวของทุกกฎ) —
+                คะแนนรวมจากการ rollup คะแนนราย Data Dictionary (อัตราผ่านถ่วงจำนวนแถวของทุกกฎ) —
                 element ที่ยังไม่มีกฎจะแสดงว่า &quot;ยังไม่ได้ประเมิน&quot; และไม่ถูกนับในคะแนน
               </p>
             </div>
@@ -448,15 +448,15 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
               </div>
             </div>
 
-            {/* คะแนนราย Data Element */}
+            {/* คะแนนราย Data Dictionary */}
             <div>
-              <p className="mb-2 text-xs font-semibold text-slate-700">คะแนนราย Data Element (โครงสร้าง 4 ระดับ)</p>
+              <p className="mb-2 text-xs font-semibold text-slate-700">คะแนนราย Data Dictionary (โครงสร้าง 4 ระดับ)</p>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full min-w-[640px] text-left text-xs">
                   <thead className="bg-muted/60 text-muted-foreground">
                     <tr>
                       <th scope="col" className="px-3 py-2 font-medium">รหัส</th>
-                      <th scope="col" className="px-3 py-2 font-medium">Data Element</th>
+                      <th scope="col" className="px-3 py-2 font-medium">Data Dictionary</th>
                       <th scope="col" className="px-3 py-2 font-medium">โดเมนย่อย</th>
                       <th scope="col" className="px-3 py-2 text-right font-medium">กฎ</th>
                       <th scope="col" className="px-3 py-2 text-right font-medium">ล้มเหลว</th>

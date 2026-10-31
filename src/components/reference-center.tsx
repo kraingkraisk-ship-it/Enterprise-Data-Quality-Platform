@@ -10,7 +10,7 @@
  *   · สแกนค่านอกทะเบียน (orphan): เทียบข้อมูลจริงในคลังกับค่า ACTIVE ของทะเบียน
  *   · การใช้งาน: กฎโหมดทะเบียน · Element ที่ผูก · Mapping LOOKUP ที่อ้าง + Audit Trail
  * แหล่งข้อมูล: /api/reference/sets (+[id] · values · import · export · scan) · /api/domains · /api/assets · /api/rbac/users
- * สิทธิ์ deny-by-default (เหมือน Data Element): จัดการ/เปิดใช้งาน/เลิกใช้ = MANAGE_DATASETS
+ * สิทธิ์ deny-by-default (เหมือน Data Dictionary): จัดการ/เปิดใช้งาน/เลิกใช้ = MANAGE_DATASETS
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -566,7 +566,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
               </CardTitle>
               <CardDescription className="mt-1">
                 ค่ามาตรฐานขององค์กร (สกุลเงิน · รหัสประเทศ · กลุ่มลูกค้า · สถานะ) อยู่ที่เดียว — กฎ IN_LIST/REFERENCE_MATCH ที่เลือกทะเบียนจะใช้ค่าล่าสุดทันที
-                ผูก valueDomain ของ Data Element และ Mapping แบบ LOOKUP ได้ · เปิดใช้งานตามสิทธิ์บทบาท
+                ผูก valueDomain ของ Data Dictionary และ Mapping แบบ LOOKUP ได้ · เปิดใช้งานตามสิทธิ์บทบาท
               </CardDescription>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -1228,7 +1228,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                       )}
                     </li>
                     <li>
-                      Data Element ที่ valueDomain ผูก: <strong>{detail.usage.elements.length}</strong> รายการ
+                      Data Dictionary ที่ valueDomain ผูก: <strong>{detail.usage.elements.length}</strong> รายการ
                       {detail.usage.elements.length > 0 && (
                         <span className="text-muted-foreground"> — {detail.usage.elements.map((e) => `${e.code} ${e.nameTh}`).join(', ')}</span>
                       )}
@@ -1303,7 +1303,7 @@ export default function ReferenceCenter({ active }: { active: boolean }) {
                   ))}
                 </SelectContent>
               </Select>
-              {subDomains.length === 0 && <p className="mt-1 text-xs text-amber-700">ยังไม่มีโดเมนย่อย — สร้างในหน้า Data Domain ก่อน</p>}
+              {subDomains.length === 0 && <p className="mt-1 text-xs text-amber-700">ยังไม่มีโดเมนย่อย — สร้างในเมนู Data Catalog ก่อน</p>}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>

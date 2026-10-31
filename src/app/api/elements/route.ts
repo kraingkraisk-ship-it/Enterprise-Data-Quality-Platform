@@ -4,20 +4,22 @@ import { resolveOperator } from '@/lib/operator'
 import {
   ELEMENT_DATA_TYPES,
   ELEMENT_NAME_MAX,
+  ELEMENT_OPTIONALITIES,
   ELEMENT_TEXT_MAX,
   isElementDataType,
+  isElementOptionality,
   isOpUpdateFrequency,
   nextElementCode,
 } from '@/lib/elements'
 
 /**
- * Data Element API (v0.18.0 · meta 4 กลุ่ม · v0.36.0 ไม่มีคิวอนุมัติ) — องค์ประกอบข้อมูลเชิงตรรกะภายใต้โดเมนย่อย (ISO/IEC 11179)
+ * Data Dictionary API (v0.18.0 · meta 4 กลุ่ม · v0.36.0 ไม่มีคิวอนุมัติ) — องค์ประกอบข้อมูลเชิงตรรกะภายใต้โดเมนย่อย (ISO/IEC 11179)
  *
  * GET  /api/elements?subDomainId=… — รายการ element ทั้งหมด (หรือกรองตามโดเมนย่อย)
  *      คืน flat list พร้อม ruleCount/mappingCount ธง CDE/Financial + สถานะและข้อมูลโดเมนย่อย+โดเมนหลัก (client ประกอบ path เอง)
  *      v0.39.0 — เพิ่ม columnMappings (assetName+columnName) เพื่อแสดง "อ้างอิงจากข้อมูลที่ไหน" บนหน้า Data Catalog
  * POST /api/elements — สร้าง element ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — เปิดใช้งานเป็น ACTIVE ด้วยสิทธิ์ MANAGE_DATASETS เมื่อพร้อม)
- *      body: { operatorEmail, subDomainId, nameTh, nameEn?, definition?, examples?, dataType?,
+ *      body: { operatorEmail, subDomainId, nameTh, nameEn?, technicalName?, optionality?, sourceOrigin?, definition?, examples?, dataType?,
  *              formatPattern?, valueDomain?, maxLength?, unit?, ownerId?, stewardId?, custodianId?,
  *              pii?, classification?, isCde?, isFinancial?, opUpdateFrequency?, opNotes?, customFields?,
  *              referenceSetId? (v0.31.0 — ผูกทะเบียนข้อมูลอ้างอิงกับ valueDomain — เฉพาะทะเบียน ACTIVE) }
@@ -70,6 +72,9 @@ export async function GET(req: NextRequest) {
         parentDomainId: e.subDomain.parentId,
         nameTh: e.nameTh,
         nameEn: e.nameEn,
+        technicalName: e.technicalName, // v0.42.0 — Technical Name / Field Name
+        optionality: e.optionality, // v0.42.0 — REQUIRED [1..1] | OPTIONAL [0..1]
+        sourceOrigin: e.sourceOrigin, // v0.42.0 — แหล่งที่มา (กรอกมือ)
         definition: e.definition,
         examples: e.examples,
         dataType: e.dataType,
@@ -103,7 +108,7 @@ export async function GET(req: NextRequest) {
     })
   } catch (e) {
     console.error('GET /api/elements', e)
-    return NextResponse.json({ error: 'ไม่สามารถโหลดรายการ Data Element ได้' }, { status: 500 })
+    return NextResponse.json({ error: 'ไม่สามารถโหลดรายการ Data Dictionary ได้' }, { status: 500 })
   }
 }
 
@@ -112,6 +117,10 @@ function validateMetaFields(body: Record<string, unknown>): string | null {
   const dataType = String(body.dataType ?? 'TEXT').trim()
   if (!isElementDataType(dataType)) {
     return `ประเภทข้อมูลไม่ถูกต้อง — ต้องเป็น: ${ELEMENT_DATA_TYPES.join(', ')}`
+  }
+  const optionality = String(body.optionality ?? 'OPTIONAL').trim().toUpperCase()
+  if (optionality && !isElementOptionality(optionality)) {
+    return `เงื่อนไขการบังคับใช้ไม่ถูกต้อง — ต้องเป็น: ${ELEMENT_OPTIONALITIES.join(', ')}`
   }
   const maxLength = body.maxLength
   if (maxLength !== null && maxLength !== undefined && maxLength !== '' && (Number.isNaN(Number(maxLength)) || Number(maxLength) < 0)) {
@@ -159,8 +168,12 @@ function metaFieldsFrom(body: Record<string, unknown>) {
     }
   }
   const freq = String(body.opUpdateFrequency ?? '').trim().toUpperCase()
+  const opt = String(body.optionality ?? 'OPTIONAL').trim().toUpperCase()
   return {
     nameEn: String(body.nameEn ?? '').trim().slice(0, ELEMENT_NAME_MAX),
+    technicalName: String(body.technicalName ?? '').trim().slice(0, ELEMENT_NAME_MAX),
+    optionality: isElementOptionality(opt) ? opt : 'OPTIONAL',
+    sourceOrigin: String(body.sourceOrigin ?? '').trim().slice(0, ELEMENT_TEXT_MAX),
     definition: String(body.definition ?? '').trim().slice(0, ELEMENT_TEXT_MAX),
     examples: String(body.examples ?? '').trim().slice(0, ELEMENT_TEXT_MAX),
     dataType: isElementDataType(dataType) ? dataType : 'TEXT',
@@ -205,9 +218,9 @@ export async function POST(req: NextRequest) {
     const nameTh = String(body.nameTh ?? '').trim()
 
     if (!subDomainId) return NextResponse.json({ error: 'กรุณาเลือกโดเมนย่อยที่ element สังกัด' }, { status: 400 })
-    if (!nameTh) return NextResponse.json({ error: 'กรุณาระบุชื่อ Data Element' }, { status: 400 })
+    if (!nameTh) return NextResponse.json({ error: 'กรุณาระบุชื่อ Data Dictionary' }, { status: 400 })
     if (nameTh.length > ELEMENT_NAME_MAX) {
-      return NextResponse.json({ error: `ชื่อ Data Element ยาวเกิน ${ELEMENT_NAME_MAX} ตัวอักษร` }, { status: 400 })
+      return NextResponse.json({ error: `ชื่อ Data Dictionary ยาวเกิน ${ELEMENT_NAME_MAX} ตัวอักษร` }, { status: 400 })
     }
 
     // ---------- deny-by-default: element ต้องอยู่ใต้โดเมนย่อยเสมอ ----------
@@ -217,7 +230,7 @@ export async function POST(req: NextRequest) {
     }
     if (subDomain.parentId === null) {
       return NextResponse.json(
-        { error: `Data Element ต้องแขวนใต้ "โดเมนย่อย" เท่านั้น — "${subDomain.name}" เป็นโดเมนหลัก กรุณาเลือกหรือสร้างโดเมนย่อยก่อน` },
+        { error: `Data Dictionary ต้องแขวนใต้ "โดเมนย่อย" เท่านั้น — "${subDomain.name}" เป็นโดเมนหลัก กรุณาเลือกหรือสร้างโดเมนย่อยก่อน` },
         { status: 400 },
       )
     }
@@ -236,7 +249,7 @@ export async function POST(req: NextRequest) {
     // ---------- กันชื่อซ้ำในโดเมนย่อยเดียวกัน ----------
     const dup = await db.dataElement.findFirst({ where: { subDomainId, nameTh }, select: { id: true } })
     if (dup) {
-      return NextResponse.json({ error: `มี Data Element ชื่อ "${nameTh}" อยู่แล้วในโดเมนย่อย "${subDomain.name}"` }, { status: 409 })
+      return NextResponse.json({ error: `มี Data Dictionary ชื่อ "${nameTh}" อยู่แล้วในโดเมนย่อย "${subDomain.name}"` }, { status: 409 })
     }
 
     const position = await db.dataElement.count({ where: { subDomainId } })
@@ -258,13 +271,13 @@ export async function POST(req: NextRequest) {
         action: 'CREATE_DATA_ELEMENT',
         actor: op.ctx.email,
         target: `${created.code} ${created.nameTh}`,
-        detail: `สร้าง Data Element "${created.nameTh}" (${created.code}) ภายใต้โดเมนย่อย "${subDomain.name}" — สถานะเริ่มต้น DRAFT (เปิดใช้งานเมื่อพร้อม)${created.isCde ? ' · CDE' : ''}${created.isFinancial ? ' · การเงิน' : ''}${refSet.id ? ' · ผูกทะเบียนอ้างอิง' : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `สร้าง Data Dictionary "${created.nameTh}" (${created.code}) ภายใต้โดเมนย่อย "${subDomain.name}" — สถานะเริ่มต้น DRAFT (เปิดใช้งานเมื่อพร้อม)${created.isCde ? ' · CDE' : ''}${created.isFinancial ? ' · การเงิน' : ''}${refSet.id ? ' · ผูกทะเบียนอ้างอิง' : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 
-    return NextResponse.json({ element: created, message: `สร้าง Data Element "${created.nameTh}" เรียบร้อย` }, { status: 201 })
+    return NextResponse.json({ element: created, message: `สร้าง Data Dictionary "${created.nameTh}" เรียบร้อย` }, { status: 201 })
   } catch (e) {
     console.error('POST /api/elements', e)
-    return NextResponse.json({ error: 'สร้าง Data Element ไม่สำเร็จ' }, { status: 500 })
+    return NextResponse.json({ error: 'สร้าง Data Dictionary ไม่สำเร็จ' }, { status: 500 })
   }
 }

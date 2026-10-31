@@ -65,16 +65,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     if (action === 'SET_ELEMENT') {
-      // ผูก/ปลดกฎกับ Data Element (v0.18.0) — dataElementId = null/ว่าง = ปลดการผูก
+      // ผูก/ปลดกฎกับ Data Dictionary (v0.18.0) — dataElementId = null/ว่าง = ปลดการผูก
       const rawId = String(body.dataElementId ?? '').trim()
-      let elementPath = '(ไม่ผูก Data Element)'
+      let elementPath = '(ไม่ผูก Data Dictionary)'
       if (rawId) {
         const el = await db.dataElement.findUnique({
           where: { id: rawId },
           select: { id: true, code: true, nameTh: true, subDomain: { select: { name: true, parent: { select: { name: true } } } } },
         })
         if (!el) {
-          return NextResponse.json({ error: 'ไม่พบ Data Element ที่ระบุในระบบ' }, { status: 404 })
+          return NextResponse.json({ error: 'ไม่พบ Data Dictionary ที่ระบุในระบบ' }, { status: 404 })
         }
         elementPath = el.subDomain.parent ? `${el.subDomain.parent.name} / ${el.subDomain.name} / ${el.nameTh}` : el.nameTh
       }
@@ -84,10 +84,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           action: 'SET_RULE_ELEMENT',
           actor: op.ctx.email,
           target: targetLabel,
-          detail: `ผูกกฎ "${rule.column}" กับ Data Element: ${elementPath} (เดิม ${rule.dataElementId ? 'ผูกอยู่แล้ว' : 'ไม่ผูก'}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+          detail: `ผูกกฎ "${rule.column}" กับ Data Dictionary: ${elementPath} (เดิม ${rule.dataElementId ? 'ผูกอยู่แล้ว' : 'ไม่ผูก'}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
-      return NextResponse.json({ rule: updated, message: rawId ? `ผูกกฎกับ Data Element "${elementPath}" เรียบร้อย` : 'ปลดการผูกกฎกับ Data Element เรียบร้อย' })
+      return NextResponse.json({ rule: updated, message: rawId ? `ผูกกฎกับ Data Dictionary "${elementPath}" เรียบร้อย` : 'ปลดการผูกกฎกับ Data Dictionary เรียบร้อย' })
     }
 
     // DELETE

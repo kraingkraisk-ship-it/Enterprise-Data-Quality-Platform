@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Data Mapping Console (v0.21.0) — หน้ารวมเส้นเชื่อม Data Element ต้นทาง → ปลายทาง
+ * Data Mapping Console (v0.21.0) — หน้ารวมเส้นเชื่อม Data Dictionary ต้นทาง → ปลายทาง
  * ระบุว่าเป็นข้อมูลชนิดเดียวกัน ข้ามระบบ/ข้ามโดเมน พร้อมแผนผัง lineage แบบภาพ
  * - สถิติ + ชิปนับตามประเภทการแมป (5 ประเภท ป้ายจาก MAPPING_TYPES เสมอ)
  * - ตัวกรอง: ค้นหา / สถานะ / ประเภท / โดเมน (กรอง client-side จาก GET /api/mappings ครั้งเดียว)
@@ -218,7 +218,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
       {/* หัวหน้า */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold tracking-tight sm:text-lg">Data Mapping · เส้นเชื่อม Data Element ต้นทาง → ปลายทาง</h2>
+          <h2 className="text-base font-semibold tracking-tight sm:text-lg">Data Mapping · เส้นเชื่อม Data Dictionary ต้นทาง → ปลายทาง</h2>
           <p className="text-sm text-muted-foreground">
             ระบุว่าเป็นข้อมูลชนิดเดียวกัน ข้ามระบบ/ข้ามโดเมน (เช่น CRM → DWH) พร้อมแผนผัง lineage · ทุกการเปลี่ยนแปลงบันทึก Audit Trail
           </p>
@@ -307,7 +307,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-9 pl-8"
-            placeholder="ค้นหารหัส mapping หรือเส้นทาง/ชื่อ element ต้นทาง-ปลายทาง"
+            placeholder="ค้นหารหัส mapping หรือเส้นทาง/ชื่อ Data Dictionary ต้นทาง-ปลายทาง"
             aria-label="ค้นหา mapping"
           />
         </div>
@@ -370,7 +370,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
           <p className="mt-2 text-sm font-medium">{mappings.length === 0 ? 'ยังไม่มี Data Mapping ในระบบ' : 'ไม่พบ mapping ตามเงื่อนไขที่กรอง'}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {mappings.length === 0
-              ? 'กด "สร้างการแมป" เพื่อเชื่อม Data Element ต้นทางกับปลายทาง (สร้างแล้วสถานะ DRAFT — เปิดใช้งานเมื่อพร้อม)'
+              ? 'กด "สร้างการแมป" เพื่อเชื่อม Data Dictionary ต้นทางกับปลายทาง (สร้างแล้วสถานะ DRAFT — เปิดใช้งานเมื่อพร้อม)'
               : 'ลองล้างตัวกรอง หรือค้นหาด้วยคำอื่น'}
           </p>
         </div>
@@ -462,15 +462,15 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
                 <p className="flex items-center gap-1.5 text-sm font-semibold">
                   <Waypoints className="size-4 shrink-0 text-emerald-700" aria-hidden="true" /> แผนผัง Lineage — ที่มา-ปลายทางแบบหลายขั้น
                 </p>
-                <p className="text-xs text-muted-foreground">เลือก element กึ่งกลาง แล้วระบบเดินกราฟทั้งฝั่งต้นทาง (ซ้าย) และปลายทาง (ขวา) ตามความลึก</p>
+                <p className="text-xs text-muted-foreground">เลือก Data Dictionary กึ่งกลาง แล้วระบบเดินกราฟทั้งฝั่งต้นทาง (ซ้าย) และปลายทาง (ขวา) ตามความลึก</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Select value={lineageElementId || 'none'} onValueChange={(v) => setLineageElementId(v === 'none' ? '' : v)}>
-                  <SelectTrigger className="h-8 w-full text-xs sm:w-72" aria-label="เลือก element กึ่งกลางของแผนผัง">
-                    <SelectValue placeholder="— เลือก Data Element —" />
+                  <SelectTrigger className="h-8 w-full text-xs sm:w-72" aria-label="เลือก Data Dictionary กึ่งกลางของแผนผัง">
+                    <SelectValue placeholder="— เลือก Data Dictionary —" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">— เลือก Data Element —</SelectItem>
+                    <SelectItem value="none">— เลือก Data Dictionary —</SelectItem>
                     {elementsSorted.map((e) => (
                       <SelectItem key={e.id} value={e.id}>
                         <span className="font-mono text-[10px]">{e.code}</span> · {e.nameTh}
@@ -499,7 +499,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
             {!lineageElementId ? (
               <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed py-10 text-center">
                 <Waypoints className="size-8 text-muted-foreground/40" aria-hidden="true" />
-                <p className="text-sm font-medium">เลือก element หรือกด &quot;ดูแผนผัง&quot; จากตารางด้านบน</p>
+                <p className="text-sm font-medium">เลือก Data Dictionary หรือกด &quot;ดูแผนผัง&quot; จากตารางด้านบน</p>
                 <p className="max-w-md text-xs text-muted-foreground">
                   แผนผังแสดงเส้นทางการไหลของข้อมูล เช่น CRM.customer_master.customer_no → รหัสลูกค้า → DWH.dim_customer.customer_id
                 </p>
@@ -511,7 +511,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
             ) : lineage ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  element ที่เกี่ยว <span className="font-semibold tabular-nums text-foreground">{lineage.nodeCount}</span> · เส้นทาง{' '}
+                  Data Dictionary ที่เกี่ยว <span className="font-semibold tabular-nums text-foreground">{lineage.nodeCount}</span> · เส้นทาง{' '}
                   <span className="font-semibold tabular-nums text-foreground">{lineage.edgeCount}</span> · ลึก {lineage.depth} ขั้น
                 </p>
                 <LineageDiagram rootId={lineage.rootId} nodes={lineage.nodes} edges={lineage.edges} depth={lineage.depth} />
@@ -529,7 +529,7 @@ export function DataMappingConsole({ active }: { active?: boolean }) {
           <DialogHeader>
             <DialogTitle>สร้าง Data Mapping ใหม่</DialogTitle>
             <DialogDescription>
-              เชื่อม Data Element ต้นทาง → ปลายทาง (ต้องเป็น element สถานะ ACTIVE ทั้งคู่) — สร้างแล้วสถานะ DRAFT เปิดใช้งานด้วยปุ่ม "เปิดใช้งาน"
+              เชื่อม Data Dictionary ต้นทาง → ปลายทาง (ต้องเป็น Data Dictionary สถานะ ACTIVE ทั้งคู่) — สร้างแล้วสถานะ DRAFT เปิดใช้งานด้วยปุ่ม "เปิดใช้งาน"
             </DialogDescription>
           </DialogHeader>
           <MappingForm

@@ -71,7 +71,7 @@ function buildRollup(
 }
 
 /**
- * Domain-level validation run (v0.18.0) — "เลือก Data Domain ที่ต้องการตรวจ > เลือก DQ Rule ตรวจตาม Data Element"
+ * Domain-level validation run (v0.18.0) — "เลือก Data Domain ที่ต้องการตรวจ > เลือก DQ Rule ตรวจตาม Data Dictionary"
  *
  * POST /api/dq/run-domain
  *   body: { operatorEmail, domainId, ruleIds?: string[] }  (ruleIds ไม่ระบุ = รันทุกกฎที่ผูก element ในโดเมน)
@@ -79,7 +79,7 @@ function buildRollup(
  * GET /api/dq/run-domain?domainId=… — ผลรอบล่าสุดของโดเมน (rollup จาก groupRunId ล่าสุด)
  *
  * กลไก:
- * - รวมกฎที่ enabled + ผูก Data Element (ACTIVE) ใต้โดเมนย่อยทั้งหมดของโดเมนหลักนี้
+ * - รวมกฎที่ enabled + ผูก Data Dictionary (ACTIVE) ใต้โดเมนย่อยทั้งหมดของโดเมนหลักนี้
  * - รันต่อชุดข้อมูล (batch ต่อ dataset) ด้วย groupRunId เดียวกัน — เข้ากันได้กับหน้าผล/แถวล้มเหลวเดิมทุกอย่าง
  * - คะแนน rollup: element (ถ่วงแถว) → sub-domain → domain แสดงในผลรันทันที
  * สิทธิ์: RUN_VALIDATION — บันทึก Audit Trail (RUN_DOMAIN_VALIDATION)
@@ -172,7 +172,7 @@ export async function GET(req: NextRequest) {
           failedRows: r.failedRows,
           passRate: r.passRate,
           elementId: r.dataElementId,
-          elementName: el?.nameTh ?? '(element ถูกลบ)',
+          elementName: el?.nameTh ?? '(Data Dictionary ถูกลบ)',
           subDomainName: el?.subDomain.name ?? '',
         }
       }),
@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
     const elementIds = elements.map((e) => e.id)
     if (elementIds.length === 0) {
       return NextResponse.json(
-        { error: `โดเมน "${domain.name}" ยังไม่มี Data Element — เริ่มจากจัดโครงสร้างในหน้า Data Domain ก่อน` },
+        { error: `โดเมน "${domain.name}" ยังไม่มี Data Dictionary — เริ่มจากจัดโครงสร้างในเมนู Data Catalog ก่อน` },
         { status: 400 },
       )
     }
@@ -237,7 +237,7 @@ export async function POST(req: NextRequest) {
     const rules = requestedRuleIds ? allRules.filter((r) => requestedRuleIds.includes(r.id)) : allRules
     if (rules.length === 0) {
       return NextResponse.json(
-        { error: 'ไม่มีกฎที่ผูกกับ Data Element ในโดเมนนี้ — ผูกกฎกับ element ในคลังกฎก่อน (หรือเลือกกฎอย่างน้อย 1 ข้อ)' },
+        { error: 'ไม่มีกฎที่ผูกกับ Data Dictionary ในโดเมนนี้ — ผูกกฎกับ Data Dictionary ในคลังกฎก่อน (หรือเลือกกฎอย่างน้อย 1 ข้อ)' },
         { status: 400 },
       )
     }
@@ -493,7 +493,7 @@ export async function POST(req: NextRequest) {
                   parameters: rule.parameters,
                   severity: rule.severity,
                   filter: rule.filter,
-                })} — ล้มเหลว ${evaluation.failedRows}/${evaluation.totalRows} แถว (${failedSample.join('; ')}) ผูกกับ Data Element "${el.nameTh}" — โปรดทบทวนและดำเนินการโดยมนุษย์ (ระบบไม่แก้ไขข้อมูลต้นทาง)`,
+                })} — ล้มเหลว ${evaluation.failedRows}/${evaluation.totalRows} แถว (${failedSample.join('; ')}) ผูกกับ Data Dictionary "${el.nameTh}" — โปรดทบทวนและดำเนินการโดยมนุษย์ (ระบบไม่แก้ไขข้อมูลต้นทาง)`,
                 severity: rule.severity,
                 status: 'PENDING_REVIEW',
               },
@@ -567,7 +567,7 @@ export async function POST(req: NextRequest) {
         action: 'RUN_DOMAIN_VALIDATION',
         actor: op.ctx.email,
         target: domain.name,
-        detail: `รันตรวจระดับโดเมน "${domain.name}" — ${rules.length} กฎ ครอบ ${elements.length} Data Element บน ${datasetIds.length} ชุดข้อมูล — คะแนนรวม ${rollup.domainScore !== null ? rollup.domainScore.toFixed(1) : '—'} · คำแนะนำใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
+        detail: `รันตรวจระดับโดเมน "${domain.name}" — ${rules.length} กฎ ครอบ ${elements.length} Data Dictionary บน ${datasetIds.length} ชุดข้อมูล — คะแนนรวม ${rollup.domainScore !== null ? rollup.domainScore.toFixed(1) : '—'} · คำแนะนำใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 

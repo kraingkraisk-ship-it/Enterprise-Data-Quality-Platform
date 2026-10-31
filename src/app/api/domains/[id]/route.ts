@@ -81,7 +81,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         if (domain._count.assets > 0) parts.push(`ข้อมูลผูกอยู่ ${domain._count.assets} รายการ`)
         if (domain._count.datasets > 0) parts.push(`ชุดข้อมูล DQ สังกัดอยู่ ${domain._count.datasets} ชุด`)
         if (domain._count.columnAssignments > 0) parts.push(`คอลัมน์ที่ถูกจัดหมวดอยู่ ${domain._count.columnAssignments} คอลัมน์`)
-        if (domain._count.elements > 0) parts.push(`Data Element แขวนอยู่ ${domain._count.elements} รายการ`)
+        if (domain._count.elements > 0) parts.push(`Data Dictionary แขวนอยู่ ${domain._count.elements} รายการ`)
         return NextResponse.json(
           { error: `ลบไม่ได้ — "${domain.name}" ยังมี${parts.join(' และ ')} (ย้ายหรือนำออกจากโดเมนก่อน)` },
           { status: 409 },

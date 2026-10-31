@@ -1,6 +1,6 @@
 /**
  * Data Mapping — Shared Library (v0.21.0)
- * ค่าคงที่และตัวช่วยสำหรับการแมป Data Element ต้นทาง → ปลายทาง
+ * ค่าคงที่และตัวช่วยสำหรับการแมป Data Dictionary ต้นทาง → ปลายทาง
  * ใช้ร่วมกันทั้ง Backend (API) และ Frontend (Dialog element + หน้า Data Mapping)
  */
 

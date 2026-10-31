@@ -70,7 +70,7 @@ export async function GET() {
           exceptionActionNote: r.exceptionActionNote,
           enabled: r.enabled,
           createdAt: r.createdAt,
-          // Data Element ที่กฎผูกอยู่ (v0.18.0) — null = กฎแบบเดิมยังไม่ผูก
+          // Data Dictionary ที่กฎผูกอยู่ (v0.18.0) — null = กฎแบบเดิมยังไม่ผูก
           dataElement: r.element
             ? {
                 id: r.element.id,
@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
     const filter = String(body.filter ?? '').trim()
     const parameters = typeof body.parameters === 'string' ? body.parameters : JSON.stringify(body.parameters ?? {})
     const thresholdRaw = Number(body.threshold ?? 95)
-    // Data Element ที่กฎนี้ตรวจ (ไม่บังคับ — ช่วงเปลี่ยนผ่านรองรับกฎเดิมที่ยังไม่ผูก)
+    // Data Dictionary ที่กฎนี้ตรวจ (ไม่บังคับ — ช่วงเปลี่ยนผ่านรองรับกฎเดิมที่ยังไม่ผูก)
     const dataElementIdRaw = String(body.dataElementId ?? '').trim()
     // v0.22.0 — Exception Action อยู่ที่กฎ (แสดงสรุปในหน้ารายละเอียด Mapping)
     const exceptionActionRaw = String(body.exceptionAction ?? '').trim().toUpperCase()
@@ -243,7 +243,7 @@ export async function POST(req: NextRequest) {
         select: { id: true, code: true, nameTh: true, subDomain: { select: { name: true, parent: { select: { name: true } } } } },
       })
       if (!el) {
-        return NextResponse.json({ error: 'ไม่พบ Data Element ที่ระบุในระบบ' }, { status: 404 })
+        return NextResponse.json({ error: 'ไม่พบ Data Dictionary ที่ระบุในระบบ' }, { status: 404 })
       }
       dataElementId = el.id
       elementPath = el.subDomain.parent ? `${el.subDomain.parent.name} / ${el.subDomain.name} / ${el.nameTh}` : el.nameTh
@@ -336,7 +336,7 @@ export async function POST(req: NextRequest) {
         action: 'CREATE_RULE',
         actor: op.ctx.email,
         target: datasetNames.join(', '),
-        detail: `สร้างกฎใหม่ (ใช้ร่วม ${datasetNames.length} ชุดข้อมูล)${elementPath ? ` ผูกกับ Data Element "${elementPath}"` : ''}: ${buildRuleSentence({
+        detail: `สร้างกฎใหม่ (ใช้ร่วม ${datasetNames.length} ชุดข้อมูล)${elementPath ? ` ผูกกับ Data Dictionary "${elementPath}"` : ''}: ${buildRuleSentence({
           datasetNames,
           column,
           condition,

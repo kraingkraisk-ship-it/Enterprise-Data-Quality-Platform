@@ -49,7 +49,7 @@ import { useCurrentUser } from '@/components/user-context'
 /* Data Asset — แสดงเฉพาะข้อมูลที่ input (นำเข้า) เข้ามาในระบบ           */
 /* v0.38.2 — เปลี่ยนชื่อเมนู "คลังข้อมูล" → "Data Asset" + ตัดการแสดง      */
 /*           โดเมน/โดเมนย่อย (sub) ออกจากหน้านี้ทั้งหมดตามคำสั่งผู้ใช้      */
-/*           (จัดการโครงสร้างโดเมนอยู่ที่หน้า Data Domain เท่านั้น)       */
+/*           (จัดการโครงสร้างโดเมนอยู่ที่เมนู Data Catalog เท่านั้น)       */
 /* ------------------------------------------------------------------ */
 
 interface AssetItem {
@@ -252,7 +252,7 @@ export function AssetInventory({
           <p className="text-sm text-muted-foreground">ข้อมูลที่ input (นำเข้า) มาทั้งหมดในระบบ — กดที่รายการเพื่อพรีวิวข้อมูล</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* v0.38.1 — ตัดปุ่ม "จัดการ Data Domain" ออก: การจัดการโครงสร้างอยู่ที่หน้า Data Domain · Element · Meta ในเมนูแล้ว (หลัก Data Catalog — หน้า inventory ทำหน้าที่ค้นหา/เข้าใจ asset เท่านั้น) */}
+          {/* v0.38.1 — ตัดปุ่ม "จัดการ Data Domain" ออก: การจัดการโครงสร้างอยู่ที่เมนู Data Catalog · Element · Meta ในเมนูแล้ว (หลัก Data Catalog — หน้า inventory ทำหน้าที่ค้นหา/เข้าใจ asset เท่านั้น) */}
           {/* v0.32.0 — มุมมองบทบาทใช้ผู้ใช้ปัจจุบันจาก header — แสดงเป็นชิปอ่านอย่างเดียว */}
           <div
             className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground"

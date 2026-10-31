@@ -2,7 +2,7 @@
 
 /**
  * Data Mapping — badge / แถว / ปุ่มสถานะ (v0.21.0 · v0.36.0 ไม่มีคิวอนุมัติ)
- * ใช้ร่วมกันทั้งแท็บ "การแมปข้อมูล" ใน Dialog Data Element และหน้า Data Mapping
+ * ใช้ร่วมกันทั้งแท็บ "การแมปข้อมูล" ใน Dialog Data Dictionary และหน้า Data Mapping
  * สิทธิ์ deny-by-default: ปุ่มแสดงเฉพาะเมื่อผู้ดำเนินการที่เลือกมีสิทธิ์ MANAGE_DATASETS
  * (เปิดใช้งาน/เลิกใช้/ลบ = MANAGE_DATASETS ทั้งหมด — ทุก action บันทึก Audit Trail)
  */

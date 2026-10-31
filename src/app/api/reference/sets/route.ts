@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `ชื่อทะเบียนยาวเกิน ${REFERENCE_NAME_MAX} ตัวอักษร` }, { status: 400 })
     }
 
-    // ---------- deny-by-default: ทะเบียนต้องอยู่ใต้โดเมนย่อยเสมอ (แบบเดียวกับ Data Element) ----------
+    // ---------- deny-by-default: ทะเบียนต้องอยู่ใต้โดเมนย่อยเสมอ (แบบเดียวกับ Data Dictionary) ----------
     const subDomain = await db.dataDomain.findUnique({ where: { id: subDomainId } })
     if (!subDomain) {
       return NextResponse.json({ error: 'ไม่พบโดเมนย่อยที่ระบุ' }, { status: 404 })

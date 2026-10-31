@@ -485,8 +485,8 @@ export const ENGINE_SENTENCE_TH: Record<ConditionKey, string> = {
 }
 
 /* ------------------------------------------------------------------ */
-/* ไอเดีย "Data Element เป็นกฎในการตรวจ" (v0.38.0)                     */
-/* แปลง metadata ของ Data Element ให้เป็นข้อเสนอกฎอัตโนมัติ —           */
+/* ไอเดีย "Data Dictionary เป็นกฎในการตรวจ" (v0.38.0)                     */
+/* แปลง metadata ของ Data Dictionary ให้เป็นข้อเสนอกฎอัตโนมัติ —           */
 /* มิติที่ได้ขึ้นกับชนิดของข้อมูลและค่าที่กรอกไว้ใน Element:             */
 /*   formatPattern → VALIDITY (REGEX) · ทะเบียนอ้างอิง → ACCURACY       */
 /*   (REFERENCE_MATCH) · valueDomain → CONSISTENCY (IN_LIST) ·         */
@@ -535,7 +535,7 @@ export function suggestChecksForElement(el: ElementCheckSource): ElementSuggesti
       engine: 'REGEX',
       dimension: 'VALIDITY',
       title: 'ตรงตามรูปแบบที่ Element กำหนด',
-      reason: `จาก "รูปแบบ" ของ element: ${el.formatPattern}`,
+      reason: `จาก "รูปแบบ" ของ Data Dictionary: ${el.formatPattern}`,
       autoFillable: true,
       params: { pattern: el.formatPattern },
     })
@@ -548,7 +548,7 @@ export function suggestChecksForElement(el: ElementCheckSource): ElementSuggesti
       engine: 'REFERENCE_MATCH',
       dimension: 'ACCURACY',
       title: 'ตรงกับทะเบียนข้อมูลอ้างอิง',
-      reason: `element ผูกทะเบียน${el.referenceSetName ? ` "${el.referenceSetName}"` : ''}ไว้ (single source of truth)`,
+      reason: `Data Dictionary ผูกทะเบียน${el.referenceSetName ? ` "${el.referenceSetName}"` : ''}ไว้ (single source of truth)`,
       autoFillable: true,
       params: { referenceSetId: el.referenceSetId },
     })
@@ -558,8 +558,8 @@ export function suggestChecksForElement(el: ElementCheckSource): ElementSuggesti
       key: 'domain',
       engine: 'IN_LIST',
       dimension: 'CONSISTENCY',
-      title: 'อยู่ในรายการค่าอนุญาตของ element',
-      reason: `จาก "ค่าอนุญาต" ของ element: ${el.valueDomain}`,
+      title: 'อยู่ในรายการค่าอนุญาตของ Data Dictionary',
+      reason: `จาก "ค่าอนุญาต" ของ Data Dictionary: ${el.valueDomain}`,
       autoFillable: true,
       params: { values: el.valueDomain },
     })
@@ -598,7 +598,7 @@ export function suggestChecksForElement(el: ElementCheckSource): ElementSuggesti
       engine: 'EMAIL',
       dimension: 'VALIDITY',
       title: 'รูปแบบอีเมลถูกต้อง',
-      reason: 'ชื่อ element ระบุว่าเป็นอีเมล — ใช้เอนจินตรวจอีเมลโดยตรง',
+      reason: 'ชื่อ Data Dictionary ระบุว่าเป็นอีเมล — ใช้เอนจินตรวจอีเมลโดยตรง',
       autoFillable: true,
       params: {},
     })
@@ -611,7 +611,7 @@ export function suggestChecksForElement(el: ElementCheckSource): ElementSuggesti
       engine: 'NOT_NULL',
       dimension: 'COMPLETENESS',
       title: 'ต้องมีค่า (CDE)',
-      reason: 'element นี้คือ Critical Data Element — ต้องมีค่าครบทุกแถว',
+      reason: 'Data Dictionary นี้คือ Critical Data Element — ต้องมีค่าครบทุกแถว',
       autoFillable: true,
       params: {},
     })

@@ -12,7 +12,7 @@ import {
 import type { Prisma } from '@prisma/client'
 
 /**
- * Data Mapping API (v0.21.0) — เส้นเชื่อม Data Element ต้นทาง → ปลายทาง เพื่อระบุว่าเป็นข้อมูลชนิดเดียวกัน
+ * Data Mapping API (v0.21.0) — เส้นเชื่อม Data Dictionary ต้นทาง → ปลายทาง เพื่อระบุว่าเป็นข้อมูลชนิดเดียวกัน
  *
  * GET  /api/mappings?elementId=…&status=…&type=…
  *      รายการ mapping ทั้งหมด (กรองตาม element ฝั่งใดฝั่งหนึ่ง / สถานะ / ประเภท)
@@ -22,7 +22,7 @@ import type { Prisma } from '@prisma/client'
  *
  * สิทธิ์ (เฉพาะ POST): MANAGE_DATASETS — ทุกการสร้างบันทึก Audit Trail
  * กติกา (deny-by-default):
- * - ปลายทางต้องเป็น Data Element ที่ลงทะเบียนในระบบและใช้งานอยู่ (ACTIVE) เท่านั้น
+ * - ปลายทางต้องเป็น Data Dictionary ที่ลงทะเบียนในระบบและใช้งานอยู่ (ACTIVE) เท่านั้น
  * - ห้ามแมปตัวเอง (source = target)
  * - ห้ามแมปคู่เดิมซ้ำ ทั้งทิศตรง (A→B) และทิศกลับ (B→A) — เพราะ mapping หมายถึงข้อมูลชนิดเดียวกัน
  * - แมปข้าม Data Domain ได้ (ออกแบบตามผู้ใช้กำหนด v0.21.0)
@@ -79,10 +79,10 @@ export async function POST(req: NextRequest) {
     const sourceElementId = String(body.sourceElementId ?? '').trim()
     const targetElementId = String(body.targetElementId ?? '').trim()
     if (!sourceElementId || !targetElementId) {
-      return NextResponse.json({ error: 'กรุณาเลือก Data Element ต้นทางและปลายทางให้ครบ' }, { status: 400 })
+      return NextResponse.json({ error: 'กรุณาเลือก Data Dictionary ต้นทางและปลายทางให้ครบ' }, { status: 400 })
     }
     if (sourceElementId === targetElementId) {
-      return NextResponse.json({ error: 'ห้ามแมป element กับตัวเอง — ต้นทางและปลายทางต้องเป็นคนละ element' }, { status: 400 })
+      return NextResponse.json({ error: 'ห้ามแมปกับตัวเอง — ต้นทางและปลายทางต้องเป็นคนละ Data Dictionary' }, { status: 400 })
     }
 
     const mappingType = String(body.mappingType ?? 'DIRECT').trim().toUpperCase()
@@ -125,12 +125,12 @@ export async function POST(req: NextRequest) {
       select: { id: true, code: true, nameTh: true, status: true },
     })
     if (elements.length !== 2) {
-      return NextResponse.json({ error: 'ไม่พบ Data Element ต้นทางหรือปลายทางในระบบ — ต้องเลือกจาก element ที่ลงทะเบียนแล้วเท่านั้น' }, { status: 404 })
+      return NextResponse.json({ error: 'ไม่พบ Data Dictionary ต้นทางหรือปลายทางในระบบ — ต้องเลือกจาก Data Dictionary ที่ลงทะเบียนแล้วเท่านั้น' }, { status: 404 })
     }
     for (const el of elements) {
       if (el.status !== 'ACTIVE') {
         return NextResponse.json(
-          { error: `element "${el.nameTh}" (${el.code}) ไม่ใช่สถานะ ACTIVE — เปิดใช้งาน element ก่อนจึงนำมาแมปได้ (หน้า Data Domain)` },
+          { error: `Data Dictionary "${el.nameTh}" (${el.code}) ไม่ใช่สถานะ ACTIVE — เปิดใช้งานก่อนจึงนำมาแมปได้ (เมนู Data Catalog)` },
           { status: 409 },
         )
       }
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
         {
           error: reversed
             ? `แมปทิศกลับไม่ได้ — มี mapping ${dup.code} (${dup.source.nameTh} → ${dup.target.nameTh}) อยู่แล้ว เพราะการแมปหมายถึงข้อมูลชนิดเดียวกัน`
-            : `มี mapping ${dup.code} ของคู่ element นี้อยู่แล้ว (${dup.source.nameTh} → ${dup.target.nameTh})`,
+            : `มี mapping ${dup.code} ของคู่ Data Dictionary นี้อยู่แล้ว (${dup.source.nameTh} → ${dup.target.nameTh})`,
         },
         { status: 409 },
       )

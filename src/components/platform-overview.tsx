@@ -55,7 +55,7 @@ const FEATURES = [
     title: 'สินทรัพย์ข้อมูลครบวงจร',
     en: 'Data Asset · Domain · Inventory',
     desc:
-      'นำเข้า CSV / JSON / ฐานข้อมูล เก็บเป็นคลังข้อมูลพร้อมพรีวิว แล้วจัดโครงสร้าง 4 ระดับ (Data Domain > Sub Domain > Data Element > Meta Data) ตามมาตรฐาน ISO/IEC 11179 พร้อมธง CDE และการเปิดใช้งานตามสิทธิ์บทบาท',
+      'นำเข้า CSV / JSON / ฐานข้อมูล เก็บเป็นคลังข้อมูลพร้อมพรีวิว แล้วจัดโครงสร้าง 4 ระดับ (Data Domain > Sub Domain > Data Dictionary > Meta Data) ตามมาตรฐาน ISO/IEC 11179 พร้อมธง CDE และการเปิดใช้งานตามสิทธิ์บทบาท',
   },
   {
     icon: BookMarked,

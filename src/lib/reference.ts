@@ -6,7 +6,7 @@
  *   (ทุก action บันทึก Audit Trail — RBAC ตามบทบาทล้วน)
  * - เวอร์ชันทะเบียน +0.1 อัตโนมัติเมื่อแก้เนื้อหาขณะใช้งานอยู่ (ACTIVE — เหมือน Data Mapping v0.36.0)
  * - ค่าเลิกใช้ด้วยสถานะ RETIRED ไม่ลบ — คงประวัติตรวจสอบย้อนหลังได้
- * - สิทธิ์จัดการ: MANAGE_DATASETS เดิม (เช่นเดียวกับ Data Element — ไม่เพิ่มสิทธิ์ใหม่)
+ * - สิทธิ์จัดการ: MANAGE_DATASETS เดิม (เช่นเดียวกับ Data Dictionary — ไม่เพิ่มสิทธิ์ใหม่)
  * ไฟล์นี้ client-safe (ไม่ import db ตรง ๆ — ฟังก์ชันที่ต้องใช้ DB รับ delegate เป็นพารามิเตอร์)
  */
 
@@ -22,7 +22,7 @@ export const REFERENCE_VALUES_CAP = 1000 // จำนวนค่าสูงส
 export const REFERENCE_IMPORT_MAX_ROWS = 500 // จำนวนแถวสูงสุดต่อการนำเข้า CSV 1 ครั้ง
 export const REFERENCE_SCAN_TOP_VALUES = 50 // จำนวน "ค่าแปลกปลอม" สูงสุดที่รายงานต่อการสแกน
 
-/** สถานะทะเบียน (แบบเดียวกับ Data Element — ISO 11179 registration status) */
+/** สถานะทะเบียน (แบบเดียวกับ Data Dictionary — ISO 11179 registration status) */
 export const REFERENCE_STATUSES = ['DRAFT', 'ACTIVE', 'DEPRECATED'] as const
 export type ReferenceStatus = (typeof REFERENCE_STATUSES)[number]
 
@@ -86,7 +86,7 @@ export interface ReferenceSetItem {
   activeValueCount: number
   /** จำนวนกฎ DQ ที่ params.referenceSetId ชี้ทะเบียนนี้ */
   ruleCount: number
-  /** จำนวน Data Element ที่ valueDomain ผูกทะเบียนนี้ */
+  /** จำนวน Data Dictionary ที่ valueDomain ผูกทะเบียนนี้ */
   elementCount: number
   /** จำนวน Data Mapping แบบ LOOKUP ที่อ้างทะเบียนนี้ */
   mappingCount: number

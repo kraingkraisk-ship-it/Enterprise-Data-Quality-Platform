@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { resolveOperator } from '@/lib/operator'
 
 /**
- * Data Element Column Mapping API (v0.18.0) — แมป element ↔ คอลัมน์จริงในคลังข้อมูล (Data Asset)
+ * Data Dictionary Column Mapping API (v0.18.0) — แมป element ↔ คอลัมน์จริงในคลังข้อมูล (Data Asset)
  *
  * GET /api/elements/[id]/mappings — รายการ mapping ทั้งหมดของ element (พร้อมชื่อ asset)
  * PUT /api/elements/[id]/mappings — ตั้ง mapping ทั้งชุด (replace-all ใน 1 transaction)
@@ -19,7 +19,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   try {
     const { id } = await ctx.params
     const element = await db.dataElement.findUnique({ where: { id }, select: { id: true, nameTh: true } })
-    if (!element) return NextResponse.json({ error: 'ไม่พบ Data Element นี้ในระบบ' }, { status: 404 })
+    if (!element) return NextResponse.json({ error: 'ไม่พบ Data Dictionary นี้ในระบบ' }, { status: 404 })
 
     const mappings = await db.dataElementColumnMapping.findMany({
       where: { elementId: id },
@@ -56,7 +56,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
       where: { id },
       include: { subDomain: { select: { name: true } }, _count: { select: { columnMappings: true } } },
     })
-    if (!element) return NextResponse.json({ error: 'ไม่พบ Data Element นี้ในระบบ' }, { status: 404 })
+    if (!element) return NextResponse.json({ error: 'ไม่พบ Data Dictionary นี้ในระบบ' }, { status: 404 })
 
     const rawList = Array.isArray(body.mappings) ? body.mappings : null
     if (!rawList) return NextResponse.json({ error: 'กรุณาระบุรายการ mapping (mappings)' }, { status: 400 })
@@ -120,7 +120,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
         action: 'MAP_ELEMENT_COLUMNS',
         actor: op.ctx.email,
         target: `${element.code} ${element.nameTh}`,
-        detail: `แมป Data Element "${element.nameTh}" (โดเมนย่อย ${element.subDomain.name}) กับคอลัมน์จริง ${rows.length} รายการ (เดิม ${element._count.columnMappings}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `แมป Data Dictionary "${element.nameTh}" (โดเมนย่อย ${element.subDomain.name}) กับคอลัมน์จริง ${rows.length} รายการ (เดิม ${element._count.columnMappings}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 

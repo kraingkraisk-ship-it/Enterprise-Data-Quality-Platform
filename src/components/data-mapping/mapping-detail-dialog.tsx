@@ -2,7 +2,7 @@
 
 /**
  * Mapping Detail Dialog (v0.22.0) — รายละเอียดสเปกการแมปฉบับเต็มแบบเอกสาร
- * คลิกจากตารางหน้า "การแมปข้อมูล" หรือแถวในแท็บ 5 ของ Dialog Data Element
+ * คลิกจากตารางหน้า "การแมปข้อมูล" หรือแถวในแท็บ 5 ของ Dialog Data Dictionary
  *
  * โครง 7 ส่วนตามสเปกผู้ใช้ (จัดกลุ่มให้อ่านไล่ตามเอกสาร integration spec):
  *   หัว Dialog  : รหัส + ป้ายประเภท/สถานะ/เวอร์ชัน/CDE + เส้นทาง
@@ -118,7 +118,7 @@ function PhysicalCard({ physical }: { physical: MappingPhysicalEndpoint[] }) {
   if (physical.length === 0) {
     return (
       <p className="rounded-md border border-dashed px-2.5 py-2 text-[11px] text-muted-foreground">
-        ยังไม่ผูกคอลัมน์กายภาพในระบบ — ผูกผ่านแท็บ "เชิงเทคนิค" ของ Data Element
+        ยังไม่ผูกคอลัมน์กายภาพในระบบ — ผูกผ่านแท็บ "เชิงเทคนิค" ของ Data Dictionary
       </p>
     )
   }

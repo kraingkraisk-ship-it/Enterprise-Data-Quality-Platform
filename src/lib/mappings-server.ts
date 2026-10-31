@@ -29,7 +29,7 @@ export async function loadDomainMap(): Promise<Map<string, DomainLite>> {
   return new Map(domains.map((d) => [d.id, d]))
 }
 
-/** สรุปข้อมูล Data Element ฝั่งใดฝั่งหนึ่งของ mapping (พร้อมเส้นทางเต็ม โดเมนหลัก.โดเมนย่อย.ชื่อ) */
+/** สรุปข้อมูล Data Dictionary ฝั่งใดฝั่งหนึ่งของ mapping (พร้อมเส้นทางเต็ม โดเมนหลัก.โดเมนย่อย.ชื่อ) */
 export function elementSummary(el: MappingElementRow, domainMap: Map<string, DomainLite>) {
   const parent = el.subDomain.parentId ? domainMap.get(el.subDomain.parentId) : undefined
   const parentDomainName = parent?.name ?? ''

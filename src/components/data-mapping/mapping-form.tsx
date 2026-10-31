@@ -2,7 +2,7 @@
 
 /**
  * MappingForm (v0.21.0) — ฟอร์มสร้าง Data Mapping ใช้ร่วม 2 ที่:
- * 1) แท็บ "การแมปข้อมูล" ใน Dialog Data Element (มี fixedElement = element ปัจจุบัน + เลือกทิศ เพิ่มต้นทาง/เพิ่มปลายทาง)
+ * 1) แท็บ "การแมปข้อมูล" ใน Dialog Data Dictionary (มี fixedElement = element ปัจจุบัน + เลือกทิศ เพิ่มต้นทาง/เพิ่มปลายทาง)
  * 2) หน้า Data Mapping (ไม่มี fixedElement — เลือกต้นทาง/ปลายทางเองผ่าน cascade โดเมนหลัก → โดเมนย่อย → element)
  * กติกา: element ทั้งสองฝั่งต้องเป็น ACTIVE · ประเภทที่ต้องมี transformNote ตรวจจาก MAPPING_TYPES[type].requiresNote
  * error จาก API แสดงเป็นข้อความในฟอร์มเสมอ (ข้อความภาษาไทยจาก backend)
@@ -111,8 +111,8 @@ function ElementCascade({
         </SelectContent>
       </Select>
       <Select value={value.elementId} onValueChange={(v) => onChange({ ...value, elementId: v })} disabled={eligible.length === 0}>
-        <SelectTrigger id={`${idPrefix}-element`} className="h-8 w-full text-xs" aria-label={`${label} — Data Element`}>
-          <SelectValue placeholder={eligible.length === 0 ? 'ไม่มี element ให้เลือก' : '— เลือก Data Element (ACTIVE) —'} />
+        <SelectTrigger id={`${idPrefix}-element`} className="h-8 w-full text-xs" aria-label={`${label} — Data Dictionary`}>
+          <SelectValue placeholder={eligible.length === 0 ? 'ไม่มี Data Dictionary ให้เลือก' : '— เลือก Data Dictionary (ACTIVE) —'} />
         </SelectTrigger>
         <SelectContent>
           {eligible.map((e) => (
@@ -170,7 +170,7 @@ export function MappingForm({ operators, defaultOperator, domains, elements, fix
       return
     }
     if (!resolvedSourceId || !resolvedTargetId) {
-      setError('กรุณาเลือก Data Element ต้นทางและปลายทางให้ครบ (เฉพาะ element สถานะ ACTIVE)')
+      setError('กรุณาเลือก Data Dictionary ต้นทางและปลายทางให้ครบ (เฉพาะ Data Dictionary สถานะ ACTIVE)')
       return
     }
     if (requiresNote && !transformNote.trim()) {
@@ -269,7 +269,7 @@ export function MappingForm({ operators, defaultOperator, domains, elements, fix
         {fixedElement ? (
           <ElementCascade
             idPrefix="mp-pick"
-            label={direction === 'source' ? 'ต้นทาง (Source) — element ที่ไหลเข้า' : 'ปลายทาง (Target) — element ที่รับข้อมูล'}
+            label={direction === 'source' ? 'ต้นทาง (Source) — Data Dictionary ที่ไหลเข้า' : 'ปลายทาง (Target) — Data Dictionary ที่รับข้อมูล'}
             domains={domains}
             elements={elements}
             excludeIds={[fixedElement.id]}

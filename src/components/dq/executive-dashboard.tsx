@@ -405,7 +405,7 @@ export default function ExecutiveDashboard({ active }: { active?: boolean }) {
                 )}
                 {data.byDomain.groups.length === 0 && data.byDomain.unassigned.datasetCount === 0 ? (
                   <p className="flex flex-1 items-center justify-center rounded-lg border border-dashed py-12 text-sm text-muted-foreground">
-                    ยังไม่มีโดเมนที่มี Data Element — จัดโครงสร้าง 4 ระดับในหน้า Data Domain ก่อน
+                    ยังไม่มีโดเมนที่มี Data Dictionary — จัดโครงสร้าง 4 ระดับในเมนู Data Catalog ก่อน
                   </p>
                 ) : (
                   <div className="max-h-72 space-y-2 overflow-y-auto rounded-lg border p-2">

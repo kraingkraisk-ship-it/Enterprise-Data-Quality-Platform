@@ -5,14 +5,16 @@ import { ROLES } from '@/lib/rbac'
 import {
   ELEMENT_DATA_TYPES,
   ELEMENT_NAME_MAX,
+  ELEMENT_OPTIONALITIES,
   ELEMENT_TEXT_MAX,
   isElementDataType,
+  isElementOptionality,
   isOpUpdateFrequency,
   rollupByElement,
 } from '@/lib/elements'
 
 /**
- * Data Element API — รายการเดี่ยว (v0.18.0 · Meta Data 4 กลุ่ม · v0.36.0 ไม่มีคิวอนุมัติ)
+ * Data Dictionary API — รายการเดี่ยว (v0.18.0 · Meta Data 4 กลุ่ม · v0.36.0 ไม่มีคิวอนุมัติ)
  *
  * GET   /api/elements/[id] — รายละเอียดเต็ม:
  *         - Meta Data ครบทั้ง 4 กลุ่ม (Business / Technical / Operational / Governance)
@@ -34,6 +36,10 @@ function validateMetaFields(body: Record<string, unknown>): string | null {
   const dataType = String(body.dataType ?? 'TEXT').trim()
   if (!isElementDataType(dataType)) {
     return `ประเภทข้อมูลไม่ถูกต้อง — ต้องเป็น: ${ELEMENT_DATA_TYPES.join(', ')}`
+  }
+  const optionality = String(body.optionality ?? 'OPTIONAL').trim().toUpperCase()
+  if (optionality && !isElementOptionality(optionality)) {
+    return `เงื่อนไขการบังคับใช้ไม่ถูกต้อง — ต้องเป็น: ${ELEMENT_OPTIONALITIES.join(', ')}`
   }
   const maxLength = body.maxLength
   if (maxLength !== null && maxLength !== undefined && maxLength !== '' && (Number.isNaN(Number(maxLength)) || Number(maxLength) < 0)) {
@@ -64,8 +70,12 @@ function metaFieldsFrom(body: Record<string, unknown>) {
     }
   }
   const freq = String(body.opUpdateFrequency ?? '').trim().toUpperCase()
+  const opt = String(body.optionality ?? 'OPTIONAL').trim().toUpperCase()
   return {
     nameEn: String(body.nameEn ?? '').trim().slice(0, ELEMENT_NAME_MAX),
+    technicalName: String(body.technicalName ?? '').trim().slice(0, ELEMENT_NAME_MAX),
+    optionality: isElementOptionality(opt) ? opt : 'OPTIONAL',
+    sourceOrigin: String(body.sourceOrigin ?? '').trim().slice(0, ELEMENT_TEXT_MAX),
     definition: String(body.definition ?? '').trim().slice(0, ELEMENT_TEXT_MAX),
     examples: String(body.examples ?? '').trim().slice(0, ELEMENT_TEXT_MAX),
     dataType: isElementDataType(dataType) ? dataType : 'TEXT',
@@ -116,7 +126,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         },
       },
     })
-    if (!element) return NextResponse.json({ error: 'ไม่พบ Data Element นี้ในระบบ' }, { status: 404 })
+    if (!element) return NextResponse.json({ error: 'ไม่พบ Data Dictionary นี้ในระบบ' }, { status: 404 })
 
     const conditionKeys = [...new Set(element.rules.map((r) => r.condition))]
     const templateKeys = conditionKeys
@@ -201,7 +211,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     })
   } catch (e) {
     console.error('GET /api/elements/[id]', e)
-    return NextResponse.json({ error: 'ไม่สามารถโหลดรายละเอียด Data Element ได้' }, { status: 500 })
+    return NextResponse.json({ error: 'ไม่สามารถโหลดรายละเอียด Data Dictionary ได้' }, { status: 500 })
   }
 }
 
@@ -229,7 +239,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         _count: { select: { rules: true, columnMappings: true, mappingsAsSource: true, mappingsAsTarget: true } },
       },
     })
-    if (!element) return NextResponse.json({ error: 'ไม่พบ Data Element นี้ในระบบ' }, { status: 404 })
+    if (!element) return NextResponse.json({ error: 'ไม่พบ Data Dictionary นี้ในระบบ' }, { status: 404 })
 
     /* ---------------- เปิดใช้งาน (v0.36.0 — ตรงด้วยสิทธิ์ MANAGE_DATASETS) ---------------- */
     if (action === 'ACTIVATE') {
@@ -245,7 +255,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           action: 'ACTIVATE_DATA_ELEMENT',
           actor: op.ctx.email,
           target: `${element.code} ${element.nameTh}`,
-          detail: `เปิดใช้งาน Data Element "${element.nameTh}" (${element.code}) — สถานะเปลี่ยนจาก ${element.status} เป็น ACTIVE ใช้งานได้ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+          detail: `เปิดใช้งาน Data Dictionary "${element.nameTh}" (${element.code}) — สถานะเปลี่ยนจาก ${element.status} เป็น ACTIVE ใช้งานได้ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
       return NextResponse.json({ element: updated, message: `เปิดใช้งาน "${element.nameTh}" แล้ว — ใช้งานได้ (ACTIVE)` })
@@ -262,7 +272,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           action: 'DEPRECATE_DATA_ELEMENT',
           actor: op.ctx.email,
           target: `${element.code} ${element.nameTh}`,
-          detail: `เลิกใช้ Data Element "${element.nameTh}" (${element.code}) — สถานะเปลี่ยนเป็น DEPRECATED (กฎที่ผูกจะไม่ถูกรันในรอบโดเมนถัดไป)${note ? ` · เหตุผล: ${note}` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+          detail: `เลิกใช้ Data Dictionary "${element.nameTh}" (${element.code}) — สถานะเปลี่ยนเป็น DEPRECATED (กฎที่ผูกจะไม่ถูกรันในรอบโดเมนถัดไป)${note ? ` · เหตุผล: ${note}` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
       return NextResponse.json({ element: updated, message: `เลิกใช้ "${element.nameTh}" แล้ว (DEPRECATED)` })
@@ -292,17 +302,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           action: 'DELETE_DATA_ELEMENT',
           actor: op.ctx.email,
           target: `${element.code} ${element.nameTh}`,
-          detail: `ลบ Data Element "${element.nameTh}" (${element.code}) จากโดเมนย่อย "${element.subDomain.name}" (พร้อม mapping ${element._count.columnMappings} รายการ) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+          detail: `ลบ Data Dictionary "${element.nameTh}" (${element.code}) จากโดเมนย่อย "${element.subDomain.name}" (พร้อม mapping ${element._count.columnMappings} รายการ) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
-      return NextResponse.json({ message: `ลบ Data Element "${element.nameTh}" เรียบร้อย` })
+      return NextResponse.json({ message: `ลบ Data Dictionary "${element.nameTh}" เรียบร้อย` })
     }
 
     // ---------- UPDATE ----------
     const nameTh = String(body.nameTh ?? element.nameTh).trim()
-    if (!nameTh) return NextResponse.json({ error: 'กรุณาระบุชื่อ Data Element' }, { status: 400 })
+    if (!nameTh) return NextResponse.json({ error: 'กรุณาระบุชื่อ Data Dictionary' }, { status: 400 })
     if (nameTh.length > ELEMENT_NAME_MAX) {
-      return NextResponse.json({ error: `ชื่อ Data Element ยาวเกิน ${ELEMENT_NAME_MAX} ตัวอักษร` }, { status: 400 })
+      return NextResponse.json({ error: `ชื่อ Data Dictionary ยาวเกิน ${ELEMENT_NAME_MAX} ตัวอักษร` }, { status: 400 })
     }
     const movedSubDomainId = String(body.subDomainId ?? '').trim()
     if (movedSubDomainId && movedSubDomainId !== element.subDomainId) {
@@ -317,7 +327,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (nameTh !== element.nameTh) {
       const dup = await db.dataElement.findFirst({ where: { subDomainId: element.subDomainId, nameTh }, select: { id: true } })
       if (dup) {
-        return NextResponse.json({ error: `มี Data Element ชื่อ "${nameTh}" อยู่แล้วในโดเมนย่อย "${element.subDomain.name}"` }, { status: 409 })
+        return NextResponse.json({ error: `มี Data Dictionary ชื่อ "${nameTh}" อยู่แล้วในโดเมนย่อย "${element.subDomain.name}"` }, { status: 409 })
       }
     }
 
@@ -368,7 +378,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         action: 'UPDATE_DATA_ELEMENT',
         actor: op.ctx.email,
         target: `${updated.code} ${updated.nameTh}`,
-        detail: `แก้ไข Meta Data ของ Data Element "${updated.nameTh}" (${updated.code})${changed.length > 0 ? ` — แก้: ${changed.join(', ')}` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `แก้ไข Meta Data ของ Data Dictionary "${updated.nameTh}" (${updated.code})${changed.length > 0 ? ` — แก้: ${changed.join(', ')}` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 
@@ -382,8 +392,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           actor: op.ctx.email,
           target: `${updated.code} ${updated.nameTh}`,
           detail: rs
-            ? `ผูก valueDomain ของ Data Element "${updated.nameTh}" (${updated.code}) เข้ากับทะเบียนอ้างอิง "${rs.name}" (${rs.code}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`
-            : `ถอนการผูก valueDomain ของ Data Element "${updated.nameTh}" (${updated.code}) ออกจากทะเบียนอ้างอิง (กลับเป็นข้อความอิสระ) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+            ? `ผูก valueDomain ของ Data Dictionary "${updated.nameTh}" (${updated.code}) เข้ากับทะเบียนอ้างอิง "${rs.name}" (${rs.code}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`
+            : `ถอนการผูก valueDomain ของ Data Dictionary "${updated.nameTh}" (${updated.code}) ออกจากทะเบียนอ้างอิง (กลับเป็นข้อความอิสระ) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
         },
       })
     }
@@ -391,6 +401,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ element: updated, message: `บันทึก Meta Data ของ "${updated.nameTh}" เรียบร้อย` })
   } catch (e) {
     console.error('PATCH /api/elements/[id]', e)
-    return NextResponse.json({ error: 'ดำเนินการกับ Data Element ไม่สำเร็จ' }, { status: 500 })
+    return NextResponse.json({ error: 'ดำเนินการกับ Data Dictionary ไม่สำเร็จ' }, { status: 500 })
   }
 }

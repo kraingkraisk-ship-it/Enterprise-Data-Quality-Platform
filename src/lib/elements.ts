@@ -1,8 +1,8 @@
 /**
- * Data Element helpers (v0.18.0) — องค์ประกอบข้อมูลเชิงตรรกะภายใต้โดเมนย่อย
- * โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Element > Meta Data
+ * Data Dictionary helpers (v0.18.0) — องค์ประกอบข้อมูลเชิงตรรกะภายใต้โดเมนย่อย
+ * โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Dictionary > Meta Data
  * หลักการ:
- * - Data Element ต้องแขวนใต้ "โดเมนย่อย" เสมอ (parentId != null) — บังคับใน API (deny-by-default)
+ * - Data Dictionary ต้องแขวนใต้ "โดเมนย่อย" เสมอ (parentId != null) — บังคับใน API (deny-by-default)
  * - Meta Data อ้างอิงแนวคิด ISO/IEC 11179: Naming & Definition / Representation /
  *   Value Domain / Administrative attributes
  * - 1 element (เชิงตรรกะ) แมปได้หลายคอลัมน์ข้ามหลาย Data Asset
@@ -18,17 +18,53 @@ export const ELEMENT_CODE_PREFIX = 'EL'
 export const ELEMENT_NAME_MAX = 120
 export const ELEMENT_TEXT_MAX = 500
 
-/** ประเภทข้อมูลของ Data Element (ตรงกับ dataType ที่ระบบอนุมานจากคอลัมน์จริง) */
-export const ELEMENT_DATA_TYPES = ['TEXT', 'INTEGER', 'NUMBER', 'BOOLEAN', 'DATE', 'DATETIME'] as const
+/** ประเภทข้อมูลของ Data Dictionary (v0.42.0 เพิ่ม 8 ชนิด: LONG_TEXT, TIME, EMAIL, PHONE, URL, CODE, UUID, JSON) */
+export const ELEMENT_DATA_TYPES = [
+  'TEXT',
+  'LONG_TEXT',
+  'INTEGER',
+  'NUMBER',
+  'BOOLEAN',
+  'DATE',
+  'DATETIME',
+  'TIME',
+  'EMAIL',
+  'PHONE',
+  'URL',
+  'CODE',
+  'UUID',
+  'JSON',
+] as const
 export type ElementDataType = (typeof ELEMENT_DATA_TYPES)[number]
 
 export const ELEMENT_DATA_TYPE_LABELS: Record<ElementDataType, { th: string; en: string }> = {
-  TEXT: { th: 'ข้อความ', en: 'Text' },
+  TEXT: { th: 'ข้อความ', en: 'String / Varchar' },
+  LONG_TEXT: { th: 'ข้อความยาว', en: 'Long Text' },
   INTEGER: { th: 'จำนวนเต็ม', en: 'Integer' },
-  NUMBER: { th: 'จำนวนจริง', en: 'Number' },
+  NUMBER: { th: 'จำนวนจริง (ทศนิยม)', en: 'Float / Decimal' },
   BOOLEAN: { th: 'ตรรกะ (จริง/เท็จ)', en: 'Boolean' },
   DATE: { th: 'วันที่', en: 'Date' },
-  DATETIME: { th: 'วันที่และเวลา', en: 'Datetime' },
+  DATETIME: { th: 'วันที่และเวลา', en: 'DateTime' },
+  TIME: { th: 'เวลา', en: 'Time' },
+  EMAIL: { th: 'อีเมล', en: 'Email' },
+  PHONE: { th: 'เบอร์โทรศัพท์', en: 'Phone' },
+  URL: { th: 'ลิงก์ / เว็บ', en: 'URL' },
+  CODE: { th: 'รหัส / กลุ่มค่ากำหนด (Enum)', en: 'Code / Enum' },
+  UUID: { th: 'รหัสประจำตัวระบบ', en: 'UUID' },
+  JSON: { th: 'โครงสร้าง JSON', en: 'JSON' },
+}
+
+/** เงื่อนไขการบังคับใช้ (Task 74 v0.42.0: Multiplicity / Optionality) — REQUIRED ต้องมีข้อมูลเสมอ [1..1], OPTIONAL จะมีหรือไม่มีก็ได้ [0..1] */
+export const ELEMENT_OPTIONALITIES = ['REQUIRED', 'OPTIONAL'] as const
+export type ElementOptionality = (typeof ELEMENT_OPTIONALITIES)[number]
+
+export const ELEMENT_OPTIONALITY_LABELS: Record<ElementOptionality, { th: string; notation: string; desc: string }> = {
+  REQUIRED: { th: 'บังคับกรอก (Required)', notation: '[1..1]', desc: 'ต้องมีข้อมูลเสมอ' },
+  OPTIONAL: { th: 'ไม่บังคับ (Optional)', notation: '[0..1]', desc: 'จะมีหรือไม่มีก็ได้' },
+}
+
+export function isElementOptionality(v: string): v is ElementOptionality {
+  return (ELEMENT_OPTIONALITIES as readonly string[]).includes(v)
 }
 
 export function isElementDataType(v: string): v is ElementDataType {
@@ -50,7 +86,7 @@ export function isElementStatus(v: string): v is ElementStatus {
 }
 
 /**
- * Meta Data 4 กลุ่ม (v0.20.0) — กรอกครั้งเดียวต่อ Data Element (ระดับ element ไม่ใช่รายคอลัมน์)
+ * Meta Data 4 กลุ่ม (v0.20.0) — กรอกครั้งเดียวต่อ Data Dictionary (ระดับ element ไม่ใช่รายคอลัมน์)
  * 1) เชิงธุรกิจ (Business) 2) เชิงเทคนิค (Technical) 3) เชิงปฏิบัติการ (Operational) 4) ธรรมาภิบาล (Governance)
  */
 export const META_GROUPS = [
@@ -108,7 +144,7 @@ export const ELEMENT_FLAG_BELOW_THRESHOLD = 85
 /* Types — รูปทรงข้อมูลที่ API คืนให้ UI                               */
 /* ------------------------------------------------------------------ */
 
-/** Data Element 1 รายการ (แบบรายการ — ใช้ในลิสต์ใต้โดเมนย่อย) */
+/** Data Dictionary 1 รายการ (แบบรายการ — ใช้ในลิสต์ใต้โดเมนย่อย) */
 export interface ElementItem {
   id: string
   code: string
@@ -150,7 +186,7 @@ export interface ElementMappingItem {
 
 /* ------------------------------------------------------------------ */
 /* คลัง Meta Data ตัวอย่างตาม ISO/IEC 11179 — ใช้ทั้ง seed และ migration */
-/* (แปลงการจัดหมวดรายคอลัมน์เดิม v0.15.0 เป็น Data Element โดยอัตโนมัติ)   */
+/* (แปลงการจัดหมวดรายคอลัมน์เดิม v0.15.0 เป็น Data Dictionary โดยอัตโนมัติ)   */
 /* ------------------------------------------------------------------ */
 
 export interface ElementCatalogEntry {

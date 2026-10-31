@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.41.0'
+export const APP_VERSION = 'v0.42.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -104,14 +104,14 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'rule-library',
     th: 'Data Quality Rules',
     en: 'DQ Rules',
-    desc: 'คลังกฎตรวจคุณภาพข้อมูลจัดกลุ่มตามมิติ 9 มิติ DAMA-DMBOK — เลือกมิติ → เป้าหมาย (ชุดข้อมูล / Data Element) → เงื่อนไข → ตั้งค่า · แนะนำกฎจาก metadata ของ Data Element อัตโนมัติ · กฎอ่านเป็นภาษาไทยเข้าใจง่าย',
+    desc: 'คลังกฎตรวจคุณภาพข้อมูลจัดกลุ่มตามมิติ 9 มิติ DAMA-DMBOK — เลือกมิติ → เป้าหมาย (ชุดข้อมูล / Data Dictionary) → เงื่อนไข → ตั้งค่า · แนะนำกฎจาก metadata ของ Data Dictionary อัตโนมัติ · กฎอ่านเป็นภาษาไทยเข้าใจง่าย',
     icon: Library,
   },
   profiling: {
     key: 'profiling',
     th: 'Data Quality Check',
     en: 'DQ Check',
-    desc: 'จุดรันตรวจคุณภาพข้อมูล 1 หน้า: เลือกชุดข้อมูล → ดูโปรไฟล์ข้อมูล → เลือกกฎที่จะตรวจ (จัดกลุ่มตามมิติ) → รันและสรุปผลรายมิติ · เจาะตรวจราย Sub Data Domain / Data Element ได้',
+    desc: 'จุดรันตรวจคุณภาพข้อมูล 1 หน้า: เลือกชุดข้อมูล → ดูโปรไฟล์ข้อมูล → เลือกกฎที่จะตรวจ (จัดกลุ่มตามมิติ) → รันและสรุปผลรายมิติ · เจาะตรวจราย Sub Data Domain / Data Dictionary ได้',
     icon: ScanSearch,
   },
   'validation-results': {
@@ -181,7 +181,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'asset-domain',
     th: 'Data Catalog',
     en: 'Data Catalog',
-    desc: 'สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) แบบ Master–Detail (v0.41.0): เลือก Data Domain จากรายการซ้ายเพื่อเจาะดูรายละเอียด — Sub Data Domain (ยุบ/ขยายได้ หมวดแรกกางไว้) › Data Element (แถวรวม + กางสรุปธุรกิจ/เทคนิค พร้อมคอลัมน์อ้างอิงว่านำมาจากข้อมูลใด) › Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) · ลบ/ดูรายละเอียด element ได้จากแถวโดยตรง · สร้างโดเมนพร้อมเลือก Data Asset · ค้นหาแบบ Data Dictionary · ปุ่มวิธีใช้งาน อธิบาย 4 ขั้นตอนการจัดทำ',
+    desc: 'สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) แบบ Master–Detail (v0.42.0): เลือก Data Domain จากรายการซ้ายเพื่อเจาะดูรายละเอียด — Sub Data Domain (ยุบ/ขยายได้ หมวดแรกกางไว้) › Data Dictionary (แถวรวม + กางสรุปธุรกิจ/เทคนิค พร้อมคอลัมน์อ้างอิงว่านำมาจากข้อมูลใด) › Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) · หน้ารายละเอียด Data Dictionary จัดโครงสร้าง 9 หัวข้อ (Business Name · Technical Name · Definition · Data Type 14 ชนิด · Data Length · Format · Multiplicity/Optionality + CDE · Source/Origin · Owner/Steward) แยกส่วนงานจาก DQ Rule อย่างชัดเจน · ลบ/ดูรายละเอียดได้จากแถวโดยตรง · สร้างโดเมนพร้อมเลือก Data Asset · ค้นหาแบบ Data Dictionary · ปุ่มวิธีใช้งาน',
     icon: FolderTree,
   },
   'asset-reference': {
@@ -195,7 +195,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'data-mapping',
     th: 'การแมปข้อมูล',
     en: 'Data Mapping',
-    desc: 'เส้นเชื่อม Data Element ต้นทาง→ปลายทาง ระบุว่าเป็นข้อมูลชนิดเดียวกัน ข้ามระบบ/ข้ามโดเมน พร้อมแผนผัง lineage แบบหลายขั้น (DIRECT/TRANSFORM/DERIVED/AGGREGATE/LOOKUP) + เปิดใช้งาน/เลิกใช้ตามสิทธิ์บทบาท',
+    desc: 'เส้นเชื่อม Data Dictionary ต้นทาง→ปลายทาง ระบุว่าเป็นข้อมูลชนิดเดียวกัน ข้ามระบบ/ข้ามโดเมน พร้อมแผนผัง lineage แบบหลายขั้น (DIRECT/TRANSFORM/DERIVED/AGGREGATE/LOOKUP) + เปิดใช้งาน/เลิกใช้ตามสิทธิ์บทบาท',
     icon: Waypoints,
   },
   rbac: {

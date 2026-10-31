@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       loadDomainMap(),
     ])
     if (!start) {
-      return NextResponse.json({ error: 'ไม่พบ Data Element นี้ในระบบ' }, { status: 404 })
+      return NextResponse.json({ error: 'ไม่พบ Data Dictionary นี้ในระบบ' }, { status: 404 })
     }
 
     const nodes = new Map<string, ReturnType<typeof elementSummary>>()

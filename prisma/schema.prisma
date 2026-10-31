@@ -428,9 +428,12 @@ model DataElement {
   subDomainId    String // ต้องเป็นโดเมนย่อย (parentId != null) — ตรวจใน API (deny-by-default)
   nameTh         String // ชื่อ (ไม่ซ้ำในโดเมนย่อยเดียวกัน — ตรวจใน API)
   nameEn         String   @default("") // ชื่อภาษาอังกฤษ
+  technicalName  String   @default("") // ชื่อเทคนิค/ชื่อฟิลด์ในระบบหรือฐานข้อมูล เช่น cus_first_name (Task 74 v0.42.0: Business Name vs Technical Name)
+  optionality    String   @default("OPTIONAL") // เงื่อนไขการบังคับใช้: REQUIRED [1..1] | OPTIONAL [0..1] (Task 74 v0.42.0: Multiplicity/Optionality)
+  sourceOrigin   String   @default("") // แหล่งที่มาของข้อมูล (กรอกมือ) เช่น มาจากฟอร์มสมัครสมาชิก, ระบบ POS (Task 74 v0.42.0: Source/Origin — ส่วนที่มาจากระบบจริงดูจาก columnMappings)
   definition     String   @default("") // นิยามทางธุรกิจ (ISO 11179: Definition)
   examples       String   @default("") // ตัวอย่างค่า
-  dataType       String   @default("TEXT") // TEXT | INTEGER | NUMBER | BOOLEAN | DATE | DATETIME
+  dataType       String   @default("TEXT") // TEXT | LONG_TEXT | INTEGER | NUMBER | BOOLEAN | DATE | DATETIME | TIME | EMAIL | PHONE | URL | CODE | UUID | JSON (v0.42.0 เพิ่ม 8 ชนิด)
   formatPattern  String   @default("") // รูปแบบ/พาเทิร์น เช่น regex หรือ DD/MM/YYYY
   valueDomain    String   @default("") // ค่าอนุญาต/ช่วงค่า (ISO 11179: Value Domain)
   maxLength      Int? // ความยาวสูงสุด (null = ไม่ระบุ)

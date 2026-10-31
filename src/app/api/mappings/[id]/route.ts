@@ -197,7 +197,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'ประเภทการแมปนี้ต้องระบุรายละเอียดการแปลง/สูตร/ตารางอ้างอิง (transformNote)' }, { status: 400 })
     }
     if (newSourceId === newTargetId) {
-      return NextResponse.json({ error: 'ห้ามแมป element กับตัวเอง — ต้นทางและปลายทางต้องเป็นคนละ element' }, { status: 400 })
+      return NextResponse.json({ error: 'ห้ามแมปกับตัวเอง — ต้นทางและปลายทางต้องเป็นคนละ Data Dictionary' }, { status: 400 })
     }
 
     if (endpointsChanged) {
@@ -206,12 +206,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         select: { id: true, code: true, nameTh: true, status: true },
       })
       if (elements.length !== 2) {
-        return NextResponse.json({ error: 'ไม่พบ Data Element ต้นทางหรือปลายทางในระบบ — ต้องเลือกจาก element ที่ลงทะเบียนแล้วเท่านั้น' }, { status: 404 })
+        return NextResponse.json({ error: 'ไม่พบ Data Dictionary ต้นทางหรือปลายทางในระบบ — ต้องเลือกจาก Data Dictionary ที่ลงทะเบียนแล้วเท่านั้น' }, { status: 404 })
       }
       for (const el of elements) {
         if (el.status !== 'ACTIVE') {
           return NextResponse.json(
-            { error: `element "${el.nameTh}" (${el.code}) ไม่ใช่สถานะ ACTIVE — เปิดใช้งาน element ก่อนจึงนำมาแมปได้ (หน้า Data Domain)` },
+            { error: `Data Dictionary "${el.nameTh}" (${el.code}) ไม่ใช่สถานะ ACTIVE — เปิดใช้งานก่อนจึงนำมาแมปได้ (เมนู Data Catalog)` },
             { status: 409 },
           )
         }
@@ -223,7 +223,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
           {
             error: reversed
               ? `แมปทิศกลับไม่ได้ — มี mapping ${dup.code} (${dup.source.nameTh} → ${dup.target.nameTh}) อยู่แล้ว เพราะการแมปหมายถึงข้อมูลชนิดเดียวกัน`
-              : `มี mapping ${dup.code} ของคู่ element นี้อยู่แล้ว (${dup.source.nameTh} → ${dup.target.nameTh})`,
+              : `มี mapping ${dup.code} ของคู่ Data Dictionary นี้อยู่แล้ว (${dup.source.nameTh} → ${dup.target.nameTh})`,
           },
           { status: 409 },
         )

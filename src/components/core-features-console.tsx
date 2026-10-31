@@ -87,7 +87,7 @@ interface ReferenceSetOption {
   activeValueCount: number
 }
 
-/** Data Element แบบย่อสำหรับ Rule Builder (จาก /api/elements) */
+/** Data Dictionary แบบย่อสำหรับ Rule Builder (จาก /api/elements) */
 interface ElementRowLite {
   id: string
   code: string
@@ -166,7 +166,7 @@ interface ApiRule {
   exceptionActionNote: string
   enabled: boolean
   sentence: string
-  /** Data Element ที่กฎผูกอยู่ (v0.18.0) — null = ยังไม่ผูก */
+  /** Data Dictionary ที่กฎผูกอยู่ (v0.18.0) — null = ยังไม่ผูก */
   dataElement: { id: string; code: string; nameTh: string; path: string } | null
   lastRun: { status: string; passRate: number; totalRows: number; failedRows: number; at: string } | null
 }
@@ -263,7 +263,7 @@ function scoreColor(score: number | null): string {
 
 /* Rule Builder wizard (v0.18.1) — ชื่อขั้นตอน 4 ขั้นของการสร้างกฎ */
 const RB_STEPS = [
-  { title: 'มิติ + เป้าหมาย', desc: 'เลือกมิติ 9 มิติ · ชุดข้อมูล + Data Element' },
+  { title: 'มิติ + เป้าหมาย', desc: 'เลือกมิติ 9 มิติ · ชุดข้อมูล + Data Dictionary' },
   { title: 'คอลัมน์', desc: 'จากตัวอย่างข้อมูลจริง' },
   { title: 'เงื่อนไข', desc: 'เลือกจากมิติที่เลือก + พารามิเตอร์' },
   { title: 'ตั้งค่า', desc: 'รุนแรง · เกณฑ์ · บันทึก' },
@@ -339,7 +339,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rbExceptionActionNote, setRbExceptionActionNote] = useState('')
   const [rbParams, setRbParams] = useState<Record<string, string>>({})
   /* v0.32.0 — ผู้ดำเนินการทุก action = ผู้ใช้ปัจจุบันจาก UserSwitcher (identity ศูนย์กลาง — เดิมมี selector แยก 4 จุด) */
-  /* Data Element cascade (v0.18.0) — โดเมนหลัก → โดเมนย่อย → element */
+  /* Data Dictionary cascade (v0.18.0) — โดเมนหลัก → โดเมนย่อย → element */
   const [rbDomains, setRbDomains] = useState<DomainItem[]>([])
   const [rbElements, setRbElements] = useState<ElementRowLite[]>([])
   const [rbElDomain, setRbElDomain] = useState('')
@@ -390,7 +390,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     }
   }, [])
 
-  // Data Element สำหรับ Rule Builder (v0.18.0) + ทะเบียนอ้างอิง (v0.31.0) — โหลดครั้งเดียวพอ (เปลี่ยนน้อยมาก)
+  // Data Dictionary สำหรับ Rule Builder (v0.18.0) + ทะเบียนอ้างอิง (v0.31.0) — โหลดครั้งเดียวพอ (เปลี่ยนน้อยมาก)
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -485,7 +485,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     }
   }, [rbDatasets, rbPreviewDataset])
 
-  /* ---------------- Data Element cascade (v0.18.0) ---------------- */
+  /* ---------------- Data Dictionary cascade (v0.18.0) ---------------- */
   const rbElSubOptions = useMemo(() => rbDomains.filter((d) => d.parentId === (rbElDomain || null)), [rbDomains, rbElDomain])
   const rbElementOptions = useMemo(
     () => rbElements.filter((e) => rbElSub && e.subDomainId === rbElSub),
@@ -617,7 +617,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
 
   const pendingSignals = useMemo(() => signals.filter((s) => s.status === 'PENDING_REVIEW'), [signals])
 
-  /* -------- v0.38.0 — มิตินำ: จัดกลุ่มกฎตามมิติ + ข้อเสนอกฎจาก Data Element -------- */
+  /* -------- v0.38.0 — มิตินำ: จัดกลุ่มกฎตามมิติ + ข้อเสนอกฎจาก Data Dictionary -------- */
   /** กฎที่ผ่านตัวกรองมิติ (แท็บมุมมอง "ทั้งหมด" = ทุกมิติ) */
   const dimFilteredRules = useMemo(
     () => (dimFilter === 'ALL' ? rules ?? [] : (rules ?? []).filter((r) => r.dimension === dimFilter)),
@@ -960,7 +960,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                 กฎทุกข้อถูกจัดตาม <strong>มิติคุณภาพข้อมูล 9 มิติ</strong> (DAMA-DMBOK)
               </p>
               <p className="mt-1 text-xs leading-relaxed text-emerald-800/90">
-                สร้างกฎใหม่ = เลือกมิติ → เป้าหมาย (ชุดข้อมูล / Data Element) → เงื่อนไข → ตั้งค่า · เลือก Data Element แล้วระบบจะ
+                สร้างกฎใหม่ = เลือกมิติ → เป้าหมาย (ชุดข้อมูล / Data Dictionary) → เงื่อนไข → ตั้งค่า · เลือก Data Dictionary แล้วระบบจะ
                 <strong> แนะนำกฎจาก metadata ของ element</strong> ให้อัตโนมัติ · เมื่อพร้อมตรวจ ไปที่หน้า “Data Quality Check”
               </p>
             </div>
@@ -1093,7 +1093,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
               </ol>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* ขั้นที่ 1 — มิติ + เป้าหมาย: มิติ 9 มิติ + ชุดข้อมูล + Data Element */}
+              {/* ขั้นที่ 1 — มิติ + เป้าหมาย: มิติ 9 มิติ + ชุดข้อมูล + Data Dictionary */}
               {rbStep === 1 && (
               <div className="space-y-4">
               {/* 0) มิติ (Which Dimension) — มิตินำ v0.38.0: กำหนดมุมมองการตรวจก่อนเสมอ */}
@@ -1124,16 +1124,16 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                 )}
               </div>
 
-              {/* 1b) Data Element (What) — v0.18.0: ผูกกฎกับองค์ประกอบข้อมูล */}
+              {/* 1b) Data Dictionary (What) — v0.18.0: ผูกกฎกับองค์ประกอบข้อมูล */}
               <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
                 <div className="flex items-center gap-2">
                   <Box className="size-4 text-emerald-700" aria-hidden="true" />
                   <p className="text-xs font-medium text-emerald-900">
-                    Data Element (What) — เลือกได้ตามโครงสร้าง Domain → Sub Domain → Element
+                    Data Dictionary (What) — เลือกได้ตามโครงสร้าง Domain → Sub Domain → Element
                   </p>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  ไม่บังคับ — แต่กฎที่ผูก element จะรันได้ในโหมด “รันตรวจระดับโดเมน” และมีคะแนน rollup ระดับ element (จัดการ element ได้ในหน้า Data Domain)
+                  ไม่บังคับ — แต่กฎที่ผูก element จะรันได้ในโหมด “รันตรวจระดับโดเมน” และมีคะแนน rollup ระดับ element (จัดการ Data Dictionary ได้ที่เมนู Data Catalog)
                 </p>
                 <div className="grid gap-2 sm:grid-cols-3">
                   <Select
@@ -1144,7 +1144,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                       setRbElementId('')
                     }}
                   >
-                    <SelectTrigger aria-label="เลือกโดเมนหลักของ element" className="h-8 text-xs">
+                    <SelectTrigger aria-label="เลือกโดเมนหลักของ Data Dictionary" className="h-8 text-xs">
                       <SelectValue placeholder="โดเมนหลัก" />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
@@ -1163,7 +1163,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     }}
                     disabled={!rbElDomain}
                   >
-                    <SelectTrigger aria-label="เลือกโดเมนย่อยของ element" className="h-8 text-xs">
+                    <SelectTrigger aria-label="เลือกโดเมนย่อยของ Data Dictionary" className="h-8 text-xs">
                       <SelectValue placeholder={rbElDomain ? 'โดเมนย่อย' : 'เลือกโดเมนหลักก่อน'} />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
@@ -1175,12 +1175,12 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     </SelectContent>
                   </Select>
                   <Select value={rbElementId} onValueChange={setRbElementId} disabled={!rbElSub}>
-                    <SelectTrigger aria-label="เลือก Data Element" className="h-8 text-xs">
-                      <SelectValue placeholder={rbElSub ? 'Data Element' : 'เลือกโดเมนย่อยก่อน'} />
+                    <SelectTrigger aria-label="เลือก Data Dictionary" className="h-8 text-xs">
+                      <SelectValue placeholder={rbElSub ? 'Data Dictionary' : 'เลือกโดเมนย่อยก่อน'} />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
                       {rbElementOptions.length === 0 && (
-                        <div className="px-3 py-2 text-xs text-muted-foreground">ยังไม่มี element ในโดเมนย่อยนี้</div>
+                        <div className="px-3 py-2 text-xs text-muted-foreground">ยังไม่มี Data Dictionary ในโดเมนย่อยนี้</div>
                       )}
                       {rbElementOptions.map((e) => (
                         <SelectItem key={e.id} value={e.id}>
@@ -1216,13 +1216,13 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     {rbSelectedElement.mappingCount > 0 ? (
                       <span className="text-emerald-700">แมปคอลัมน์จริง {rbSelectedElement.mappingCount} รายการ</span>
                     ) : (
-                      <span className="text-amber-700">ยังไม่แมปคอลัมน์จริง (แมปได้ในหน้า Data Domain)</span>
+                      <span className="text-amber-700">ยังไม่แมปคอลัมน์จริง (แมปได้ที่เมนู Data Catalog — ปุ่มแก้ไขของรายการ)</span>
                     )}
-                    {rbSelectedElement.status === 'DRAFT' && <span className="text-amber-700">element สถานะร่าง — เปิดใช้งานที่หน้า Data Domain ก่อนรันโดเมนได้</span>}
-                    {rbSelectedElement.status === 'DEPRECATED' && <span className="text-muted-foreground">element เลิกใช้ — จะไม่ถูกรันในรอบโดเมน</span>}
+                    {rbSelectedElement.status === 'DRAFT' && <span className="text-amber-700">Data Dictionary สถานะร่าง — เปิดใช้งานที่เมนู Data Catalog ก่อนรันโดเมนได้</span>}
+                    {rbSelectedElement.status === 'DEPRECATED' && <span className="text-muted-foreground">Data Dictionary เลิกใช้ — จะไม่ถูกรันในรอบโดเมน</span>}
                   </div>
                 )}
-                {/* v0.38.0 — ไอเดีย "Data Element เป็นกฎในการตรวจ": metadata ของ element → ข้อเสนอกฎตามชนิดข้อมูล */}
+                {/* v0.38.0 — ไอเดีย "Data Dictionary เป็นกฎในการตรวจ": metadata ของ element → ข้อเสนอกฎตามชนิดข้อมูล */}
                 {rbSelectedElement && rbElSuggestions.length > 0 && (
                   <div className="rounded-lg border border-teal-200 bg-teal-50/60 p-3">
                     <p className="flex items-center gap-1.5 text-xs font-semibold text-teal-900">
@@ -1270,7 +1270,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                 )}
                 {rbSelectedElement && rbElSuggestions.length === 0 && (
                   <p className="rounded-md border border-dashed px-2.5 py-1.5 text-[10.5px] text-muted-foreground">
-                    element นี้ยังไม่มี metadata ที่ใช้เสนอกฎอัตโนมัติ — เติม “รูปแบบ / ค่าอนุญาต / ทะเบียนอ้างอิง” ในหน้า Data Domain แล้วระบบจะแนะนำให้ทันที
+                    element นี้ยังไม่มี metadata ที่ใช้เสนอกฎอัตโนมัติ — เติม “รูปแบบ / ค่าอนุญาต / ทะเบียนอ้างอิง” ที่ฟอร์มแก้ไข Data Dictionary ในเมนู Data Catalog แล้วระบบจะแนะนำให้ทันที
                   </p>
                 )}
               </div>
@@ -1768,7 +1768,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                       size="sm"
                       className="h-6 gap-1 px-2 text-[11px]"
                       onClick={() => setRbStep(1)}
-                      title={`Data Element: ${rbSelectedElement.nameTh}`}
+                      title={`Data Dictionary: ${rbSelectedElement.nameTh}`}
                     >
                       <Box className="size-3" aria-hidden="true" />
                       {rbSelectedElement.code}
@@ -1894,7 +1894,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                         <Badge
                           variant="outline"
                           className="border-emerald-200 bg-emerald-50 text-[11px] text-emerald-800"
-                          title={`Data Element: ${rule.dataElement.path}`}
+                          title={`Data Dictionary: ${rule.dataElement.path}`}
                         >
                           <Box className="mr-0.5 size-3" aria-hidden="true" />
                           {rule.dataElement.nameTh}
@@ -2290,7 +2290,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   การรันตรวจย้ายไปหน้า “Data Quality Check” แล้ว
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-emerald-800/90">
-                  จุดรันตรวจเดียวของระบบ: เลือกชุดข้อมูล → ดูโปรไฟล์ → เลือกกฎที่จะตรวจ (จัดกลุ่มตามมิติ) → รัน · หรือเจาะตรวจราย Sub Data Domain / Data Element — หน้านี้ไว้ดูประวัติรอบตรวจและคำแนะนำจาก ML
+                  จุดรันตรวจเดียวของระบบ: เลือกชุดข้อมูล → ดูโปรไฟล์ → เลือกกฎที่จะตรวจ (จัดกลุ่มตามมิติ) → รัน · หรือเจาะตรวจราย Sub Data Domain / Data Dictionary — หน้านี้ไว้ดูประวัติรอบตรวจและคำแนะนำจาก ML
                 </p>
               </div>
               <Button
