@@ -2081,3 +2081,18 @@ Stage Summary:
 - DQ แดชบอร์ดเหลือ 3 ส่วนตามคำสั่ง (ภาพรวม / รายละเอียดการตรวจ / Risk) — Regulation อยู่ที่เมนู "ประเมินความสอดคล้อง" จุดเดียวตามที่ยุบไว้แต่ v0.34.0 · ข้อมูลจำแนกประเภทยังแสดงใน Risk/ภาพรวมเหมือนเดิม แต่ไม่มีหน้าจัดการในแดชบอร์ดแล้ว
 - ระบบรับข้อมูลจาก /api/dq/analytics คงเดิมยกเว้นตัด key ที่ไม่มีผู้ใช้ (regulation, inherent.byFramework) · RBAC คง 12 สิทธิ์ไม่เปลี่ยน
 - tag v0.37.1 · รอ push + ยืนยัน GitHub API
+Task ID: 68-b
+Agent: Z.ai Code (main orchestrator)
+Task: รับ PAT ใหม่ (rotate ครั้งที่ 12) — ตรวจความถูกต้อง + ยืนยันสถานะส่งมอบ v0.37.1 (ตัดเมนู Regulation + Data Classification) + บันทึก worklog + push ด้วย PAT รอบนี้
+
+Work Log:
+- ผู้ใช้ส่ง PAT รอบที่ 12 — ตรวจ read: GET repo ได้ 200 · ตรวจสิทธิ์: permissions = push/admin/maintain/triage/pull ครบ true · ตรวจอ่าน blob: GET /git/blobs ด้วย full SHA (ea6f3b7) ได้ 200 — ลอง short SHA ก่อนหน้าได้ 422 เพราะ endpoint ต้องการ full SHA 40 ตัว (ไม่ใช่ปัญหาสิทธิ์) · ไม่บันทึกลง git config หรือไฟล์ใดๆ — ใช้ inline เท่านั้น
+- ยืนยันสถานะ Task 68 (v0.37.1 ตัดส่วน Regulation และ Data Classification ออกจาก DQ แดชบอร์ด) ส่งมอบครบแล้วบน remote: commit 8de7836 = remote main = tag v0.37.1 (ตรวจผ่าน git ls-remote + GitHub API branches/tags) · local = remote in sync · working tree clean · worklog Task 68 อยู่ใน commit 8de7836 แล้ว · โค้ดยืนยัน: SECTIONS เหลือ 3 (overview/checks/risk) · ClassificationEditor 0 จุด · คงเหลือ "regulation" เฉพาะ comment บันทึกการตัด + import/อ้างอิง lib/regulation.ts (เกณฑ์ LIKELIHOOD_BANDS/SEVERITY_WEIGHT/RISK_BANDS ที่ส่วน Risk และเมนู ประเมินความสอดคล้อง ยังใช้) · APP_VERSION v0.37.1 ใน src/lib/views.ts · PATCH /api/dq/classification ถูกลบ (โฟลเดอร์ route ไม่มีแล้ว)
+- ตรวจรันไทม์ซ้ำ (Agent Browser E2E บัญชี somchai.owner): แดชบอร์ด 3 แท็บจริง — Regulation/Data Classification หายไป · ภาพรวม 93.3/100 เกรด ดี · รายละเอียดการตรวจปกติ · Risk ครบ: Hero Inherent vs Residual + แท็บมุมมอง รายมิติ DQ/รายประเภทข้อมูล + ตาราง Inherent/Residual + การ์ด "ผลกระทบธุรกิจรายประเภทข้อมูล" (5.1 การกำกับดูแลข้อมูลองค์กร) · sidebar ไม่มีเมนูทั้ง 2 ส่วน และเมนู "ประเมินความสอดคล้อง" ยังอยู่ตาม design (จุดรวม Regulation ตั้งแต่ v0.34.0) · 0 page error (มี recharts width warning เดิม ไม่มีผลต่อใช้งาน) · mobile 375: ไม่มี h-scroll · footer ถูกเนื้อหาผลักลงตามธรรมชาติ (docH 4255 > 812) · dev.log สะอาด
+- commit worklog นี้คือการพิสูจน์ push ด้วย PAT รอบที่ 12 (ยืนยันซ้ำผ่าน GitHub API หลัง push)
+
+Stage Summary:
+- PAT รอบที่ 12 ใช้งานได้ครบ (อ่าน 200 + สิทธิ์ push/admin/maintain true + blob probe 200 + push worklog สำเร็จ)
+- v0.37.1 (Task 68 ตัดเมนู Regulation + Data Classification) สมบูรณ์ทั้ง local/remote/tag + รันไทม์ยืนยันซ้ำ E2E ผ่าน · working tree clean · ระบบรอคำสั่งถัดไปจากผู้ใช้
+
+---
