@@ -289,7 +289,7 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
         <div>
           <h2 className="text-base font-semibold tracking-tight sm:text-lg">นำเข้าข้อมูล (Import Data)</h2>
           <p className="text-sm text-muted-foreground">
-            นำเข้าข้อมูลจากไฟล์ CSV, ไฟล์ JSON หรือฐานข้อมูล — ตั้งชื่อ Data Asset ได้เอง แล้วใช้งานได้ในคลังข้อมูลทันที
+            นำเข้าข้อมูลจากไฟล์ CSV, ไฟล์ JSON หรือฐานข้อมูล — ตั้งชื่อ Data Asset ได้เอง แล้วใช้งานได้ในหน้า Data Asset ทันที
           </p>
         </div>
         <Badge variant="outline" className="gap-1.5 border-emerald-300 bg-emerald-50 text-emerald-800">
@@ -308,12 +308,12 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
                 นำเข้า &quot;{importResult.name}&quot; สำเร็จ — {importResult.rowCount.toLocaleString()} แถว / {importResult.columnCount} คอลัมน์
                 {importResult.note ? ` (${importResult.note})` : ''}
               </p>
-              <p className="text-xs text-emerald-800/80">ดูข้อมูลได้ในหน้าคลังข้อมูล (Data Inventory)</p>
+              <p className="text-xs text-emerald-800/80">ดูข้อมูลได้ในหน้า Data Asset</p>
             </div>
             {onGoInventory && (
               <Button size="sm" variant="outline" className="border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100" onClick={onGoInventory}>
                 <PackageSearch className="size-4" aria-hidden="true" />
-                ไปที่คลังข้อมูล
+                ไปที่ Data Asset
               </Button>
             )}
           </CardContent>
@@ -359,7 +359,7 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
           <Card>
             <CardHeader className="p-4 pb-2 sm:p-6 sm:pb-2">
               <CardTitle className="text-sm sm:text-base">2 · ตั้งชื่อ Data Asset</CardTitle>
-              <CardDescription className="text-xs sm:text-sm">ชื่อนี้จะแสดงในคลังข้อมูล — ตั้งให้สื่อความหมายกับทีม</CardDescription>
+              <CardDescription className="text-xs sm:text-sm">ชื่อนี้จะแสดงในหน้า Data Asset — ตั้งให้สื่อความหมายกับทีม</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 p-4 pt-2 sm:p-6 sm:pt-2">
               <div className="grid gap-1.5">
@@ -702,7 +702,7 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
                   {importing ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <FileUp className="size-4" aria-hidden="true" />}
                   นำเข้าข้อมูล
                 </Button>
-                <p className="text-xs text-muted-foreground">จำกัดการนำเข้า: สูงสุด 1,000 แถว / 100 คอลัมน์ ต่อครั้ง — ข้อมูลจะถูกบันทึกในคลังข้อมูลของแพลตฟอร์ม</p>
+                <p className="text-xs text-muted-foreground">จำกัดการนำเข้า: สูงสุด 1,000 แถว / 100 คอลัมน์ ต่อครั้ง — ข้อมูลจะถูกบันทึกใน Data Asset ของแพลตฟอร์ม</p>
               </div>
             </CardContent>
           </Card>
@@ -720,7 +720,7 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
                 { n: 2, t: 'ตั้งชื่อ Data Asset', d: 'เลือกผู้ดำเนินการที่มีสิทธิ์' },
                 { n: 3, t: 'ให้ข้อมูลต้นทาง', d: 'ไฟล์ หรือรายละเอียดการเชื่อมต่อ' },
                 { n: 4, t: 'ตรวจพรีวิว', d: 'ดูคอลัมน์และตัวอย่างแถวก่อนบันทึก' },
-                { n: 5, t: 'กดนำเข้า', d: 'ข้อมูลพร้อมใช้ในคลังข้อมูลทันที' },
+                { n: 5, t: 'กดนำเข้า', d: 'ข้อมูลพร้อมใช้ใน Data Asset ทันที' },
               ].map((s) => (
                 <div key={s.n} className="flex gap-2.5">
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-semibold text-emerald-800">{s.n}</span>
@@ -747,7 +747,7 @@ export function AssetImport({ onGoInventory }: { onGoInventory?: () => void }) {
                 <strong className="text-foreground">Audit Trail 100%</strong> — ทุกการนำเข้า แก้ไข และลบ ถูกบันทึกว่าใครทำ เมื่อไร
               </p>
               <p>
-                <strong className="text-foreground">PDPA-first</strong> — ข้อมูลส่วนบุคคลในคลังข้อมูลจะถูกปิดบังตามบทบาทผู้ชมโดยอัตโนมัติ
+                <strong className="text-foreground">PDPA-first</strong> — ข้อมูลส่วนบุคคลใน Data Asset จะถูกปิดบังตามบทบาทผู้ชมโดยอัตโนมัติ
               </p>
               <p>
                 <strong className="text-foreground">Deny-by-default SQL</strong> — การนำเข้าจากฐานข้อมูลอ่านได้เฉพาะ SELECT เท่านั้น

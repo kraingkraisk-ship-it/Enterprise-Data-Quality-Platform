@@ -2167,3 +2167,23 @@ Stage Summary:
 - tag v0.38.1 · push ด้วย PAT รอบที่ 14 (ตรวจแล้วในรอบนี้: read 200 + push/admin/maintain true + blob probe d72b95f0 200) · ยืนยันผ่าน GitHub API หลัง push
 
 ---
+
+---
+Task ID: 70 (ขั้น 2)
+Agent: Z.ai Code (main orchestrator)
+Task: v0.38.2 — คำสั่งผู้ใช้รอบที่ 2 ของหน้าคลังข้อมูล: "ในเมนูคลังข้อมูล แก้ไขเป็น Data Asset และแสดงข้อมูลที่ input มาเท่านั้น ไม่ต้องแสดง sub ของข้อมูล"
+
+Work Log:
+- (1) เปลี่ยนชื่อเมนู/หน้า "คลังข้อมูล (Data Inventory)" → "Data Asset" จุดเดียวใน VIEWS['asset-inventory'] (views.ts: th/en = 'Data Asset' + desc ใหม่) — sidebar/header/breadcrumb อัปเดตอัตโนมัติจาก registry เดียว · หัวหน้าหน้าใน asset-inventory.tsx เปลี่ยนเป็น "Data Asset" + คำอธิบาย "ข้อมูลที่ input (นำเข้า) มาทั้งหมดในระบบ"
+- (2) ตัด "sub ของข้อมูล" (โดเมน/โดเมนย่อย) ออกจากหน้าทั้งหมดใน asset-inventory.tsx — แสดงเฉพาะข้อมูลที่ input: ลบแถวชิปกรองโดเมน+โดเมนย่อย (└) ทั้งแถว (รวมชิป "ทั้งหมด"/"ไม่ระบุ") · ลบการ์ดสรุป "โดเมนข้อมูล หลัก+N ย่อย" (grid สรุปเหลือ 5 ใบ xl:grid-cols-5) · ลบชิปโดเมนบนการ์ด asset · ลบแถว "โดเมนข้อมูล" ในแท็บ "รายละเอียดแหล่งข้อมูล" ของ dialog · ลบ state/logic โดเมนทั้งหมด (domains/domainFilter/loadDomains/filteredAssets/domainChipCls + import '@/lib/domains' + Fragment + FolderTree) — domainId ยังอยู่ครบใน DB/API ไม่ได้ลบข้อมูลใด ตัดเฉพาะการแสดงบนหน้านี้ การจัดการโครงสร้างยังอยู่ที่หน้า "Data Domain" ครบ
+- (3) ปรับข้อความอ้างอิงชื่อเมนูเก่าใน asset-import.tsx 7 จุด (text-only ไม่แตะ logic): คำอธิบายหัวหน้า / การ์ดผลนำเข้า / ปุ่ม "ไปที่ Data Asset" / คำอธิบายขั้นตั้งชื่อ / ข้อจำกัดการนำเข้า / ขั้นตอนการนำเข้าข้อ 5 / PDPA-first — กัน label ชี้ไปเมนูที่เปลี่ยนชื่อแล้ว · หน้า Data Domain·Element·Meta / ข้อมูลอ้างอิง / การแมปข้อมูล ยังไม่แตะตามล็อกขอบเขต (คำ "คลังข้อมูล" ที่เหลือในหน้าอื่นเป็นคำนามทั่วไป รอคำสั่งผู้ใช้ทีละขั้น)
+- APP_VERSION v0.38.1 → v0.38.2
+- ทดสอบ: lint ผ่าน · E2E Agent Browser (session somchai.owner): sidebar แสดงปุ่ม "Data Asset" ไม่มี "คลังข้อมูล" · หน้า active h2="Data Asset" · การ์ดสรุป 5 ใบตรง (Data Asset ทั้งหมด 2 / แถวข้อมูลรวม 31 / CSV 2 / JSON 0 / ฐานข้อมูล 0) · ไม่มี role=group ชิปกรอง · ไม่มีคำ "โดเมน/ย่อย/└" ทั้งหน้า (eval ยืนยัน false) · dialog "อัตราแลกเปลี่ยนรายวัน": แท็บ ข้อมูล 10 แถว / โครงสร้างคอลัมน์ 3 / รายละเอียดแหล่งข้อมูล ทำงานครบ แถว info = ชื่อ/คำอธิบาย/แหล่งข้อมูล/สถานะ PII/นำเข้าเมื่อ/ผู้นำเข้า (ไม่มีโดเมน) · desktop 1280 ภาพถูกต้อง · mobile 375 (หน้า Data Asset จริง): sw=375=iw ไม่มี h-scroll · overflowEls=[] · footer (mt-auto) bottom=1077=bodyHeight ถูกเนื้อหาผลักลง · 0 page error (recharts width warning เดิม ไม่มีผล) · dev.log API 200
+- บันทึกเทคนิค E2E: find text "Data Asset" โดนข้อความคำอธิบายในหน้า import ก่อนปุ่ม sidebar → ต้อง reload → เปิดเมนูมือถือ ("สลับการแสดงเมนูด้านซ้าย") → click ref ปุ่ม "Data Asset" จึงวัดหน้าถูกต้อง · Radix TabsTrigger ไม่สลับด้วย element.click() ต้องใช้ find text … click (pointer event จริง) · Radix Dialog เป็น position:fixed ตรวจ visible ด้วย offsetParent ไม่ได้ ใช้ data-state=open · footer ตัวจริงต้องกรองด้วยคลาส mt-auto (มี <footer> ซ่อนใน view ที่ hidden ซ้ำ)
+- ภาพหลักฐาน: tool-results/t70-step2-desktop-data-asset.png · tool-results/t70-step2-mobile-375-data-asset.png
+
+Stage Summary:
+- ขั้น 2 เสร็จ: เมนู/หน้า = "Data Asset" และหน้าแสดงเฉพาะข้อมูลที่ input (ไม่มีโดเมน/โดเมนย่อยใดๆ บนหน้า) ตามคำสั่ง · ข้อมูล/โครงสร้างโดเมนไม่หาย — ตัดเฉพาะการแสดง จัดการต่อได้ที่หน้า "Data Domain"
+- tag v0.38.2 · push ด้วย PAT รอบที่ 14 inline · ยืนยันผ่าน GitHub API หลัง push
+
+---

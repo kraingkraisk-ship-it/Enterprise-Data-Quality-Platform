@@ -1,12 +1,11 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Braces,
   Database,
   Eye,
   FileSpreadsheet,
-  FolderTree,
   Loader2,
   Lock,
   PackageSearch,
@@ -45,10 +44,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { useCurrentUser } from '@/components/user-context'
-import { buildDomainTree, domainColor, rollupAssetCount, type DomainItem } from '@/lib/domains'
 
 /* ------------------------------------------------------------------ */
-/* Data Inventory — คลังข้อมูล: แสดงข้อมูลที่ import เข้ามาทั้งหมด        */
+/* Data Asset — แสดงเฉพาะข้อมูลที่ input (นำเข้า) เข้ามาในระบบ           */
+/* v0.38.2 — เปลี่ยนชื่อเมนู "คลังข้อมูล" → "Data Asset" + ตัดการแสดง      */
+/*           โดเมน/โดเมนย่อย (sub) ออกจากหน้านี้ทั้งหมดตามคำสั่งผู้ใช้      */
+/*           (จัดการโครงสร้างโดเมนอยู่ที่หน้า Data Domain เท่านั้น)       */
 /* ------------------------------------------------------------------ */
 
 interface AssetItem {
@@ -100,13 +101,6 @@ const DATA_TYPE_LABELS: Record<string, string> = {
   EMPTY: 'ว่าง',
 }
 
-function domainChipCls(active: boolean, sub = false): string {
-  if (active) return 'rounded-full border border-emerald-500 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800'
-  return sub
-    ? 'rounded-full border border-transparent bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted'
-    : 'rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted/60'
-}
-
 function fmtDate(s: string): string {
   try {
     return new Date(s).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
@@ -141,9 +135,7 @@ export function AssetInventory({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  // ---------- โดเมนข้อมูล (v0.15.0 — คงไว้เพื่อกรอง/แสดงป้าย การจัดการย้ายไปเมนู Data Domain) ----------
-  const [domains, setDomains] = useState<DomainItem[]>([])
-  const [domainFilter, setDomainFilter] = useState<string>('ALL') // ALL | NONE | domainId
+  // v0.38.2 — ตัด state โดเมน/ตัวกรองโดเมนออก: หน้านี้แสดงเฉพาะข้อมูลที่ input (ไม่แสดงโดเมน/โดเมนย่อย)
 
   /* ------------------------- load ------------------------- */
   const loadAssets = useCallback(async () => {
@@ -167,25 +159,6 @@ export function AssetInventory({
   useEffect(() => {
     if (active) void loadAssets()
   }, [active, loadAssets])
-
-  /* ------------------------- domains ------------------------- */
-  const loadDomains = useCallback(async () => {
-    try {
-      const res = await fetch('/api/domains')
-      const data = await res.json()
-      setDomains(data?.domains ?? [])
-    } catch {
-      // โหลดโดเมนไม่ได้ไม่บล็อกการใช้งานคลัง — แสดงเป็น "ทั้งหมด" เฉย ๆ
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadDomains()
-  }, [loadDomains, reloadTick])
-
-  useEffect(() => {
-    if (active) void loadDomains()
-  }, [active, loadDomains])
 
   const loadDetail = useCallback(
     async (assetId: string, p: number, q: string) => {
@@ -268,22 +241,6 @@ export function AssetInventory({
     [assets],
   )
 
-  const domainTree = useMemo(() => buildDomainTree(domains), [domains])
-  const unassignedCount = useMemo(() => assets.filter((a) => !a.domain).length, [assets])
-
-  const filteredAssets = useMemo(() => {
-    if (domainFilter === 'ALL') return assets
-    if (domainFilter === 'NONE') return assets.filter((a) => !a.domain)
-    const chosen = domains.find((d) => d.id === domainFilter)
-    if (!chosen) return assets
-    if (!chosen.parentId) {
-      const root = domainTree.find((n) => n.id === chosen.id)
-      const subIds = new Set((root?.children ?? []).map((c) => c.id))
-      return assets.filter((a) => a.domain && (a.domain.id === chosen.id || subIds.has(a.domain.id)))
-    }
-    return assets.filter((a) => a.domain?.id === chosen.id)
-  }, [assets, domains, domainTree, domainFilter])
-
   const selectedAsset = assets.find((a) => a.id === selectedId) ?? null
 
   return (
@@ -291,8 +248,8 @@ export function AssetInventory({
       {/* หัวหน้า */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold tracking-tight sm:text-lg">คลังข้อมูล (Data Inventory)</h2>
-          <p className="text-sm text-muted-foreground">ข้อมูลที่นำเข้ามาทั้งหมดในระบบ — กดที่รายการเพื่อสำรวจคอลัมน์และพรีวิวข้อมูล</p>
+          <h2 className="text-base font-semibold tracking-tight sm:text-lg">Data Asset</h2>
+          <p className="text-sm text-muted-foreground">ข้อมูลที่ input (นำเข้า) มาทั้งหมดในระบบ — กดที่รายการเพื่อพรีวิวข้อมูล</p>
         </div>
         <div className="flex items-center gap-2">
           {/* v0.38.1 — ตัดปุ่ม "จัดการ Data Domain" ออก: การจัดการโครงสร้างอยู่ที่หน้า Data Domain · Element · Meta ในเมนูแล้ว (หลัก Data Catalog — หน้า inventory ทำหน้าที่ค้นหา/เข้าใจ asset เท่านั้น) */}
@@ -310,26 +267,12 @@ export function AssetInventory({
         </div>
       </div>
 
-      {/* สรุปรวม */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      {/* สรุปรวม — v0.38.2 ตัดการ์ด "โดเมนข้อมูล" ออก (แสดงเฉพาะสรุปของข้อมูลที่ input) */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Data Asset ทั้งหมด</p>
             <p className="mt-1 text-2xl font-bold tabular-nums">{assets.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <FolderTree className="size-3.5" aria-hidden="true" /> โดเมนข้อมูล
-            </p>
-            <p className="mt-1 text-2xl font-bold tabular-nums">
-              {domainTree.length}
-              <span className="ml-1 text-sm font-medium text-muted-foreground">หลัก</span>
-              {domains.length > domainTree.length && (
-                <span className="ml-1.5 text-sm font-medium text-muted-foreground">+ {domains.length - domainTree.length} ย่อย</span>
-              )}
-            </p>
           </CardContent>
         </Card>
         <Card>
@@ -353,76 +296,25 @@ export function AssetInventory({
         })}
       </div>
 
-      {/* แถวกรองตามโดเมนข้อมูล */}
-      {domainTree.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="กรองรายการตามโดเมนข้อมูล">
-          {/* v0.38.1 — ตัดคำนำหน้า "โดเมน:" — ชิปมีจุดสี + ชื่อ + จำนวน เข้าใจได้เอง (aria-label ของ group ยังอธิบายครบ) */}
-          <button type="button" onClick={() => setDomainFilter('ALL')} className={domainChipCls(domainFilter === 'ALL')} aria-pressed={domainFilter === 'ALL'}>
-            ทั้งหมด
-          </button>
-          {domainTree.map((n) => (
-            <Fragment key={n.id}>
-              <button
-                type="button"
-                onClick={() => setDomainFilter(n.id)}
-                className={domainChipCls(domainFilter === n.id)}
-                aria-pressed={domainFilter === n.id}
-              >
-                <span className={`mr-1 inline-block size-1.5 rounded-full ${domainColor(n.color).dot}`} aria-hidden="true" />
-                {n.name}
-                <span className="ml-1 tabular-nums opacity-60">{rollupAssetCount(n)}</span>
-              </button>
-              {n.children.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setDomainFilter(c.id)}
-                  className={`${domainChipCls(domainFilter === c.id, true)} pl-1.5`}
-                  aria-pressed={domainFilter === c.id}
-                >
-                  <span aria-hidden="true" className="mr-0.5 opacity-50">└</span>
-                  {c.name}
-                  <span className="ml-1 tabular-nums opacity-60">{c.assetCount}</span>
-                </button>
-              ))}
-            </Fragment>
-          ))}
-          {unassignedCount > 0 && (
-            <button type="button" onClick={() => setDomainFilter('NONE')} className={domainChipCls(domainFilter === 'NONE')} aria-pressed={domainFilter === 'NONE'}>
-              ไม่ระบุ ({unassignedCount})
-            </button>
-          )}
-        </div>
-      )}
+      {/* v0.38.2 — ตัดแถวชิปกรองโดเมน/โดเมนย่อย (sub) ออกทั้งแถวตามคำสั่งผู้ใช้: "แสดงข้อมูลที่ input มาเท่านั้น ไม่ต้องแสดง sub ของข้อมูล" */}
 
       {/* รายการ asset */}
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
           <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลด…
         </div>
-      ) : filteredAssets.length === 0 ? (
+      ) : assets.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
             <PackageSearch className="size-10 text-muted-foreground/40" aria-hidden="true" />
-            {assets.length === 0 ? (
-              <>
-                <p className="font-medium">ยังไม่มีข้อมูลในคลัง</p>
-                <p className="text-sm text-muted-foreground">เริ่มต้นด้วยการนำเข้าข้อมูลจากเมนู &quot;นำเข้าข้อมูล&quot;</p>
-              </>
-            ) : (
-              <>
-                <p className="font-medium">ไม่พบข้อมูลในโดเมนที่เลือก</p>
-                <Button variant="outline" size="sm" onClick={() => setDomainFilter('ALL')}>
-                  แสดงทั้งหมด
-                </Button>
-              </>
-            )}
+            <p className="font-medium">ยังไม่มีข้อมูลใน Data Asset</p>
+            <p className="text-sm text-muted-foreground">เริ่มต้นด้วยการนำเข้าข้อมูลจากเมนู &quot;นำเข้าข้อมูล&quot;</p>
           </CardContent>
         </Card>
       ) : (
         // v0.38.1 — เพิ่ม grid-cols-1 (minmax(0,1fr)) กันการ์ดล้นจอ mobile 375 เมื่อข้อความยาว (เดิม track auto ขยายตาม max-content)
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {filteredAssets.map((a) => {
+          {assets.map((a) => {
             const meta = SOURCE_META[a.sourceType] ?? SOURCE_META.CSV
             return (
               <button
@@ -445,14 +337,7 @@ export function AssetInventory({
                   )}
                 </div>
                 <p className="mt-2 line-clamp-1 text-sm font-semibold">{a.name}</p>
-                {a.domain && (
-                  <span
-                    className={`mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${domainColor(a.domain.color).chip}`}
-                  >
-                    <span className={`size-1.5 shrink-0 rounded-full ${domainColor(a.domain.color).dot}`} aria-hidden="true" />
-                    <span className="truncate">{a.domain.parentName ? `${a.domain.parentName} / ${a.domain.name}` : a.domain.name}</span>
-                  </span>
-                )}
+                {/* v0.38.2 — ตัดชิปโดเมน/โดเมนย่อยบนการ์ดออก — แสดงเฉพาะข้อมูลที่ input */}
                 {a.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{a.description}</p>}
                 <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="font-medium tabular-nums text-foreground">{a.rowCount.toLocaleString()} แถว</span>
@@ -668,17 +553,6 @@ export function AssetInventory({
                     <span className="font-medium break-words">{detail.asset.name}</span>
                     <span className="text-muted-foreground">คำอธิบาย</span>
                     <span className="break-words">{detail.asset.description || '—'}</span>
-                    <span className="text-muted-foreground">โดเมนข้อมูล</span>
-                    <span>
-                      {detail.asset.domain ? (
-                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${domainColor(detail.asset.domain.color).chip}`}>
-                          <span className={`size-1.5 rounded-full ${domainColor(detail.asset.domain.color).dot}`} aria-hidden="true" />
-                          {detail.asset.domain.parentName ? `${detail.asset.domain.parentName} / ${detail.asset.domain.name}` : detail.asset.domain.name}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">ไม่ระบุ</span>
-                      )}
-                    </span>
                     <span className="text-muted-foreground">แหล่งข้อมูล</span>
                     <span>{SOURCE_META[detail.asset.sourceType]?.th ?? detail.asset.sourceType}</span>
                     <span className="text-muted-foreground">สถานะ PII</span>

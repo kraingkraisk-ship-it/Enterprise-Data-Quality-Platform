@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.38.1'
+export const APP_VERSION = 'v0.38.2'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -172,9 +172,9 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
   },
   'asset-inventory': {
     key: 'asset-inventory',
-    th: 'คลังข้อมูล',
-    en: 'Data Inventory',
-    desc: 'รายการข้อมูลที่นำเข้ามาทั้งหมด กรองตามโดเมนข้อมูล พร้อมสำรวจคอลัมน์ พรีวิวข้อมูล และค้นหา',
+    th: 'Data Asset',
+    en: 'Data Asset',
+    desc: 'รายการข้อมูลที่ input (นำเข้า) มาทั้งหมด — แสดงเฉพาะตัวข้อมูล พร้อมพรีวิวข้อมูล โครงสร้างคอลัมน์ และค้นหา (v0.38.2: เปลี่ยนชื่อจาก "คลังข้อมูล" + ไม่แสดงโดเมน/โดเมนย่อย)',
     icon: PackageSearch,
   },
   'asset-domain': {
