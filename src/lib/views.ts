@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.43.0'
+export const APP_VERSION = 'v0.44.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -181,7 +181,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'asset-domain',
     th: 'Data Catalog',
     en: 'Data Catalog',
-    desc: 'สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) แบบ Master–Detail (v0.42.0): เลือก Data Domain จากรายการซ้ายเพื่อเจาะดูรายละเอียด — Sub Data Domain (ยุบ/ขยายได้ หมวดแรกกางไว้) › Data Dictionary (แถวรวม + กางสรุปธุรกิจ/เทคนิค พร้อมคอลัมน์อ้างอิงว่านำมาจากข้อมูลใด) › Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) · ฟอร์มสร้าง/แก้ไขและหน้ารายละเอียด Data Dictionary ใช้โครงสร้างเดียวกัน 3 โซน 9 หัวข้อ (Business Name · Technical Name · Definition · Data Type 14 ชนิด · Data Length · Format · Multiplicity/Optionality + ธง CDE/PII/การเงิน · Source/Origin + คอลัมน์อ้างอิง · Owner/Steward) แยกส่วนงานจาก DQ Rule อย่างชัดเจน · ลบ/ดูรายละเอียดได้จากแถวโดยตรง · สร้างโดเมนพร้อมเลือก Data Asset · ค้นหาแบบ Data Dictionary · ปุ่มวิธีใช้งาน',
+    desc: 'สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) แบบ Master–Detail (v0.44.0): เลือก Data Domain จากรายการซ้ายเพื่อเจาะดูรายละเอียด — Sub Data Domain (ยุบ/ขยายได้ หมวดแรกกางไว้) › Data Dictionary (แถวรวม + กางสรุปธุรกิจ/เทคนิค พร้อมคอลัมน์อ้างอิงว่านำมาจากข้อมูลใด) › Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) · ฟอร์มสร้าง/แก้ไขและหน้ารายละเอียด Data Dictionary ใช้โครงสร้างเดียวกัน 3 โซน 13 หัวข้อ เริ่มนับ 1 ใหม่รายโซน (A: Business Name ไทย/อังกฤษ · Technical Name เลือกคอลัมน์จาก Data Asset หรือพิมพ์เอง · Definition — B: Data Type 14 ชนิด · Data Length · Format · Multiplicity/Optionality + ธง CDE/PII · ตัวอย่างข้อมูลสร้างอัตโนมัติให้สอดคล้องกับ Type/Length/Format · ระดับชั้นความลับ Public/Internal Use/Confidential/Secret — C: Source/Origin · คอลัมน์อ้างอิง · Owner/Steward แสดงทีละบรรทัด) แยกส่วนงานจาก DQ Rule อย่างชัดเจน · ลบ/ดูรายละเอียดได้จากแถวโดยตรง · สร้างโดเมนพร้อมเลือก Data Asset · ค้นหาแบบ Data Dictionary · ปุ่มวิธีใช้งาน',
     icon: FolderTree,
   },
   'asset-reference': {

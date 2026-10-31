@@ -5,9 +5,11 @@ import {
   ELEMENT_DATA_TYPES,
   ELEMENT_NAME_MAX,
   ELEMENT_OPTIONALITIES,
+  ELEMENT_SENSITIVITY_LEVELS,
   ELEMENT_TEXT_MAX,
   isElementDataType,
   isElementOptionality,
+  isElementSensitivityLevel,
   isOpUpdateFrequency,
   nextElementCode,
 } from '@/lib/elements'
@@ -21,7 +23,7 @@ import {
  * POST /api/elements — สร้าง element ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — เปิดใช้งานเป็น ACTIVE ด้วยสิทธิ์ MANAGE_DATASETS เมื่อพร้อม)
  *      body: { operatorEmail, subDomainId, nameTh, nameEn?, technicalName?, optionality?, sourceOrigin?, definition?, examples?, dataType?,
  *              formatPattern?, valueDomain?, maxLength?, unit?, ownerId?, stewardId?, custodianId?,
- *              pii?, classification?, isCde?, isFinancial?, opUpdateFrequency?, opNotes?, customFields?,
+ *              pii?, classification?, sensitivityLevel? (v0.44.0 — PUBLIC | INTERNAL_USE | CONFIDENTIAL | SECRET), isCde?, isFinancial?, opUpdateFrequency?, opNotes?, customFields?,
  *              referenceSetId? (v0.31.0 — ผูกทะเบียนข้อมูลอ้างอิงกับ valueDomain — เฉพาะทะเบียน ACTIVE) }
  *
  * สิทธิ์ (เฉพาะ POST): MANAGE_DATASETS — ทุกการสร้างบันทึก Audit Trail
@@ -89,6 +91,7 @@ export async function GET(req: NextRequest) {
         ownerId: e.ownerId,
         pii: e.pii,
         classification: e.classification,
+        sensitivityLevel: e.sensitivityLevel, // v0.44.0 — ระดับชั้นความลับ
         isCde: e.isCde,
         isFinancial: e.isFinancial,
         status: e.status,
@@ -129,6 +132,13 @@ function validateMetaFields(body: Record<string, unknown>): string | null {
   const freq = String(body.opUpdateFrequency ?? '').trim().toUpperCase()
   if (freq && !isOpUpdateFrequency(freq)) {
     return 'ความถี่การปรับปรุงไม่ถูกต้อง'
+  }
+  const sensRaw = body.sensitivityLevel
+  if (sensRaw !== undefined && sensRaw !== null && String(sensRaw).trim() !== '') {
+    const sens = String(sensRaw).trim().toUpperCase()
+    if (!isElementSensitivityLevel(sens)) {
+      return `ระดับชั้นความลับไม่ถูกต้อง — ต้องเป็น: ${ELEMENT_SENSITIVITY_LEVELS.join(', ')}`
+    }
   }
   return null
 }
@@ -262,6 +272,7 @@ export async function POST(req: NextRequest) {
         createdBy: op.ctx.email,
         status: 'DRAFT', // v0.36.0: element ใหม่เริ่มที่ DRAFT เสมอ — เปิดใช้งานเป็น ACTIVE ด้วยสิทธิ์ MANAGE_DATASETS เมื่อพร้อม
         referenceSetId: refSet.id,
+        sensitivityLevel: String(body.sensitivityLevel ?? '').trim().toUpperCase() || 'INTERNAL_USE', // v0.44.0 — validateMetaFields ตรวจรูปแบบแล้ว
         ...metaFieldsFrom(body),
       },
     })

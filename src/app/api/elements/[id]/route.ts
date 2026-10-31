@@ -6,9 +6,11 @@ import {
   ELEMENT_DATA_TYPES,
   ELEMENT_NAME_MAX,
   ELEMENT_OPTIONALITIES,
+  ELEMENT_SENSITIVITY_LEVELS,
   ELEMENT_TEXT_MAX,
   isElementDataType,
   isElementOptionality,
+  isElementSensitivityLevel,
   isOpUpdateFrequency,
   rollupByElement,
 } from '@/lib/elements'
@@ -48,6 +50,13 @@ function validateMetaFields(body: Record<string, unknown>): string | null {
   const freq = String(body.opUpdateFrequency ?? '').trim().toUpperCase()
   if (freq && !isOpUpdateFrequency(freq)) {
     return 'ความถี่การปรับปรุงไม่ถูกต้อง'
+  }
+  const sensRaw = body.sensitivityLevel
+  if (sensRaw !== undefined && sensRaw !== null && String(sensRaw).trim() !== '') {
+    const sens = String(sensRaw).trim().toUpperCase()
+    if (!isElementSensitivityLevel(sens)) {
+      return `ระดับชั้นความลับไม่ถูกต้อง — ต้องเป็น: ${ELEMENT_SENSITIVITY_LEVELS.join(', ')}`
+    }
   }
   return null
 }
@@ -356,6 +365,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (Boolean(body.pii) !== element.pii) changed.push('PII')
     if (Boolean(body.isCde) !== element.isCde) changed.push('ธง CDE')
     if (Boolean(body.isFinancial) !== element.isFinancial) changed.push('ธงการเงิน')
+    if (
+      body.sensitivityLevel !== undefined &&
+      String(body.sensitivityLevel).trim().toUpperCase() !== element.sensitivityLevel
+    ) {
+      changed.push('ระดับชั้นความลับ')
+    }
     if ((String(body.opUpdateFrequency ?? '').trim().toUpperCase() || '') !== element.opUpdateFrequency) changed.push('ความถี่การปรับปรุง')
 
     // ผูกทะเบียนข้อมูลอ้างอิง (v0.31.0) — body.referenceSetId: undefined = ไม่ส่งมา (คงค่าเดิม — backward compatible) · '' = ถอน · id = ผูกใหม่
@@ -370,7 +385,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     const updated = await db.dataElement.update({
       where: { id },
-      data: { nameTh, referenceSetId: refSetIdToSave, ...metaFieldsFrom(body) }, // หมายเหตุ: status ไม่รับจากฟอร์ม — เปลี่ยนด้วย action ACTIVATE/DEPRECATE เท่านั้น
+      data: {
+        nameTh,
+        referenceSetId: refSetIdToSave,
+        ...metaFieldsFrom(body),
+        // v0.44.0 — ระดับชั้นความลับ: ไม่ส่ง = คงค่าเดิม (สัญญาแบบ referenceSetId v0.31.0 — กัน caller เดิมที่ยังไม่รู้จักฟิลด์ถูกเขียนทับ)
+        ...(body.sensitivityLevel !== undefined
+          ? { sensitivityLevel: String(body.sensitivityLevel).trim().toUpperCase() || element.sensitivityLevel }
+          : {}),
+      }, // หมายเหตุ: status ไม่รับจากฟอร์ม — เปลี่ยนด้วย action ACTIVATE/DEPRECATE เท่านั้น
     })
 
     await db.auditLog.create({

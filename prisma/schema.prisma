@@ -443,6 +443,7 @@ model DataElement {
   custodianId    String? // email ผู้เก็บรักษาข้อมูล (Data Custodian) — เลือกจากผู้ใช้ในระบบ คนละ 1 คนต่อบทบาท (v0.20.0)
   pii            Boolean  @default(false) // เป็นข้อมูลส่วนบุคคล (PDPA)
   classification String   @default("UNCLASSIFIED") // การจำแนกข้อมูล (DataClassificationDef.id หรือ UNCLASSIFIED)
+  sensitivityLevel String @default("INTERNAL_USE") // ระดับชั้นความลับ: PUBLIC | INTERNAL_USE | CONFIDENTIAL | SECRET (v0.44.0 — หัวข้อ 6 โซน B)
   isCde          Boolean  @default(false) // Critical Data Element — ข้อมูลวิกฤตต่อองค์กร (ผลจริง: แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำ, เตือนเมื่อยังไม่มีกฎ) (v0.20.0)
   isFinancial    Boolean  @default(false) // ผลกระทบต่อการรายงานทางการเงิน (ผลจริง: แดชบอร์ดผู้บริหารนับความเสี่ยงรายงานเงิน) (v0.20.0)
   status         String   @default("ACTIVE") // DRAFT | ACTIVE | DEPRECATED (ISO 11179: registration status) — เปิดใช้งาน/เลิกใช้โดยตรงด้วยสิทธิ์ MANAGE_DATASETS (v0.36.0 ไม่มีคิวอนุมัติ)

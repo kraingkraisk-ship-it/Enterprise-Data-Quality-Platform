@@ -79,9 +79,13 @@ import {
   ELEMENT_NAME_MAX,
   ELEMENT_OPTIONALITIES,
   ELEMENT_OPTIONALITY_LABELS,
+  ELEMENT_SENSITIVITY_LEVELS,
+  ELEMENT_SENSITIVITY_LEVEL_LABELS,
   ELEMENT_STATUSES,
   ELEMENT_STATUS_LABELS,
   ELEMENT_TEXT_MAX,
+  elementSensitivityLabel,
+  suggestElementExample,
   type ElementDataType,
   type ElementOptionality,
   type ElementStatus,
@@ -165,6 +169,7 @@ interface ElementRow {
   ownerId: string | null
   pii: boolean
   classification: string
+  sensitivityLevel: string // v0.44.0 — ระดับชั้นความลับ
   isCde: boolean
   isFinancial: boolean
   status: string
@@ -201,6 +206,7 @@ interface ElementDetail {
   custodianId: string | null
   pii: boolean
   classification: string
+  sensitivityLevel: string // v0.44.0 — ระดับชั้นความลับ
   isCde: boolean
   isFinancial: boolean
   status: string
@@ -347,6 +353,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [elOpFreq, setElOpFreq] = useState<string>('')
   const [elOpNotes, setElOpNotes] = useState('')
   const [elClassification, setElClassification] = useState<string>(UNCLASSIFIED)
+  const [elSensitivity, setElSensitivity] = useState<string>('INTERNAL_USE') // v0.44.0 — ระดับชั้นความลับ (หัวข้อ 6 โซน B)
   const [elCustom, setElCustom] = useState('')
   const [elFormBusy, setElFormBusy] = useState(false)
   /* v0.39.0 — คอลัมน์อ้างอิงในฟอร์ม element (เลือก column จาก Data Asset พร้อม reference) */
@@ -355,6 +362,10 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [elRefColumns, setElRefColumns] = useState<AssetColumn[]>([])
   const [elRefLoading, setElRefLoading] = useState(false)
   const [elRefDraft, setElRefDraft] = useState<Array<{ assetId: string; columnName: string; note?: string }>>([])
+  /* v0.44.0 — เลือกคอลัมน์จาก Data Asset มาเป็น Technical Name (หัวข้อ 3 โซน A) */
+  const [elTechAssetId, setElTechAssetId] = useState('')
+  const [elTechColumns, setElTechColumns] = useState<AssetColumn[]>([])
+  const [elTechLoading, setElTechLoading] = useState(false)
 
   /* ---------- ฟอร์มโดเมน (สร้าง/แก้ไข/ลบ) ---------- */
   const [formOpen, setFormOpen] = useState(false)
@@ -668,8 +679,11 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElOpFreq('')
     setElOpNotes('')
     setElClassification(UNCLASSIFIED)
+    setElSensitivity('INTERNAL_USE') // v0.44.0 — เริ่มต้น "ใช้ภายในองค์กร"
     setElCustom('')
     setElRefAssetId('') // v0.39.0 — คอลัมน์อ้างอิงเริ่มว่าง
+    setElTechAssetId('') // v0.44.0 — Technical Name picker เริ่มว่าง
+    setElTechColumns([])
     setElRefColumns([])
     setElRefDraft([])
     setElFormOpen(true)
@@ -702,9 +716,12 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElOpFreq(detail.opUpdateFrequency ?? '')
     setElOpNotes(detail.opNotes ?? '')
     setElClassification(detail.classification || UNCLASSIFIED)
+    setElSensitivity(detail.sensitivityLevel || 'INTERNAL_USE') // v0.44.0
     setElCustom(detail.customFields && detail.customFields !== '{}' ? detail.customFields : '')
     setElFormSubLabel(detail.subDomain.parent ? `${detail.subDomain.parent.name} / ${detail.subDomain.name}` : detail.subDomain.name)
     setElRefAssetId('') // v0.39.0 — prefill คอลัมน์อ้างอิงจาก mapping เดิม
+    setElTechAssetId('') // v0.44.0 — ไม่ auto-เลือก asset (ค่า technicalName เดิมแสดงเป็น "ค่าปัจจุบัน" ใน select)
+    setElTechColumns([])
     setElRefColumns([])
     setElRefDraft(detail.columnMappings.map((m) => ({ assetId: m.assetId, columnName: m.columnName, note: m.note })))
     setDetailOpen(false)
@@ -738,13 +755,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
           pii: elPii,
           isCde: elCde,
           isFinancial: elFinancial,
-          // v0.43.0 — ฟอร์มยึดโครงสร้างหน้ารายละเอียด 9 หัวข้อ: ตัด examples/valueDomain/unit/
-          // classification/opUpdateFrequency/opNotes/customFields และ referenceSetId ออกจากฟอร์ม
+          // v0.44.0 — หัวข้อ 5–6 ของโซน B (ตัวอย่างข้อมูล + ระดับชั้นความลับ) กลับเข้าฟอร์ม — ส่งทั้งสร้าง/แก้ไข
+          examples: elExamples,
+          sensitivityLevel: elSensitivity,
+          // v0.43.0 — ฟิลด์ที่ยังไม่อยู่ในฟอร์ม (valueDomain/unit/classification/opFreq/opNotes/customFields):
           // สร้างใหม่ = ไม่ส่ง (API ใช้ค่า default) · แก้ไข = ส่งค่าเดิมกลับ (passthrough — API metaFields
           // เขียนทับด้วยค่าว่างเมื่อไม่ส่ง, referenceSetId ไม่ส่ง = คงค่าเดิมตามสัญญา v0.31.0)
           ...(isEdit
             ? {
-                examples: elExamples,
                 valueDomain: elValueDomain.trim(),
                 unit: elUnit.trim(),
                 classification: elClassification,
@@ -869,6 +887,34 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       if (exists) return prev.filter((m) => !(m.assetId === assetId && m.columnName === columnName))
       return [...prev, { assetId, columnName }]
     })
+  }
+
+  /* v0.44.0 — โหลดคอลัมน์ของ Data Asset สำหรับ picker "หัวข้อ 3 Technical Name" (โซน A) */
+  async function loadElTechColumns(id: string) {
+    setElTechAssetId(id)
+    setElTechColumns([])
+    if (!id) return
+    setElTechLoading(true)
+    try {
+      const res = await fetch(`/api/assets/${id}?pageSize=5&role=DATA_STEWARD`)
+      const data = await res.json()
+      if (res.ok) setElTechColumns(data?.columns ?? [])
+    } catch {
+      /* คงรายการเดิมไว้ */
+    } finally {
+      setElTechLoading(false)
+    }
+  }
+
+  /* v0.44.0 — สร้าง "ตัวอย่างข้อมูล" ให้สอดคล้องกับหัวข้อ 1–3 ของโซน B (Data Type/Length/Format) ทันทีที่เปลี่ยน */
+  function syncElExample(next: { dataType?: string; maxLength?: string; format?: string }) {
+    setElExamples(
+      suggestElementExample(
+        next.dataType ?? elDataType,
+        next.maxLength ?? elMaxLength,
+        next.format ?? elFormat,
+      ),
+    )
   }
 
   return (
@@ -1430,8 +1476,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   ระบบแสดง reference ว่านำมาจากข้อมูลที่ไหน
                 </li>
                 <li>
-                  กำหนด <span className="font-semibold text-foreground">ข้อมูลทะเบียนให้ครบ 9 หัวข้อ</span> — Business Name · Technical Name · Definition · Data Type (14 ชนิด) · Data Length · Format · Multiplicity/Optionality (บังคับกรอก/ไม่บังคับ + CDE) · Source/Origin · Owner/Steward —
-                  กดที่รายการเพื่อกางสรุป ธุรกิจ/เทคนิค หรือกด &quot;รายละเอียด Data Dictionary&quot; เพื่อดูครบทั้ง 9 หัวข้อ (แยกส่วนงานจากกฎ DQ — กฎจัดการที่เมนู Data Quality Rules)
+                  กำหนด <span className="font-semibold text-foreground">ข้อมูลทะเบียนให้ครบ 13 หัวข้อ</span> (v0.44.0 เริ่มนับ 1 ใหม่รายโซน) — โซน A: Business Name (ไทย/อังกฤษ) · Technical Name (เลือกคอลัมน์จาก Data Asset หรือพิมพ์เอง) · Definition — โซน B: Data Type (14 ชนิด) · Data Length · Format · Multiplicity/Optionality (บังคับกรอก/ไม่บังคับ + CDE) · ตัวอย่างข้อมูล (สร้างอัตโนมัติให้สอดคล้องกับ Type/Length/Format) · ระดับชั้นความลับ (Public → Secret) — โซน C: Source/Origin · คอลัมน์อ้างอิง · Owner/Steward —
+                  กดที่รายการเพื่อกางสรุป ธุรกิจ/เทคนิค หรือกด &quot;รายละเอียด Data Dictionary&quot; เพื่อดูครบทั้ง 13 หัวข้อ (แยกส่วนงานจากกฎ DQ — กฎจัดการที่เมนู Data Quality Rules)
                 </li>
               </ol>
             </div>
@@ -1498,12 +1544,12 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 </DialogTitle>
                 <DialogDescription>
                   Data Dictionary ใต้โดเมนย่อย &quot;{detail.subDomain.parent ? `${detail.subDomain.parent.name} / ` : ''}
-                  {detail.subDomain.name}&quot; — โครงสร้าง 9 หัวข้อ (Business Name ถึง Owner / Steward)
+                  {detail.subDomain.name}&quot; — โครงสร้าง 3 โซน 13 หัวข้อ (Business Name ถึง Owner / Steward · v0.44.0 เริ่มนับ 1 ใหม่รายโซน)
                 </DialogDescription>
               </DialogHeader>
 
               <div className="grid gap-3">
-                {/* ---------- โซน A — ระบุตัวตน (Identification): 2.1–2.3 ---------- */}
+                {/* ---------- โซน A — ระบุตัวตน (Identification): หัวข้อ 1–4 (v0.44.0 เริ่มนับ 1 ใหม่รายโซน — ตรงกับฟอร์ม) ---------- */}
                 <section className="rounded-lg border p-3" aria-label="โซน A — ระบุตัวตน">
                   <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                     <BookText className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน A — ระบุตัวตน (Identification)
@@ -1511,14 +1557,19 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   <div className="mt-2 grid gap-2">
                     <div>
                       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        2.1 Business Name (ชื่อทางธุรกิจ) — ชื่อเรียกที่เข้าใจง่ายในมุมธุรกิจ
+                        1. Business Name (ชื่อทางธุรกิจ) — ชื่อเรียกที่เข้าใจง่ายในมุมธุรกิจ
                       </p>
                       <p className="mt-0.5 text-sm font-medium">{detail.nameTh}</p>
-                      {detail.nameEn && <p className="text-xs text-muted-foreground">{detail.nameEn}</p>}
                     </div>
                     <div>
                       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        2.2 Technical Name / Field Name (ชื่อในระบบหรือฐานข้อมูล)
+                        2. Business Name ภาษาอังกฤษ (ไม่บังคับ)
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{detail.nameEn || '— ยังไม่ระบุ —'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        3. Technical Name / Field Name (ชื่อในระบบหรือฐานข้อมูล)
                       </p>
                       {detail.technicalName ? (
                         <p className="mt-0.5 break-words font-mono text-xs [overflow-wrap:anywhere]">{detail.technicalName}</p>
@@ -1528,39 +1579,39 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                     </div>
                     <div>
                       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        2.3 Definition / Description (คำอธิบายความหมาย)
+                        4. Definition / Description (คำอธิบายความหมาย)
                       </p>
                       <p className="mt-0.5 text-xs [overflow-wrap:anywhere]">{detail.definition || '— ยังไม่ระบุ —'}</p>
                     </div>
                   </div>
                 </section>
 
-                {/* ---------- โซน B — โครงสร้างข้อมูล (Data Structure): 2.4–2.7 ---------- */}
+                {/* ---------- โซน B — โครงสร้างข้อมูล (Data Structure): หัวข้อ 1–6 (v0.44.0 เพิ่มตัวอย่างข้อมูล + ระดับชั้นความลับ) ---------- */}
                 <section className="rounded-lg border p-3" aria-label="โซน B — โครงสร้างข้อมูล">
                   <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                     <Cog className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน B — โครงสร้างข้อมูล (Data Structure)
                   </p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">2.4 Data Type (ประเภทของข้อมูล)</p>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">1. Data Type (ประเภทของข้อมูล)</p>
                       <p className="mt-0.5 text-xs font-medium">
                         {ELEMENT_DATA_TYPE_LABELS[detail.dataType as ElementDataType]?.th ?? detail.dataType}
                         {detail.unit ? <span className="font-normal text-muted-foreground"> · หน่วย {detail.unit}</span> : null}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">2.5 Data Length / Size (ความยาวของข้อมูล)</p>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">2. Data Length / Size (ความยาวของข้อมูล)</p>
                       <p className="mt-0.5 text-xs font-medium">
                         {detail.maxLength !== null ? `Varchar(${detail.maxLength})` : '—'}
                         {detail.maxLength !== null && <span className="font-normal text-muted-foreground"> — เก็บได้ไม่เกิน {detail.maxLength} ตัวอักษร</span>}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">2.6 Format / Pattern (รูปแบบการแสดงผล)</p>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">3. Format / Pattern (รูปแบบการแสดงผล)</p>
                       <p className="mt-0.5 break-words font-mono text-xs [overflow-wrap:anywhere]">{detail.formatPattern || '—'}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">2.7 Multiplicity / Optionality (เงื่อนไขการบังคับใช้)</p>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">4. Multiplicity / Optionality (เงื่อนไขการบังคับใช้)</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <Badge
                           variant="outline"
@@ -1579,10 +1630,30 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                         )}
                       </div>
                     </div>
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">5. ตัวอย่างข้อมูล (Example)</p>
+                      {detail.examples ? (
+                        <p className="mt-0.5 break-words font-mono text-xs [overflow-wrap:anywhere]">{detail.examples}</p>
+                      ) : (
+                        <p className="mt-0.5 text-xs text-muted-foreground">— ยังไม่ระบุ —</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">6. ระดับชั้นความลับ (Sensitivity Level)</p>
+                      <div className="mt-1">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] font-medium ${elementSensitivityLabel(detail.sensitivityLevel).chip}`}
+                        >
+                          <span className={`mr-1 inline-block size-2 rounded-full ${elementSensitivityLabel(detail.sensitivityLevel).dot}`} aria-hidden="true" />
+                          {elementSensitivityLabel(detail.sensitivityLevel).en} · {elementSensitivityLabel(detail.sensitivityLevel).th}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
-                {/* ---------- โซน C — ที่มาและผู้รับผิดชอบ (Source & Accountability): 2.8–2.9 ---------- */}
+                {/* ---------- โซน C — ที่มาและผู้รับผิดชอบ (Source & Accountability): หัวข้อ 1–3 (v0.44.0 เริ่มนับ 1 ใหม่รายโซน — ตรงกับฟอร์ม) ---------- */}
                 <section className="rounded-lg border p-3" aria-label="โซน C — ที่มาและผู้รับผิดชอบ">
                   <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                     <Briefcase className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน C — ที่มาและผู้รับผิดชอบ (Source &amp; Accountability)
@@ -1590,10 +1661,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   <div className="mt-2 grid gap-2">
                     <div>
                       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        2.8 Source / Origin (แหล่งที่มาของข้อมูล)
+                        1. Source / Origin (แหล่งที่มาของข้อมูล)
                       </p>
                       <p className="mt-0.5 text-xs [overflow-wrap:anywhere]">{detail.sourceOrigin || '— ยังไม่ระบุ —'}</p>
-                      <p className="mt-1.5 text-[10px] font-medium text-muted-foreground">คอลัมน์จริงที่อ้างอิงจาก Data Asset ({detail.columnMappings.length})</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        2. คอลัมน์จริงที่อ้างอิงจาก Data Asset ({detail.columnMappings.length})
+                      </p>
                       {detail.columnMappings.length > 0 ? (
                         <div className="mt-1 flex flex-wrap gap-1.5">
                           {detail.columnMappings.map((m) => (
@@ -1606,9 +1681,9 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                     </div>
                     <div>
                       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        2.9 Owner / Steward (ผู้ดูแลข้อมูล)
+                        3. Owner / Steward (ผู้ดูแลข้อมูล) — จัดเรียงทีละบรรทัด (v0.44.0)
                       </p>
-                      <div className="mt-1 grid gap-2 sm:grid-cols-3">
+                      <div className="mt-1 grid gap-2">
                         <div>
                           <p className="text-[10px] text-muted-foreground">เจ้าของข้อมูล (Data Owner)</p>
                           <p className="text-xs font-medium">{detailStewardship?.owner ? detailStewardship.owner.name : '— ไม่ระบุ —'}</p>
@@ -1717,8 +1792,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
             <DialogTitle>{elFormMode === 'create' ? 'เพิ่ม Data Dictionary' : 'แก้ไขข้อมูลทะเบียนของ Data Dictionary'}</DialogTitle>
             <DialogDescription>
               {elFormMode === 'create'
-                ? `ขั้นที่ 3 — สร้างใต้ Sub Data Domain "${elFormSubLabel}" — โครงสร้าง 3 โซน 9 หัวข้อเดียวกับหน้ารายละเอียด (Business Name ถึง Owner / Steward) · รหัส EL-#### สร้างอัตโนมัติ · สถานะเริ่มต้น "ร่าง"`
-                : 'แก้ไขได้ทุกฟิลด์ตามโครงสร้าง 3 โซน 9 หัวข้อเดียวกับหน้ารายละเอียด (สถานะเปลี่ยนผ่านส่วน "สถานะทะเบียน" ในหน้ารายละเอียด · ย้ายโดเมนย่อย = ลบแล้วสร้างใหม่เพื่อคงประวัติ)'}
+                ? `ขั้นที่ 3 — สร้างใต้ Sub Data Domain "${elFormSubLabel}" — โครงสร้าง 3 โซน 13 หัวข้อเดียวกับหน้ารายละเอียด (Business Name ถึง Owner / Steward · v0.44.0 เลือกคอลัมน์จาก Data Asset + ตัวอย่างอัตโนมัติ + ระดับชั้นความลับ) · รหัส EL-#### สร้างอัตโนมัติ · สถานะเริ่มต้น "ร่าง"`
+                : 'แก้ไขได้ทุกฟิลด์ตามโครงสร้าง 3 โซน 13 หัวข้อเดียวกับหน้ารายละเอียด (สถานะเปลี่ยนผ่านส่วน "สถานะทะเบียน" ในหน้ารายละเอียด · ย้ายโดเมนย่อย = ลบแล้วสร้างใหม่เพื่อคงประวัติ)'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -1732,7 +1807,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 {elFormMode === 'create' ? 'รายการใหม่เริ่มต้นเป็น "ร่าง" — เปิดใช้งานได้จากหน้ารายละเอียด' : 'เปลี่ยนผ่านส่วน "สถานะทะเบียน" ในหน้ารายละเอียด'}
               </span>
             </div>
-            {/* ---------- โซน A — ระบุตัวตน (Identification): 2.1–2.3 ---------- */}
+            {/* ---------- โซน A — ระบุตัวตน (Identification): หัวข้อ 1–4 (v0.44.0 เริ่มนับ 1 ใหม่รายโซน) ---------- */}
             <section className="grid gap-3 rounded-lg border p-3" aria-label="โซน A — ระบุตัวตน">
               <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                 <BookText className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน A — ระบุตัวตน (Identification)
@@ -1740,28 +1815,69 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="el-name">
-                    2.1 Business Name (ชื่อทางธุรกิจ) <span className="text-rose-600">*</span>
+                    1. Business Name (ชื่อทางธุรกิจ) <span className="text-rose-600">*</span>
                   </Label>
                   <Input id="el-name" value={elName} onChange={(e) => setElName(e.target.value)} maxLength={ELEMENT_NAME_MAX} placeholder="เช่น ชื่อ-นามสกุลลูกค้า, รหัสสินค้า" />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="el-name-en">Business Name ภาษาอังกฤษ (ไม่บังคับ)</Label>
+                  <Label htmlFor="el-name-en">2. Business Name ภาษาอังกฤษ (ไม่บังคับ)</Label>
                   <Input id="el-name-en" value={elNameEn} onChange={(e) => setElNameEn(e.target.value)} maxLength={ELEMENT_NAME_MAX} placeholder="เช่น Customer Full Name" />
                 </div>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="el-technical">2.2 Technical Name / Field Name (ชื่อในระบบหรือฐานข้อมูล)</Label>
+                <Label htmlFor="el-technical">3. Technical Name / Field Name (ชื่อในระบบหรือฐานข้อมูล)</Label>
+                {/* v0.44.0 — เลือก column จาก Data Asset มาเป็น Technical Name (หรือพิมพ์เอง) */}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Select value={elTechAssetId} onValueChange={(v) => void loadElTechColumns(v)}>
+                    <SelectTrigger className="h-9 w-full text-xs" aria-label="เลือก Data Asset ต้นทางของคอลัมน์">
+                      <SelectValue placeholder="— เลือก Data Asset —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {assets.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name} · {a.columnCount} คอลัมน์
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {elTechLoading ? (
+                    <div className="flex h-9 items-center gap-2 rounded-md border px-3 text-xs text-muted-foreground" aria-live="polite">
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> กำลังโหลดคอลัมน์…
+                    </div>
+                  ) : (
+                    <Select value={elTechnicalName} onValueChange={setElTechnicalName}>
+                      <SelectTrigger className="h-9 w-full font-mono text-xs" aria-label="เลือกคอลัมน์จาก Data Asset">
+                        <SelectValue placeholder={elTechAssetId ? '— เลือกคอลัมน์ —' : 'เลือก Data Asset ก่อน หรือพิมพ์เอง'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {elTechnicalName && !elTechColumns.some((c) => c.name === elTechnicalName) && (
+                          <SelectItem value={elTechnicalName}>
+                            {elTechnicalName} (ค่าปัจจุบัน)
+                          </SelectItem>
+                        )}
+                        {elTechColumns.map((c) => (
+                          <SelectItem key={c.name} value={c.name}>
+                            {c.name} · {DATA_TYPE_LABELS[c.dataType] ?? c.dataType}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
                 <Input
                   id="el-technical"
                   value={elTechnicalName}
                   onChange={(e) => setElTechnicalName(e.target.value)}
                   maxLength={ELEMENT_NAME_MAX}
                   className="font-mono text-xs"
-                  placeholder="เช่น cus_first_name, product_id"
+                  placeholder="หรือพิมพ์ชื่อฟิลด์เอง เช่น cus_first_name, product_id"
                 />
+                <p className="text-[10px] text-muted-foreground">
+                  เลือก Data Asset แล้วเลือกคอลัมน์เพื่อกรอกให้อัตโนมัติ หรือพิมพ์เองก็ได้ — บันทึกลง Technical Name ค่าเดียวกัน
+                </p>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="el-definition">2.3 Definition / Description (คำอธิบายความหมาย)</Label>
+                <Label htmlFor="el-definition">4. Definition / Description (คำอธิบายความหมาย)</Label>
                 <Textarea
                   id="el-definition"
                   value={elDefinition}
@@ -1772,16 +1888,22 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 />
               </div>
             </section>
-            {/* ---------- โซน B — โครงสร้างข้อมูล (Data Structure): 2.4–2.7 + ธง CDE/การเงิน/PII ---------- */}
+            {/* ---------- โซน B — โครงสร้างข้อมูล (Data Structure): หัวข้อ 1–6 + ธง CDE/PII (v0.44.0 — ตัดธง “ผลต่อการรายงานการเงิน” ออกจากฟอร์ม ค่าเดิมคงอยู่ในระบบ) ---------- */}
             <section className="grid gap-3 rounded-lg border p-3" aria-label="โซน B — โครงสร้างข้อมูล">
               <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                 <Cog className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน B — โครงสร้างข้อมูล (Data Structure)
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-1.5">
-                  <Label htmlFor="el-datatype">2.4 Data Type (ประเภทของข้อมูล)</Label>
-                  <Select value={elDataType} onValueChange={setElDataType}>
-                    <SelectTrigger id="el-datatype" aria-label="ประเภทของข้อมูล">
+                  <Label htmlFor="el-datatype">1. Data Type (ประเภทของข้อมูล)</Label>
+                  <Select
+                    value={elDataType}
+                    onValueChange={(v) => {
+                      setElDataType(v)
+                      syncElExample({ dataType: v }) // v0.44.0 — ตัวอย่างข้อมูลสอดคล้องกับหัวข้อ 1–3 เสมอ
+                    }}
+                  >
+                    <SelectTrigger id="el-datatype" aria-label="ประเภทของข้อมูล" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1794,19 +1916,40 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   </Select>
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="el-maxlen">2.5 Data Length (ความยาวสูงสุด — เช่น Varchar(100))</Label>
-                  <Input id="el-maxlen" type="number" min={0} value={elMaxLength} onChange={(e) => setElMaxLength(e.target.value)} placeholder="ไม่ระบุ" />
+                  <Label htmlFor="el-maxlen">2. Data Length (ความยาวสูงสุด — เช่น Varchar(100))</Label>
+                  <Input
+                    id="el-maxlen"
+                    type="number"
+                    min={0}
+                    value={elMaxLength}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setElMaxLength(v)
+                      syncElExample({ maxLength: v }) // v0.44.0
+                    }}
+                    placeholder="ไม่ระบุ"
+                  />
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-1.5">
-                  <Label htmlFor="el-format">2.6 Format / Pattern (รูปแบบการแสดงผล)</Label>
-                  <Input id="el-format" value={elFormat} onChange={(e) => setElFormat(e.target.value)} maxLength={ELEMENT_TEXT_MAX} placeholder="เช่น YYYY-MM-DD หรือ 0xx-xxx-xxxx" />
+                  <Label htmlFor="el-format">3. Format / Pattern (รูปแบบการแสดงผล)</Label>
+                  <Input
+                    id="el-format"
+                    value={elFormat}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setElFormat(v)
+                      syncElExample({ format: v }) // v0.44.0
+                    }}
+                    maxLength={ELEMENT_TEXT_MAX}
+                    placeholder="เช่น YYYY-MM-DD หรือ 0xx-xxx-xxxx"
+                  />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="el-optionality">2.7 Multiplicity / Optionality (เงื่อนไขการบังคับใช้)</Label>
+                  <Label htmlFor="el-optionality">4. Multiplicity / Optionality (เงื่อนไขการบังคับใช้)</Label>
                   <Select value={elOptionality} onValueChange={setElOptionality}>
-                    <SelectTrigger id="el-optionality" aria-label="เงื่อนไขการบังคับใช้ของข้อมูล">
+                    <SelectTrigger id="el-optionality" aria-label="เงื่อนไขการบังคับใช้ของข้อมูล" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1819,26 +1962,52 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   </Select>
                 </div>
               </div>
-              {/* ธงข้อมูล — CDE / การเงิน / PII (แสดงเป็น badge ที่หัวหน้ารายละเอียด · มีผลต่อระบบจริง) */}
+              {/* หัวข้อ 5–6 (v0.44.0): ตัวอย่างข้อมูลอัตโนมัติ + ระดับชั้นความลับ */}
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
-                  <div>
-                    <Label htmlFor="el-cde" className="flex items-center gap-1 text-sm">
-                      <Star className="size-3.5 text-amber-600" aria-hidden="true" /> CDE — ข้อมูลวิกฤต
-                    </Label>
-                    <p className="text-[11px] text-muted-foreground">แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำเป็นความเสี่ยง · เตือนเมื่อยังไม่มีกฎ</p>
-                  </div>
-                  <Switch id="el-cde" checked={elCde} onCheckedChange={setElCde} aria-label="เปิด/ปิดธง CDE" />
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-examples">5. ตัวอย่างข้อมูล (Example)</Label>
+                  <Input
+                    id="el-examples"
+                    value={elExamples}
+                    onChange={(e) => setElExamples(e.target.value)}
+                    maxLength={ELEMENT_TEXT_MAX}
+                    placeholder="เช่น 2025-01-15"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    สร้างอัตโนมัติให้สอดคล้องกับหัวข้อ 1–3 (เช่น DATE · 10 · YYYY-MM-DD → 2025-01-15) — แก้ไขเองได้ แต่การเปลี่ยนหัวข้อ 1–3 จะสร้างใหม่
+                  </p>
                 </div>
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50/60 p-3">
-                  <div>
-                    <Label htmlFor="el-financial" className="flex items-center gap-1 text-sm">
-                      <Banknote className="size-3.5 text-teal-600" aria-hidden="true" /> ผลต่อการรายงานการเงิน
-                    </Label>
-                    <p className="text-[11px] text-muted-foreground">แดชบอร์ดผู้บริหารนับความเสี่ยงรายงานเงินเมื่อคะแนนต่ำกว่าเกณฑ์</p>
-                  </div>
-                  <Switch id="el-financial" checked={elFinancial} onCheckedChange={setElFinancial} aria-label="เปิด/ปิดธงการเงิน" />
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-sensitivity">6. ระดับชั้นความลับ (Sensitivity Level)</Label>
+                  <Select value={elSensitivity} onValueChange={setElSensitivity}>
+                    <SelectTrigger id="el-sensitivity" aria-label="ระดับชั้นความลับ" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ELEMENT_SENSITIVITY_LEVELS.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className={`inline-block size-2 rounded-full ${ELEMENT_SENSITIVITY_LEVEL_LABELS[s].dot}`} aria-hidden="true" />
+                            {ELEMENT_SENSITIVITY_LEVEL_LABELS[s].en} · {ELEMENT_SENSITIVITY_LEVEL_LABELS[s].th}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    กำหนดระดับการเปิดเผยข้อมูล (Public → Secret) — ใช้ประกอบการควบคุมสิทธิ์เข้าถึงและการปิดบังค่าตาม PDPA
+                  </p>
                 </div>
+              </div>
+              {/* ธงข้อมูล — CDE / PII (แสดงเป็น badge ที่หัวหน้ารายละเอียด · มีผลต่อระบบจริง) — v0.44.0 ตัดธง “ผลต่อการรายงานการเงิน” ออกจากฟอร์ม (ค่าเดิมยังทำงาน/แสดงเฉพาะที่จำเป็น) */}
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                <div>
+                  <Label htmlFor="el-cde" className="flex items-center gap-1 text-sm">
+                    <Star className="size-3.5 text-amber-600" aria-hidden="true" /> CDE — ข้อมูลวิกฤต
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำเป็นความเสี่ยง · เตือนเมื่อยังไม่มีกฎ</p>
+                </div>
+                <Switch id="el-cde" checked={elCde} onCheckedChange={setElCde} aria-label="เปิด/ปิดธง CDE" />
               </div>
               <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
                 <div>
@@ -1850,13 +2019,13 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 <Switch id="el-pii" checked={elPii} onCheckedChange={setElPii} aria-label="เปิด/ปิดสถานะ PII" />
               </div>
             </section>
-            {/* ---------- โซน C — ที่มาและผู้รับผิดชอบ (Source & Accountability): 2.8–2.9 ---------- */}
+            {/* ---------- โซน C — ที่มาและผู้รับผิดชอบ (Source & Accountability): หัวข้อ 1–3 (v0.44.0 เริ่มนับ 1 ใหม่รายโซน) ---------- */}
             <section className="grid gap-3 rounded-lg border p-3" aria-label="โซน C — ที่มาและผู้รับผิดชอบ">
               <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                 <Briefcase className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน C — ที่มาและผู้รับผิดชอบ (Source &amp; Accountability)
               </p>
               <div className="grid gap-1.5">
-                <Label htmlFor="el-source-origin">2.8 Source / Origin (แหล่งที่มาของข้อมูล — ไม่บังคับ)</Label>
+                <Label htmlFor="el-source-origin">1. Source / Origin (แหล่งที่มาของข้อมูล — ไม่บังคับ)</Label>
                 <Input
                   id="el-source-origin"
                   value={elSourceOrigin}
@@ -1865,10 +2034,10 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   placeholder="เช่น มาจากฟอร์มสมัครสมาชิก, มาจากระบบ POS (คอลัมน์จริงที่ผูกไว้แสดงในหน้ารายละเอียด)"
                 />
               </div>
-              {/* คอลัมน์อ้างอิงจาก Data Asset (v0.39.0 — ย้ายเข้าโซน C คู่กับหัวข้อ 2.8 ใน v0.43.0) */}
+              {/* คอลัมน์อ้างอิงจาก Data Asset (v0.39.0 — ย้ายเข้าโซน C คู่กับหัวข้อ 1 Source / Origin · v0.44.0 เป็นหัวข้อ 2) */}
               <div className="grid gap-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
                 <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
-                  <Link2 className="size-3.5" aria-hidden="true" /> คอลัมน์อ้างอิงจาก Data Asset (Reference) — ระบุว่าข้อมูลนี้นำมาจากที่ใด
+                  <Link2 className="size-3.5" aria-hidden="true" /> 2. คอลัมน์อ้างอิงจาก Data Asset (Reference) — ระบุว่าข้อมูลนี้นำมาจากที่ใด
                 </p>
                 <Select value={elRefAssetId} onValueChange={(v) => void loadElRefColumns(v)}>
                   <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือก Data Asset เพื่อเลือกคอลัมน์อ้างอิง">
@@ -1912,15 +2081,16 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   </div>
                 )}
                 <p className="text-[10px] text-muted-foreground">
-                  เลือกแล้ว {elRefDraft.length} คอลัมน์ — reference จะแสดงบนแคตตาล็อกและหัวข้อ 2.8 Source / Origin ว่า Data Dictionary นี้นำมาจาก Data Asset ใดคอลัมน์ใด
+                  เลือกแล้ว {elRefDraft.length} คอลัมน์ — reference จะแสดงบนแคตตาล็อกและหัวข้อ 1 Source / Origin ว่า Data Dictionary นี้นำมาจาก Data Asset ใดคอลัมน์ใด
                 </p>
               </div>
-              <p className="text-xs font-semibold">2.9 OWNER / STEWARD (ผู้ดูแลข้อมูล)</p>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <p className="text-xs font-semibold">3. OWNER / STEWARD (ผู้ดูแลข้อมูล)</p>
+              {/* v0.44.0 — จัดเรียงทีละบรรทัดตามผู้ใช้กำหนด (เดิม sm:grid-cols-3) */}
+              <div className="grid gap-3">
                 <div className="grid gap-1.5">
                   <Label htmlFor="el-owner">เจ้าของข้อมูล (Data Owner)</Label>
                   <Select value={elOwner || NO_DOMAIN} onValueChange={(v) => setElOwner(v === NO_DOMAIN ? '' : v)}>
-                    <SelectTrigger id="el-owner" aria-label="เจ้าของข้อมูล">
+                    <SelectTrigger id="el-owner" aria-label="เจ้าของข้อมูล" className="w-full">
                       <SelectValue placeholder="— ไม่ระบุ —" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1936,7 +2106,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 <div className="grid gap-1.5">
                   <Label htmlFor="el-steward">ผู้ดูแลข้อมูล (Data Steward)</Label>
                   <Select value={elSteward || NO_DOMAIN} onValueChange={(v) => setElSteward(v === NO_DOMAIN ? '' : v)}>
-                    <SelectTrigger id="el-steward" aria-label="ผู้ดูแลข้อมูล">
+                    <SelectTrigger id="el-steward" aria-label="ผู้ดูแลข้อมูล" className="w-full">
                       <SelectValue placeholder="— ไม่ระบุ —" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1952,7 +2122,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 <div className="grid gap-1.5">
                   <Label htmlFor="el-custodian">ผู้เก็บรักษาข้อมูล (Data Custodian)</Label>
                   <Select value={elCustodian || NO_DOMAIN} onValueChange={(v) => setElCustodian(v === NO_DOMAIN ? '' : v)}>
-                    <SelectTrigger id="el-custodian" aria-label="ผู้เก็บรักษาข้อมูล">
+                    <SelectTrigger id="el-custodian" aria-label="ผู้เก็บรักษาข้อมูล" className="w-full">
                       <SelectValue placeholder="— ไม่ระบุ —" />
                     </SelectTrigger>
                     <SelectContent>

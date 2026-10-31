@@ -71,6 +71,26 @@ export function isElementDataType(v: string): v is ElementDataType {
   return (ELEMENT_DATA_TYPES as readonly string[]).includes(v)
 }
 
+/** ระดับชั้นความลับ (v0.44.0 — หัวข้อ 6 โซน B ของฟอร์ม/รายละเอียด Data Dictionary) */
+export const ELEMENT_SENSITIVITY_LEVELS = ['PUBLIC', 'INTERNAL_USE', 'CONFIDENTIAL', 'SECRET'] as const
+export type ElementSensitivityLevel = (typeof ELEMENT_SENSITIVITY_LEVELS)[number]
+
+export const ELEMENT_SENSITIVITY_LEVEL_LABELS: Record<ElementSensitivityLevel, { th: string; en: string; chip: string; dot: string }> = {
+  PUBLIC: { th: 'สาธารณะ', en: 'Public', chip: 'border-emerald-300 bg-emerald-50 text-emerald-800', dot: 'bg-emerald-500' },
+  INTERNAL_USE: { th: 'ใช้ภายในองค์กร', en: 'Internal Use', chip: 'border-slate-300 bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
+  CONFIDENTIAL: { th: 'ลับ', en: 'Confidential', chip: 'border-amber-300 bg-amber-50 text-amber-800', dot: 'bg-amber-500' },
+  SECRET: { th: 'ลับมาก', en: 'Secret', chip: 'border-rose-200 bg-rose-50 text-rose-700', dot: 'bg-rose-500' },
+}
+
+export function isElementSensitivityLevel(v: string): v is ElementSensitivityLevel {
+  return (ELEMENT_SENSITIVITY_LEVELS as readonly string[]).includes(v)
+}
+
+/** คืน label ของระดับชั้นความลับ (ค่าที่ไม่รู้จัก = INTERNAL_USE — deny-by-default เพื่อความปลอดภัย) */
+export function elementSensitivityLabel(v: string): { th: string; en: string; chip: string; dot: string } {
+  return isElementSensitivityLevel(v) ? ELEMENT_SENSITIVITY_LEVEL_LABELS[v] : ELEMENT_SENSITIVITY_LEVEL_LABELS.INTERNAL_USE
+}
+
 /** สถานะทะเบียน (แนวคิด ISO 11179 registration status — ปรับให้เหมาะกับระบบ) */
 export const ELEMENT_STATUSES = ['DRAFT', 'ACTIVE', 'DEPRECATED'] as const
 export type ElementStatus = (typeof ELEMENT_STATUSES)[number]
@@ -139,6 +159,71 @@ export const ELEMENT_FLAGS = [
 
 /** คะแนน element ต่ำกว่าค่านี้ = เกรด "ต้องปรับปรุง" หรือ "วิกฤต" (ใช้นับ CDE/Financial คะแนนต่ำ) — ตรงกับเกรด ดี (85) ใน lib/dama */
 export const ELEMENT_FLAG_BELOW_THRESHOLD = 85
+
+/**
+ * v0.44.0 — สร้าง "ตัวอย่างข้อมูล" ให้สอดคล้องกับ Data Type / Data Length / Format โดยอัตโนมัติ
+ * (เช่น DATE · 10 · YYYY-MM-DD → "2025-01-15") — ผู้ใช้แก้ไขเองได้ภายหลัง แต่การเปลี่ยนหัวข้อ 1–3 ของโซน B จะสร้างใหม่ให้
+ */
+export function suggestElementExample(dataType: string, maxLength: string | number | null, formatPattern: string): string {
+  const len = Number(maxLength)
+  const hasLen = maxLength !== '' && maxLength !== null && maxLength !== undefined && Number.isFinite(len) && len > 0
+  const fmt = String(formatPattern ?? '').trim()
+  const fmtUp = fmt.toUpperCase()
+  switch (dataType) {
+    case 'DATE': {
+      if (fmtUp.includes('YYYY-MM-DD')) return '2025-01-15'
+      if (fmtUp.includes('YYYY/MM/DD')) return '2025/01/15'
+      if (fmtUp.includes('DD/MM/YYYY')) return '15/01/2025'
+      if (fmtUp.includes('MM/DD/YYYY')) return '01/15/2025'
+      if (fmtUp.includes('DD-MM-YYYY')) return '15-01-2025'
+      if (fmtUp.includes('YYYYMMDD')) return '20250115'
+      if (fmtUp.includes('DDMMYYYY')) return '15012025'
+      return '2025-01-15'
+    }
+    case 'DATETIME': {
+      if (fmtUp.includes('DD/MM/YYYY')) return '15/01/2025 09:30'
+      return '2025-01-15 09:30:00'
+    }
+    case 'TIME':
+      return '09:30:00'
+    case 'BOOLEAN':
+      return 'true'
+    case 'INTEGER':
+      return hasLen ? '1234567890'.slice(0, Math.min(Math.floor(len), 10)) : '100'
+    case 'NUMBER': {
+      if (fmt.includes('#,##0.00') || fmt.includes('0.00')) return '1,234.56'
+      if (hasLen) {
+        const intDigits = Math.max(Math.floor(len) - 3, 1)
+        return `${'12345678'.slice(0, Math.min(intDigits, 8))}.50`
+      }
+      return '1234.56'
+    }
+    case 'EMAIL':
+      return 'name@company.co.th'
+    case 'PHONE':
+      return '081-234-5678'
+    case 'URL':
+      return 'https://www.company.co.th'
+    case 'UUID':
+      return '550e8400-e29b-41d4-a716-446655440000'
+    case 'JSON':
+      return '{"key": "value"}'
+    case 'EMPTY':
+      return ''
+    default: {
+      // TEXT · LONG_TEXT · CODE — เดาจาก Format ก่อน แล้วยาวตาม Data Length (เช่น 10 → "ABC1234567")
+      if (fmtUp.includes('@')) return 'name@company.co.th'
+      if (fmtUp.includes('XXX-XXX') || fmtUp.includes('###-###')) return '081-234-5678'
+      if (fmtUp.includes('HTTP') || fmtUp.includes('WWW')) return 'https://www.company.co.th'
+      if (hasLen) {
+        const base = 'ABC1234567890'
+        const cap = Math.min(Math.floor(len), 30)
+        return base.repeat(Math.ceil(cap / base.length)).slice(0, cap)
+      }
+      return 'ABC123'
+    }
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* Types — รูปทรงข้อมูลที่ API คืนให้ UI                               */
