@@ -6,9 +6,10 @@ import { DOMAIN_DESC_MAX, DOMAIN_NAME_MAX, isValidDomainColor } from '@/lib/doma
 /**
  * GET  /api/domains — รายการโดเมนข้อมูลทั้งหมด (flat + assetCount + datasetCount รายโดเมน — client ประกอบต้นไม้เอง)
  * POST /api/domains — สร้างโดเมนหลักหรือโดเมนย่อย
- *   body: { operatorEmail, name, nameEn?, description?, parentId?, color? }
+ *   body: { operatorEmail, name, nameEn?, description?, parentId?, color?, assetIds? (v0.39.0 — ผูก Data Asset เข้าโดเมนทันที) }
  * สิทธิ์ (เฉพาะ POST): MANAGE_DATASETS — ทุกการสร้างบันทึก Audit Trail
  * กติกา (deny-by-default): ลึกสุด 2 ระดับ · ชื่อซ้ำในระดับเดียวกันไม่ได้ · พ่อต้องเป็นโดเมนหลักเท่านั้น
+ * v0.39.0 — Data Catalog: สร้างโดเมนพร้อมเลือก Data Asset เข้ามาได้ (transaction เดียว + Audit Trail)
  */
 export async function GET() {
   try {
@@ -107,8 +108,25 @@ export async function POST(req: NextRequest) {
     }
 
     const position = await db.dataDomain.count({ where: { parentId: parentId } })
-    const created = await db.dataDomain.create({
-      data: { name, nameEn, description, parentId, color, position, createdBy: op.ctx.email },
+
+    // ---------- v0.39.0: เลือก Data Asset เข้ามาในโดเมน (ผูก DataAsset.domainId — ตรวจว่ามีจริงก่อน) ----------
+    const assetIdsRaw = Array.isArray(body.assetIds) ? body.assetIds : []
+    const assetIds = [...new Set(assetIdsRaw.map((v) => String(v ?? '').trim()).filter(Boolean))]
+    if (assetIds.length > 0) {
+      const found = await db.dataAsset.findMany({ where: { id: { in: assetIds } }, select: { id: true } })
+      if (found.length !== assetIds.length) {
+        return NextResponse.json({ error: 'ไม่พบ Data Asset บางรายการที่เลือก — ตรวจสอบแล้วลองใหม่' }, { status: 404 })
+      }
+    }
+
+    const created = await db.$transaction(async (tx) => {
+      const domain = await tx.dataDomain.create({
+        data: { name, nameEn, description, parentId, color, position, createdBy: op.ctx.email },
+      })
+      if (assetIds.length > 0) {
+        await tx.dataAsset.updateMany({ where: { id: { in: assetIds } }, data: { domainId: domain.id } })
+      }
+      return domain
     })
 
     await db.auditLog.create({
@@ -116,13 +134,14 @@ export async function POST(req: NextRequest) {
         action: 'CREATE_DATA_DOMAIN',
         actor: op.ctx.email,
         target: created.name,
-        detail: parentId
-          ? `สร้างโดเมนย่อย "${created.name}" ภายใต้โดเมนหลักที่ระบุ โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`
-          : `สร้างโดเมนหลัก "${created.name}" โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        detail: `สร้าง${parentId ? 'โดเมนย่อย' : 'โดเมนหลัก'} "${created.name}"${parentId ? ' ภายใต้โดเมนหลักที่ระบุ' : ''}${assetIds.length > 0 ? ` พร้อมเลือก Data Asset เข้ามา ${assetIds.length} รายการ` : ''} โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 
-    return NextResponse.json({ domain: created, message: `สร้างโดเมน "${created.name}" เรียบร้อย` }, { status: 201 })
+    return NextResponse.json(
+      { domain: created, message: `สร้างโดเมน "${created.name}" เรียบร้อย${assetIds.length > 0 ? ` (ผูก Data Asset ${assetIds.length} รายการ)` : ''}` },
+      { status: 201 },
+    )
   } catch (e) {
     console.error('POST /api/domains', e)
     return NextResponse.json({ error: 'สร้างโดเมนข้อมูลไม่สำเร็จ' }, { status: 500 })

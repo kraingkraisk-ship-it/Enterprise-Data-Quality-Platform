@@ -9,6 +9,8 @@ import {
   Boxes,
   Braces,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock3,
   Database,
   FolderPlus,
@@ -22,6 +24,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   Send,
   ShieldAlert,
   ShieldCheck,
@@ -97,12 +100,13 @@ import { MappingSideRow } from '@/components/data-mapping/mapping-row'
 import type { ExpandedMapping, LineageResponse } from '@/components/data-mapping/types'
 
 /* ------------------------------------------------------------------ */
-/* Data Domain Console (v0.18.0) — เมนูอิสระภายใต้กลุ่ม Data Asset      */
-/* โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Element >    */
-/* Meta Data (ISO/IEC 11179)                                           */
-/* (1) จัดการโครงสร้างโดเมน 2 ระดับ + Data Element ใต้โดเมนย่อยเสมอ      */
-/* (2) Meta Data ราย element + แมปคอลัมน์จริงจากคลังข้อมูล               */
-/* (3) จัดหมวดรายคอลัมน์ (v0.15.0) + ชุดข้อมูล DQ ในโดเมน (v0.16.0)      */
+/* Data Catalog (v0.39.0 — เดิมชื่อ Data Domain Console) — เมนูอิสระภายใต้กลุ่ม Data Asset */
+/* สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) — โครงสร้าง 4 ระดับ:            */
+/*   Data Domain (เลือก Data Asset เข้ามา) > Sub Data Domain > Data Element (อ้างอิงคอลัมน์) */
+/*   > Meta Data (ISO/IEC 11179)                                                          */
+/* (1) แคตตาล็อกแบบลำดับชั้น ค้นหา/ตรวจสอบชนิดข้อมูล รายละเอียด ประเภทข้อมูล             */
+/* (2) Meta Data ราย element + คอลัมน์อ้างอิง (reference) จาก Data Asset จริง             */
+/* (3) จัดหมวดรายคอลัมน์ (v0.15.0) + ชุดข้อมูล DQ ในโดเมน (v0.16.0) — แท็บเครื่องมือเสริม  */
 /* ------------------------------------------------------------------ */
 
 interface AssetItem {
@@ -194,6 +198,8 @@ interface ElementRow {
   position: number
   ruleCount: number
   mappingCount: number
+  /** v0.39.0 — คอลัมน์อ้างอิงจาก Data Asset (แสดงบนแคตตาล็อกว่า element นี้นำมาจากข้อมูลที่ไหน) */
+  columnMappings: Array<{ assetId: string; assetName: string; columnName: string; note: string }>
   createdAt: string
   updatedAt: string
 }
@@ -276,140 +282,20 @@ function domainChipCls(active: boolean, sub = false): string {
     : 'rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted/60'
 }
 
-/* ------------------------- แถวโดเมนในต้นไม้ ------------------------- */
+/* ------------------------- ชิปคอลัมน์อ้างอิง (v0.39.0) ------------------------- */
 
-function DomainTreeRow({
-  item,
-  sub,
-  childCount,
-  selected,
-  onSelect,
-  onEdit,
-  onAddSub,
-  onDelete,
-}: {
-  item: DomainItem
-  sub?: boolean
-  childCount: number
-  selected: boolean
-  onSelect: () => void
-  onEdit: () => void
-  onAddSub?: () => void
-  onDelete: () => void
-}) {
-  const col = domainColor(item.color)
-  const elementCount = item.elementCount ?? 0
-  const deletable = childCount === 0 && item.assetCount === 0 && (item.datasetCount ?? 0) === 0 && item.columnCount === 0 && elementCount === 0
-  const blockedReason =
-    childCount > 0
-      ? 'ลบโดเมนย่อยทั้งหมดก่อนจึงจะลบโดเมนนี้ได้'
-      : item.assetCount > 0
-        ? 'ย้ายข้อมูลออกจากโดเมนก่อนจึงจะลบได้'
-        : (item.datasetCount ?? 0) > 0
-          ? 'ย้ายชุดข้อมูล DQ ออกจากโดเมนก่อนจึงจะลบได้'
-          : elementCount > 0
-            ? 'ลบ Data Element ใต้โดเมนย่อยนี้ออกก่อนจึงจะลบได้'
-            : 'นำการจัดหมวดคอลัมน์ออกจากโดเมนนี้ก่อนจึงจะลบได้'
+/** ชิป "asset · column" — บอกว่า Data Element นี้นำมาจากข้อมูลที่ไหน (reference) */
+function ReferenceChip({ assetName, columnName }: { assetName: string; columnName: string }) {
   return (
-    <div
-      className={`flex items-center gap-2 rounded-lg border bg-card px-3 py-2 transition-colors ${
-        sub ? 'ml-6 border-dashed' : ''
-      } ${selected ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-200' : ''}`}
+    <span
+      className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-900"
+      title={`นำมาจาก Data Asset "${assetName}" คอลัมน์ "${columnName}"`}
     >
-      <button type="button" onClick={onSelect} aria-pressed={selected} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-        <span className={`size-2.5 shrink-0 rounded-full ${col.dot}`} aria-hidden="true" />
-        <span className="min-w-0 flex-1 overflow-hidden">
-          <span className="block truncate text-sm font-medium">
-            {item.name}
-            {item.nameEn && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{item.nameEn}</span>}
-          </span>
-          {item.description && <span className="block truncate text-xs text-muted-foreground">{item.description}</span>}
-        </span>
-        <Badge variant="outline" className="shrink-0 text-[10px] tabular-nums">
-          {item.assetCount} ข้อมูล · {(item.datasetCount ?? 0) as number} ชุด
-          <span className="hidden sm:inline"> · {item.columnCount} คอลัมน์</span>
-          {elementCount > 0 && <span className="hidden md:inline"> · {elementCount} element</span>}
-        </Badge>
-      </button>
-      {!sub && (
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7"
-          onClick={onAddSub}
-          title="เพิ่มโดเมนย่อย"
-          aria-label={`เพิ่มโดเมนย่อยใน ${item.name}`}
-        >
-          <FolderPlus className="size-3.5" aria-hidden="true" />
-        </Button>
-      )}
-      <Button size="icon" variant="ghost" className="size-7" onClick={onEdit} aria-label={`แก้ไขโดเมน ${item.name}`}>
-        <Pencil className="size-3.5" aria-hidden="true" />
-      </Button>
-      <Button
-        size="icon"
-        variant="ghost"
-        className="size-7 text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-35"
-        disabled={!deletable}
-        onClick={onDelete}
-        title={deletable ? 'ลบโดเมน' : blockedReason}
-        aria-label={`ลบโดเมน ${item.name}`}
-      >
-        <Trash2 className="size-3.5" aria-hidden="true" />
-      </Button>
-    </div>
-  )
-}
-
-/* ------------------------- แถว Data Element ------------------------- */
-
-function ElementRowCard({ e, onClick }: { e: ElementRow; onClick: () => void }) {
-  const status = ELEMENT_STATUS_LABELS[e.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE
-  const dt = ELEMENT_DATA_TYPE_LABELS[e.dataType as ElementDataType] ?? { th: e.dataType }
-  const cdeWarning = e.isCde && e.ruleCount === 0
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-emerald-400 hover:bg-emerald-50/40"
-      aria-label={`เปิดรายละเอียด ${e.nameTh}`}
-    >
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-[10px] text-muted-foreground">{e.code}</span>
-        <span className="text-sm font-medium">{e.nameTh}</span>
-        {e.nameEn && <span className="text-xs text-muted-foreground">{e.nameEn}</span>}
-        {e.isCde && (
-          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[9px] font-medium text-amber-800" title="Critical Data Element — ข้อมูลวิกฤตต่อองค์กร">
-            <Star className="mr-0.5 size-2.5" aria-hidden="true" /> CDE
-          </Badge>
-        )}
-        {e.isFinancial && (
-          <Badge variant="outline" className="border-teal-300 bg-teal-50 text-[9px] font-medium text-teal-800" title="ผลกระทบต่อการรายงานทางการเงิน">
-            <Banknote className="mr-0.5 size-2.5" aria-hidden="true" /> การเงิน
-          </Badge>
-        )}
-        {e.pii && (
-          <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[9px] text-rose-700">
-            <ShieldAlert className="mr-0.5 size-2.5" aria-hidden="true" /> PII
-          </Badge>
-        )}
-        <Badge variant="outline" className={`text-[9px] ${status.chip}`}>
-          {status.th}
-        </Badge>
-      </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-        <span>ประเภท: {dt.th}</span>
-        {e.unit && <span>หน่วย: {e.unit}</span>}
-        <span className="inline-flex items-center gap-1">
-          <Link2 className="size-3" aria-hidden="true" /> แมป {e.mappingCount} คอลัมน์
-        </span>
-        <span className={`inline-flex items-center gap-1 ${cdeWarning ? 'font-medium text-amber-700' : ''}`}>
-          <Braces className="size-3" aria-hidden="true" /> ผูกกฎ {e.ruleCount} ข้อ
-          {cdeWarning && ' · CDE ยังไม่มีกฎ — ควรผูกกฎตรวจ'}
-        </span>
-      </div>
-      {e.definition && <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">{e.definition}</p>}
-    </button>
+      <PackageSearch className="size-2.5 shrink-0" aria-hidden="true" />
+      <span className="truncate font-mono">{assetName}</span>
+      <span className="shrink-0 opacity-50">·</span>
+      <span className="shrink-0 font-mono">{columnName}</span>
+    </span>
   )
 }
 
@@ -427,9 +313,23 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const { user: sessionUser } = useCurrentUser()
   const operatorEmail = sessionUser?.email ?? ''
 
-  /* ---------- เลือกโดเมนจากต้นไม้ + แท็บ ---------- */
-  const [selectedDomainId, setSelectedDomainId] = useState<string>('')
-  const [tab, setTab] = useState<'elements' | 'columns' | 'datasets'>('elements')
+  /* ---------- แคตตาล็อก (v0.39.0) + แท็บเครื่องมือเสริม ---------- */
+  const [tab, setTab] = useState<'catalog' | 'columns' | 'datasets'>('catalog')
+  const [selectedDomainId, setSelectedDomainId] = useState<string>('') // โดเมนย่อยที่กำลังสร้าง element (ใช้ในฟอร์ม)
+  const [catalogSearch, setCatalogSearch] = useState('')
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({}) // key: d:<domainId> · s:<subId> · e:<elementId>
+  const toggleCatalogNode = useCallback((key: string) => {
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
+  }, [])
+
+  /* ---------- จัดการ Data Asset ในโดเมน (v0.39.0) ---------- */
+  const [manageAssetsOpen, setManageAssetsOpen] = useState(false)
+  const [manageAssetDomain, setManageAssetDomain] = useState<DomainItem | null>(null)
+  const [manageAssetIds, setManageAssetIds] = useState<string[]>([])
+  const [manageAssetsBusy, setManageAssetsBusy] = useState(false)
+
+  /* ---------- ค่า Meta Data จากทะเบียนอ้างอิง (โหลดเมื่อกาง element — v0.39.0) ---------- */
+  const [metaValues, setMetaValues] = useState<Record<string, Array<{ id: string; value: string; labelTh: string; definition: string; status: string }>>>({})
 
   /* ---------- Data Element (v0.18.0) ---------- */
   const [elements, setElements] = useState<ElementRow[]>([])
@@ -483,6 +383,12 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [elClassification, setElClassification] = useState<string>(UNCLASSIFIED)
   const [elCustom, setElCustom] = useState('')
   const [elFormBusy, setElFormBusy] = useState(false)
+  /* v0.39.0 — คอลัมน์อ้างอิงในฟอร์ม element (เลือก column จาก Data Asset พร้อม reference) */
+  const [elFormSubLabel, setElFormSubLabel] = useState('')
+  const [elRefAssetId, setElRefAssetId] = useState('')
+  const [elRefColumns, setElRefColumns] = useState<AssetColumn[]>([])
+  const [elRefLoading, setElRefLoading] = useState(false)
+  const [elRefDraft, setElRefDraft] = useState<Array<{ assetId: string; columnName: string; note?: string }>>([])
 
   /* ---------- mapping editor ---------- */
   const [mapAssetId, setMapAssetId] = useState('')
@@ -501,6 +407,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [formNameEn, setFormNameEn] = useState('')
   const [formDesc, setFormDesc] = useState('')
   const [formColor, setFormColor] = useState('emerald')
+  const [formAssetIds, setFormAssetIds] = useState<string[]>([]) // v0.39.0 — เลือก Data Asset เข้ามาตอนสร้างโดเมนหลัก
   const [formBusy, setFormBusy] = useState(false)
   const [deleteDomainId, setDeleteDomainId] = useState<string | null>(null)
   const [domainBusy, setDomainBusy] = useState(false)
@@ -690,7 +597,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     }
   }, [assetId, assets, loadAssetDetail])
 
-  /* ------------------------- สรุปต้นไม้ + ตัวเลข ------------------------- */
+  /* ---------- สรุปต้นไม้ + ตัวเลข ---------- */
   const domainTree = useMemo(() => buildDomainTree(domains), [domains])
   const selectedAsset = assets.find((a) => a.id === assetId) ?? null
   const assignedCount = useMemo(() => columns.filter((c) => assign[c.name]).length, [columns, assign])
@@ -704,21 +611,26 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const elementsWithMapping = useMemo(() => elements.filter((e) => e.mappingCount > 0).length, [elements])
 
   const selectedDomain = domains.find((d) => d.id === selectedDomainId) ?? null
-  const selectedIsSub = Boolean(selectedDomain?.parentId)
-  const selectedSubIds = useMemo(() => {
-    if (!selectedDomainId) return []
-    if (selectedIsSub) return [selectedDomainId]
-    return domains.filter((d) => d.parentId === selectedDomainId).map((d) => d.id)
-  }, [selectedDomainId, selectedIsSub, domains])
-  const elementsInView = useMemo(
-    () => (selectedSubIds.length === 0 ? [] : elements.filter((e) => selectedSubIds.includes(e.subDomainId))),
-    [elements, selectedSubIds],
+
+  /** กรองต้นไม้ตามคำค้น (ชื่อโดเมน/โดเมนย่อย หรือ element ชื่อ/รหัส/นิยาม) — ค้น = กางทุกโหนดที่มีผล */
+  const q = catalogSearch.trim().toLowerCase()
+  const visibleDomainTree = useMemo(() => {
+    if (!q) return domainTree
+    const hitDomain = (d: DomainItem) => `${d.name} ${d.nameEn} ${d.description}`.toLowerCase().includes(q)
+    const hitElement = (e: ElementRow) =>
+      `${e.nameTh} ${e.nameEn} ${e.code} ${e.definition}`.toLowerCase().includes(q)
+    return domainTree
+      .map((n) => {
+        if (hitDomain(n)) return n
+        const children = n.children.filter((c) => hitDomain(c) || elements.some((e) => e.subDomainId === c.id && hitElement(e)))
+        return children.length > 0 ? { ...n, children } : null
+      })
+      .filter((n): n is (typeof domainTree)[number] => n !== null)
+  }, [domainTree, q, elements])
+  const isNodeOpen = useCallback(
+    (key: string) => (q ? true : Boolean(expanded[key])),
+    [q, expanded],
   )
-  const selectedDomainLabel = selectedDomain
-    ? selectedIsSub
-      ? `${domains.find((p) => p.id === selectedDomain?.parentId)?.name ?? ''} / ${selectedDomain.name}`
-      : selectedDomain.name
-    : ''
 
   /* ------------------------- domain CRUD ------------------------- */
   function openCreateDomain(parentId = '', parentName = '') {
@@ -730,7 +642,22 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setFormNameEn('')
     setFormDesc('')
     setFormColor('emerald')
+    setFormAssetIds([]) // v0.39.0 — เริ่มใหม่ทุกครั้ง
     setFormOpen(true)
+  }
+
+  function openManageAssets(d: DomainItem) {
+    setManageAssetDomain(d)
+    setManageAssetIds(assets.filter((a) => a.domain?.id === d.id).map((a) => a.id))
+    setManageAssetsOpen(true)
+  }
+
+  function toggleFormAsset(id: string) {
+    setFormAssetIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  function toggleManageAsset(id: string) {
+    setManageAssetIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
   function openEditDomain(d: DomainItem) {
@@ -760,7 +687,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
           nameEn: formNameEn.trim(),
           description: formDesc.trim(),
           color: formColor,
-          ...(isEdit ? {} : { parentId: formParentId || undefined }),
+          ...(isEdit ? {} : { parentId: formParentId || undefined, assetIds: formParentId ? [] : formAssetIds }),
         }),
       })
       const data = await res.json()
@@ -770,11 +697,37 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       }
       toast({ title: data.message ?? 'บันทึกแล้ว' })
       setFormOpen(false)
-      await loadDomains()
+      await Promise.all([loadDomains(), loadAssets()])
     } catch {
       toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
     } finally {
       setFormBusy(false)
+    }
+  }
+
+  /** v0.39.0 — บันทึกชุด Data Asset ของโดเมน (replace-all) */
+  async function saveDomainAssets() {
+    if (!manageAssetDomain) return
+    setManageAssetsBusy(true)
+    try {
+      const res = await fetch(`/api/domains/${manageAssetDomain.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorEmail, action: 'SET_ASSETS', assetIds: manageAssetIds }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: 'บันทึกไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      toast({ title: data.message ?? 'บันทึกแล้ว' })
+      setManageAssetsOpen(false)
+      setManageAssetDomain(null)
+      await Promise.all([loadDomains(), loadAssets()])
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setManageAssetsBusy(false)
     }
   }
 
@@ -836,11 +789,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     })
   }
 
-  function openCreateElement() {
-    if (!selectedIsSub || !selectedDomainId) {
-      toast({ title: 'เลือก "โดเมนย่อย" ก่อน', description: 'Data Element ต้องแขวนใต้โดเมนย่อยเท่านั้น', variant: 'destructive' })
+  /** v0.39.0 — เปิดฟอร์มสร้าง element จากแคตตาล็อก (ระบุโดเมนย่อยปลายทางชัดเจน) */
+  function openCreateElement(subDomainId: string, subLabel: string) {
+    if (!subDomainId) {
+      toast({ title: 'เลือก "Sub Data Domain" ก่อน', description: 'Data Element ต้องแขวนใต้โดเมนย่อยเท่านั้น', variant: 'destructive' })
       return
     }
+    setSelectedDomainId(subDomainId)
+    setElFormSubLabel(subLabel)
     setElFormMode('create')
     setElFormId(null)
     setElName('')
@@ -864,6 +820,9 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElOpNotes('')
     setElClassification(UNCLASSIFIED)
     setElCustom('')
+    setElRefAssetId('') // v0.39.0 — คอลัมน์อ้างอิงเริ่มว่าง
+    setElRefColumns([])
+    setElRefDraft([])
     setElFormOpen(true)
   }
 
@@ -892,13 +851,17 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElOpNotes(detail.opNotes ?? '')
     setElClassification(detail.classification || UNCLASSIFIED)
     setElCustom(detail.customFields && detail.customFields !== '{}' ? detail.customFields : '')
+    setElFormSubLabel(detail.subDomain.parent ? `${detail.subDomain.parent.name} / ${detail.subDomain.name}` : detail.subDomain.name)
+    setElRefAssetId('') // v0.39.0 — prefill คอลัมน์อ้างอิงจาก mapping เดิม
+    setElRefColumns([])
+    setElRefDraft(detail.columnMappings.map((m) => ({ assetId: m.assetId, columnName: m.columnName, note: m.note })))
     setDetailOpen(false)
     setElFormOpen(true)
   }
 
   async function submitElementForm() {
     if (!elName.trim()) return
-    if (elFormMode === 'create' && !selectedIsSub) return
+    if (elFormMode === 'create' && !selectedDomainId) return
     setElFormBusy(true)
     try {
       const isEdit = elFormMode === 'edit' && elFormId
@@ -934,6 +897,23 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       if (!res.ok) {
         toast({ title: 'บันทึกไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
         return
+      }
+      // v0.39.0 — บันทึกคอลัมน์อ้างอิง (reference) ที่เลือกไว้ในฟอร์ม (replace-all แบบเดียวกับ dialog รายละเอียด)
+      const elementId: string | null = isEdit ? elFormId : (data?.element?.id ?? null)
+      if (elementId) {
+        const mapRes = await fetch(`/api/elements/${elementId}/mappings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operatorEmail, mappings: elRefDraft }),
+        })
+        if (!mapRes.ok) {
+          const mapData = await mapRes.json().catch(() => null)
+          toast({
+            title: 'บันทึกตัว element แล้ว แต่คอลัมน์อ้างอิงไม่สำเร็จ',
+            description: mapData?.error ?? `HTTP ${mapRes.status} — เปิดรายละเอียดเพื่อแก้ไขภายหลัง`,
+            variant: 'destructive',
+          })
+        }
       }
       toast({ title: data.message ?? 'บันทึกแล้ว' })
       setElFormOpen(false)
@@ -1049,6 +1029,48 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
     } finally {
       setMapSaving(false)
+    }
+  }
+
+  /* v0.39.0 — คอลัมน์อ้างอิงในฟอร์ม element: โหลดคอลัมน์ของ Data Asset + toggle เลือก */
+  async function loadElRefColumns(id: string) {
+    setElRefAssetId(id)
+    setElRefColumns([])
+    if (!id) return
+    setElRefLoading(true)
+    try {
+      const res = await fetch(`/api/assets/${id}?pageSize=5&role=DATA_STEWARD`)
+      const data = await res.json()
+      if (res.ok) setElRefColumns(data?.columns ?? [])
+    } catch {
+      /* คงรายการเดิมไว้ */
+    } finally {
+      setElRefLoading(false)
+    }
+  }
+
+  function toggleElRef(assetId: string, columnName: string) {
+    setElRefDraft((prev) => {
+      const exists = prev.some((m) => m.assetId === assetId && m.columnName === columnName)
+      if (exists) return prev.filter((m) => !(m.assetId === assetId && m.columnName === columnName))
+      return [...prev, { assetId, columnName }]
+    })
+  }
+
+  /** v0.39.0 — โหลดค่า Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) จากทะเบียนอ้างอิง เมื่อกาง element บนแคตตาล็อก */
+  async function loadMetaValues(setId: string) {
+    if (!setId || metaValues[setId]) return
+    try {
+      const res = await fetch(`/api/reference/sets/${setId}`)
+      const data = await res.json()
+      if (res.ok) {
+        setMetaValues((prev) => ({
+          ...prev,
+          [setId]: (data?.values ?? []).filter((v: { status: string }) => v.status === 'ACTIVE'),
+        }))
+      }
+    } catch {
+      /* แสดง "ไม่สามารถโหลด" ไว้ก่อน */
     }
   }
 
@@ -1201,10 +1223,10 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       {/* หัวหน้า */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold tracking-tight sm:text-lg">Data Domain · Sub Domain · Data Element · Meta Data</h2>
+          <h2 className="text-base font-semibold tracking-tight sm:text-lg">Data Catalog — Data Domain · Sub Data Domain · Data Element · Meta Data</h2>
           <p className="text-sm text-muted-foreground">
-            โครงสร้าง 4 ระดับตามแนวคิด ISO/IEC 11179 — เลือกโดเมนจากต้นไม้ แล้วจัดการ Data Element (แขวนใต้โดเมนย่อยเสมอ) พร้อม Meta Data
-            และการแมปคอลัมน์จริงจากคลังข้อมูล · ทุกการเปลี่ยนแปลงบันทึก Audit Trail
+            สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) — ค้นหาและตรวจสอบชนิดข้อมูล รายละเอียด และประเภทข้อมูล ครบ 4 ระดับ:
+            Data Domain (เลือก Data Asset) &gt; Sub Data Domain &gt; Data Element (คอลัมน์อ้างอิง) &gt; Meta Data (ISO/IEC 11179) · ทุกการเปลี่ยนแปลงบันทึก Audit Trail
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1237,7 +1259,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
         <Card>
           <CardContent className="p-4">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <FolderTree className="size-3.5" aria-hidden="true" /> โดเมนหลัก
+              <FolderTree className="size-3.5" aria-hidden="true" /> Data Domain
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums">{domainTree.length}</p>
           </CardContent>
@@ -1245,7 +1267,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
         <Card>
           <CardContent className="p-4">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <FolderPlus className="size-3.5" aria-hidden="true" /> โดเมนย่อย
+              <FolderPlus className="size-3.5" aria-hidden="true" /> Sub Data Domain
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums">{Math.max(0, domains.length - domainTree.length)}</p>
           </CardContent>
@@ -1261,7 +1283,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
         <Card>
           <CardContent className="p-4">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Link2 className="size-3.5" aria-hidden="true" /> แมปคอลัมน์แล้ว
+              <Link2 className="size-3.5" aria-hidden="true" /> มีคอลัมน์อ้างอิง
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums">
               {elementsWithMapping}
@@ -1272,7 +1294,18 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
         <Card>
           <CardContent className="p-4">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <PackageSearch className="size-3.5" aria-hidden="true" /> ข้อมูลจัดโดเมนแล้ว
+              <Boxes className="size-3.5" aria-hidden="true" /> ผูกทะเบียน Meta Data
+            </p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {elements.filter((e) => e.referenceSetId).length}
+              <span className="ml-1 text-sm font-medium text-muted-foreground">/ {elements.length} element</span>
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <PackageSearch className="size-3.5" aria-hidden="true" /> Data Asset ในแคตตาล็อก
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums">
               {assetsWithDomain}
@@ -1280,185 +1313,372 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
             </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Database className="size-3.5" aria-hidden="true" /> ชุดข้อมูล DQ จัดโดเมนแล้ว
-            </p>
-            <p className="mt-1 text-2xl font-bold tabular-nums">
-              {dqWithDomain}
-              <span className="ml-1 text-sm font-medium text-muted-foreground">/ {dqDatasets.length} ชุด</span>
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
-      {/* เนื้อหาหลัก 2 คอลัมน์: ต้นไม้โดเมน (เลือกได้) + แท็บงาน */}
-      <div className="grid gap-4 lg:grid-cols-5">
-        {/* ------------------------- แผงซ้าย: โครงสร้างโดเมน ------------------------- */}
-        <Card className="min-w-0 lg:col-span-2">
-          <CardContent className="flex h-full flex-col gap-3 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="flex items-center gap-1.5 text-sm font-semibold">
-                  <FolderTree className="size-4 shrink-0 text-emerald-700" aria-hidden="true" /> โครงสร้างโดเมนข้อมูล
+      {/* เนื้อหาหลัก: Card เดียว — แคตตาล็อกลำดับชั้น 4 ระดับ (v0.39.0) + แท็บเครื่องมือเสริม */}
+      <Card className="min-w-0">
+        <CardContent className="p-4">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+            <TabsList className="mb-3 flex w-full flex-wrap sm:w-auto">
+              <TabsTrigger value="catalog" className="gap-1.5">
+                <FolderTree className="size-3.5" aria-hidden="true" /> แคตตาล็อกข้อมูล
+              </TabsTrigger>
+              <TabsTrigger value="columns" className="gap-1.5">
+                <Table2 className="size-3.5" aria-hidden="true" /> จัดหมวดคอลัมน์
+              </TabsTrigger>
+              <TabsTrigger value="datasets" className="gap-1.5">
+                <Database className="size-3.5" aria-hidden="true" /> ชุดข้อมูล DQ
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ------------------------- แท็บ 1: แคตตาล็อกข้อมูล (Data Inventory · Data Dictionary — v0.39.0) ------------------------- */}
+            <TabsContent value="catalog" className="mt-0 space-y-3">
+              {/* วิธีใช้งาน 4 ขั้นตาม workflow */}
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-xs leading-relaxed text-emerald-900">
+                <p className="flex items-center gap-1.5 font-semibold">
+                  <FolderTree className="size-3.5 shrink-0" aria-hidden="true" /> วิธีใช้งาน Data Catalog — สร้างสารบัญข้อมูล 4 ระดับ
                 </p>
-                <p className="text-xs text-muted-foreground">คลิกเลือกโดเมนเพื่อจัดการ Data Element ด้านขวา</p>
+                <ol className="mt-1.5 list-decimal space-y-0.5 pl-5">
+                  <li>
+                    สร้าง <span className="font-semibold">Data Domain</span> — ตั้งชื่อระบบบริการ (เช่น ระบบข้อมูลการเงิน) พร้อมเลือก <span className="font-semibold">Data Asset</span> เข้ามา
+                  </li>
+                  <li>
+                    สร้าง <span className="font-semibold">Sub Data Domain</span> — ส่วนย่อยของโดเมน สร้างได้หลายรายการ (เช่น อัตราแลกเปลี่ยน ข้อมูลลูกค้า)
+                  </li>
+                  <li>
+                    สร้าง <span className="font-semibold">Data Element</span> — เช่น ค่าเงิน ชื่อลูกค้า โดยเลือกคอลัมน์อ้างอิงจาก Data Asset (ระบบแสดง reference ว่านำมาจากข้อมูลที่ไหน)
+                  </li>
+                  <li>
+                    กำหนด <span className="font-semibold">Meta Data</span> ให้ครบถ้วน — ชนิดข้อมูล ค่ามาตรฐานภายใน (เช่น THB = ค่าเงินบาทไทย) กดที่ element เพื่อดู Meta Data 4 กลุ่ม
+                  </li>
+                </ol>
               </div>
-              <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => openCreateDomain('', '')}>
-                <Plus className="size-3.5" aria-hidden="true" /> เพิ่มโดเมนหลัก
-              </Button>
-            </div>
 
-            {domainsLoading ? (
-              <div className="flex items-center justify-center gap-2 py-14 text-sm text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลด…
-              </div>
-            ) : domainTree.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-8 text-center">
-                <FolderTree className="mx-auto size-8 text-muted-foreground/40" aria-hidden="true" />
-                <p className="mt-2 text-sm font-medium">ยังไม่มีโดเมนข้อมูล</p>
-                <p className="mt-1 text-xs text-muted-foreground">สร้างโดเมนหลักเพื่อเริ่มจัดหมวดหมู่ข้อมูลในคลัง เช่น ลูกค้า การเงิน การปฏิบัติตามกฎเกณฑ์</p>
-              </div>
-            ) : (
-              <div className="max-h-[30rem] space-y-1.5 overflow-x-hidden overflow-y-auto rounded-lg border p-2" role="list" aria-label="ต้นไม้โดเมนข้อมูล">
-                {domainTree.map((n) => (
-                  <div key={n.id} className="space-y-1.5" role="listitem">
-                    <DomainTreeRow
-                      item={n}
-                      childCount={n.children.length}
-                      selected={selectedDomainId === n.id}
-                      onSelect={() => setSelectedDomainId(selectedDomainId === n.id ? '' : n.id)}
-                      onEdit={() => openEditDomain(n)}
-                      onAddSub={() => openCreateDomain(n.id, n.name)}
-                      onDelete={() => setDeleteDomainId(n.id)}
-                    />
-                    {n.children.map((c) => (
-                      <DomainTreeRow
-                        key={c.id}
-                        item={c}
-                        sub
-                        childCount={0}
-                        selected={selectedDomainId === c.id}
-                        onSelect={() => setSelectedDomainId(selectedDomainId === c.id ? '' : c.id)}
-                        onEdit={() => openEditDomain(c)}
-                        onDelete={() => setDeleteDomainId(c.id)}
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <p className="mt-auto flex items-start gap-1.5 rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
-              <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              ลบได้เฉพาะโดเมนที่ว่าง (ไม่มีโดเมนย่อย · ข้อมูลผูก · ชุดข้อมูล · คอลัมน์จัดหมวด · Data Element) — ทุกการเปลี่ยนแปลงต้องมีสิทธิ์จัดการข้อมูล
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* ------------------------- แผงขวา: แท็บงาน ------------------------- */}
-        <Card className="min-w-0 lg:col-span-3">
-          <CardContent className="p-4">
-            <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-              <TabsList className="mb-3 flex w-full flex-wrap sm:w-auto">
-                <TabsTrigger value="elements" className="gap-1.5">
-                  <Boxes className="size-3.5" aria-hidden="true" /> Data Element
-                </TabsTrigger>
-                <TabsTrigger value="columns" className="gap-1.5">
-                  <Table2 className="size-3.5" aria-hidden="true" /> จัดหมวดคอลัมน์
-                </TabsTrigger>
-                <TabsTrigger value="datasets" className="gap-1.5">
-                  <Database className="size-3.5" aria-hidden="true" /> ชุดข้อมูล DQ
-                </TabsTrigger>
-              </TabsList>
-
-              {/* ------------------------- แท็บ 1: Data Element (4 ระดับ) ------------------------- */}
-              <TabsContent value="elements" className="mt-0 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-sm font-semibold">
-                      <Boxes className="size-4 shrink-0 text-emerald-700" aria-hidden="true" /> Data Element — องค์ประกอบข้อมูลใต้โดเมนย่อย
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedDomain
-                        ? selectedIsSub
-                          ? `กำลังดู: ${selectedDomainLabel} — ${elementsInView.length} element`
-                          : `กำลังดูทุกโดเมนย่อยของ "${selectedDomain.name}" — ${elementsInView.length} element`
-                        : 'เลือกโดเมนจากต้นไม้ด้านซ้ายเพื่อแสดง element'}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    className="bg-emerald-600 text-white hover:bg-emerald-700"
-                    disabled={!selectedIsSub}
-                    onClick={openCreateElement}
-                    title={selectedIsSub ? 'เพิ่ม Data Element' : 'เลือก "โดเมนย่อย" ก่อน (element ต้องแขวนใต้โดเมนย่อย)'}
-                  >
-                    <Plus className="size-3.5" aria-hidden="true" /> เพิ่ม Data Element
-                  </Button>
+              {/* ค้นหา + สร้างโดเมน */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    value={catalogSearch}
+                    onChange={(e) => setCatalogSearch(e.target.value)}
+                    className="pl-8"
+                    placeholder="ค้นหา Data Domain / Sub / Element (ชื่อ หรือรหัส EL-####)…"
+                    aria-label="ค้นหาในแคตตาล็อกข้อมูล"
+                  />
                 </div>
+                <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => openCreateDomain('', '')}>
+                  <Plus className="size-3.5" aria-hidden="true" /> เพิ่ม Data Domain
+                </Button>
+              </div>
 
-                {selectedDomain && !selectedIsSub && (
-                  <p className="flex items-start gap-1.5 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">
-                    <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                    &quot;{selectedDomain.name}&quot; เป็นโดเมนหลัก — แสดง element รวมของทุกโดเมนย่อย (อ่านอย่างเดียว)
-                    เลือกโดเมนย่อยเพื่อเพิ่ม/แก้ไข element ได้
-                  </p>
-                )}
-
-                {!selectedDomainId ? (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed py-12 text-center">
-                    <Boxes className="size-10 text-muted-foreground/40" aria-hidden="true" />
-                    <p className="text-sm font-medium">เลือกโดเมนจากต้นไม้ด้านซ้ายก่อน</p>
-                    <p className="max-w-md text-xs text-muted-foreground">
-                      โครงสร้าง 4 ระดับ: Data Domain → Sub Data Domain → <span className="font-medium text-foreground">Data Element</span> → Meta Data —
-                      element ต้องแขวนใต้โดเมนย่อยเสมอ (กติกาบังคับทั้ง UI และ API)
-                    </p>
-                  </div>
-                ) : elementsLoading ? (
-                  <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                    <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลด element…
-                  </div>
-                ) : elementsInView.length === 0 ? (
+              {domainsLoading || elementsLoading ? (
+                <div className="flex items-center justify-center gap-2 py-14 text-sm text-muted-foreground">
+                  <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลดแคตตาล็อก…
+                </div>
+              ) : visibleDomainTree.length === 0 ? (
+                q ? (
                   <div className="rounded-lg border border-dashed p-8 text-center">
-                    <Boxes className="mx-auto size-8 text-muted-foreground/40" aria-hidden="true" />
-                    <p className="mt-2 text-sm font-medium">ยังไม่มี Data Element ในโดเมนที่เลือก</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {selectedIsSub
-                        ? 'กด "เพิ่ม Data Element" เพื่อสร้าง element แรก พร้อมกรอก Meta Data ตามมาตรฐาน ISO/IEC 11179'
-                        : 'เลือกโดเมนย่อยด้านซ้ายแล้วสร้าง element'}
-                    </p>
-                  </div>
-                ) : selectedIsSub ? (
-                  <div className="max-h-[26rem] space-y-1.5 overflow-x-hidden overflow-y-auto rounded-lg border p-2">
-                    {elementsInView.map((e) => (
-                      <ElementRowCard key={e.id} e={e} onClick={() => openElementDetail(e)} />
-                    ))}
+                    <Search className="mx-auto size-8 text-muted-foreground/40" aria-hidden="true" />
+                    <p className="mt-2 text-sm font-medium">ไม่พบรายการที่ตรงกับ &quot;{catalogSearch.trim()}&quot;</p>
+                    <p className="mt-1 text-xs text-muted-foreground">ลองค้นด้วยชื่อโดเมน ชื่อ element หรือรหัส EL-####</p>
                   </div>
                 ) : (
-                  <div className="max-h-[26rem] space-y-3 overflow-x-hidden overflow-y-auto rounded-lg border p-2">
-                    {domains
-                      .filter((d) => d.parentId === selectedDomainId)
-                      .map((sub) => {
-                        const subElements = elementsInView.filter((e) => e.subDomainId === sub.id)
-                        if (subElements.length === 0) return null
-                        return (
-                          <div key={sub.id}>
-                            <p className="mb-1 flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
-                              <span className={`inline-block size-2 rounded-full ${domainColor(sub.color).dot}`} aria-hidden="true" />└ {sub.name}
-                            </p>
-                            <div className="space-y-1.5">
-                              {subElements.map((e) => (
-                                <ElementRowCard key={e.id} e={e} onClick={() => openElementDetail(e)} />
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
+                  <div className="rounded-lg border border-dashed p-8 text-center">
+                    <FolderTree className="mx-auto size-8 text-muted-foreground/40" aria-hidden="true" />
+                    <p className="mt-2 text-sm font-medium">แคตตาล็อกยังว่าง — เริ่มที่ขั้นที่ 1</p>
+                    <p className="mt-1 text-xs text-muted-foreground">กด &quot;เพิ่ม Data Domain&quot; ตั้งชื่อระบบบริการ (เช่น ระบบข้อมูลการเงิน) แล้วเลือก Data Asset เข้ามา</p>
                   </div>
-                )}
-              </TabsContent>
+                )
+              ) : (
+                <div className="space-y-2" role="list" aria-label="แคตตาล็อกข้อมูล 4 ระดับ">
+                  {visibleDomainTree.map((node) => {
+                    const dKey = `d:${node.id}`
+                    const assetsOf = assets.filter((a) => a.domain?.id === node.id)
+                    const elementTotal = node.children.reduce((s, c) => s + elements.filter((e) => e.subDomainId === c.id).length, 0)
+                    const deletable =
+                      node.children.length === 0 && node.assetCount === 0 && (node.datasetCount ?? 0) === 0 && node.columnCount === 0 && (node.elementCount ?? 0) === 0
+                    const col = domainColor(node.color)
+                    const open = isNodeOpen(dKey)
+                    return (
+                      <div key={node.id} className="rounded-lg border bg-card" role="listitem">
+                        <div className="flex flex-wrap items-start gap-2 p-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleCatalogNode(dKey)}
+                            aria-expanded={open}
+                            className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                            aria-label={`${open ? 'ปิด' : 'กาง'} ${node.name}`}
+                          >
+                            {open ? (
+                              <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            ) : (
+                              <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            )}
+                            <span className={`mt-1 size-2.5 shrink-0 rounded-full ${col.dot}`} aria-hidden="true" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block break-words text-sm font-semibold [overflow-wrap:anywhere]">
+                                {node.name}
+                                {node.nameEn && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{node.nameEn}</span>}
+                              </span>
+                              {node.description && (
+                                <span className="mt-0.5 block break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">{node.description}</span>
+                              )}
+                              <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                <Badge variant="outline" className="text-[10px] tabular-nums">{node.children.length} Sub Data Domain</Badge>
+                                <Badge variant="outline" className="text-[10px] tabular-nums">{elementTotal} Data Element</Badge>
+                                {(node.datasetCount ?? 0) > 0 && (
+                                  <Badge variant="outline" className="text-[10px] tabular-nums">{node.datasetCount} ชุดข้อมูล DQ</Badge>
+                                )}
+                                {node.columnCount > 0 && (
+                                  <Badge variant="outline" className="text-[10px] tabular-nums">{node.columnCount} คอลัมน์จัดหมวด</Badge>
+                                )}
+                              </span>
+                              <span className="mt-1.5 flex flex-wrap items-center gap-1">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Data Asset:</span>
+                                {assetsOf.length === 0 ? (
+                                  <span className="text-[11px] italic text-muted-foreground">ยังไม่เลือก — กด &quot;จัดการ Data Asset&quot;</span>
+                                ) : (
+                                  assetsOf.map((a) => (
+                                    <span
+                                      key={a.id}
+                                      className="inline-flex max-w-full items-center gap-1 rounded-full border bg-muted/50 px-2 py-0.5 text-[10px]"
+                                      title={a.name}
+                                    >
+                                      <PackageSearch className="size-2.5 shrink-0" aria-hidden="true" />
+                                      <span className="max-w-[12rem] truncate">{a.name}</span>
+                                    </span>
+                                  ))
+                                )}
+                              </span>
+                            </span>
+                          </button>
+                          <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2.5 text-xs"
+                              onClick={() => openManageAssets(node)}
+                              title="เลือก Data Asset เข้ามาในโดเมนนี้"
+                            >
+                              <PackageSearch className="size-3.5" aria-hidden="true" /> จัดการ Data Asset
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2.5 text-xs"
+                              onClick={() => openCreateDomain(node.id, node.name)}
+                              title="เพิ่ม Sub Data Domain ภายใต้โดเมนนี้"
+                            >
+                              <FolderPlus className="size-3.5" aria-hidden="true" /> Sub Data Domain
+                            </Button>
+                            <Button size="icon" variant="ghost" className="size-7" onClick={() => openEditDomain(node)} aria-label={`แก้ไขโดเมน ${node.name}`}>
+                              <Pencil className="size-3.5" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-7 text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-35"
+                              disabled={!deletable}
+                              onClick={() => setDeleteDomainId(node.id)}
+                              title={deletable ? 'ลบโดเมน' : 'ลบได้เฉพาะโดเมนที่ว่าง (ไม่มีโดเมนย่อย/ข้อมูลผูก/ชุดข้อมูล/คอลัมน์จัดหมวด)'}
+                              aria-label={`ลบโดเมน ${node.name}`}
+                            >
+                              <Trash2 className="size-3.5" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {open && (
+                          <div className="space-y-1.5 border-t bg-muted/20 p-3">
+                            {node.children.length === 0 ? (
+                              <div className="rounded-lg border border-dashed bg-card p-4 text-center">
+                                <p className="text-xs font-medium">ยังไม่มี Sub Data Domain</p>
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  ขั้นที่ 2 — กด &quot;Sub Data Domain&quot; เพื่อสร้างส่วนย่อย (เช่น อัตราแลกเปลี่ยน ข้อมูลลูกค้า) แล้วค่อยเพิ่ม Data Element
+                                </p>
+                              </div>
+                            ) : (
+                              node.children.map((sub) => {
+                                const sKey = `s:${sub.id}`
+                                const subOpen = isNodeOpen(sKey)
+                                const subCol = domainColor(sub.color)
+                                const subElements = elements.filter(
+                                  (e) => e.subDomainId === sub.id && (!q || `${e.nameTh} ${e.nameEn} ${e.code} ${e.definition}`.toLowerCase().includes(q)),
+                                )
+                                const subDeletable = (sub.elementCount ?? 0) === 0 && sub.assetCount === 0 && (sub.datasetCount ?? 0) === 0 && sub.columnCount === 0
+                                return (
+                                  <div key={sub.id} className="rounded-lg border border-dashed bg-card" role="listitem">
+                                    <div className="flex flex-wrap items-center gap-2 p-2.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleCatalogNode(sKey)}
+                                        aria-expanded={subOpen}
+                                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                        aria-label={`${subOpen ? 'ปิด' : 'กาง'} ${sub.name}`}
+                                      >
+                                        {subOpen ? (
+                                          <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                        ) : (
+                                          <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                        )}
+                                        <span className="hidden text-xs text-muted-foreground sm:inline" aria-hidden="true">└</span>
+                                        <span className={`size-2 shrink-0 rounded-full ${subCol.dot}`} aria-hidden="true" />
+                                        <span className="min-w-0 flex-1">
+                                          <span className="block break-words text-sm font-medium [overflow-wrap:anywhere]">{sub.name}</span>
+                                          {sub.description && (
+                                            <span className="block break-words text-[11px] text-muted-foreground [overflow-wrap:anywhere]">{sub.description}</span>
+                                          )}
+                                        </span>
+                                        <Badge variant="outline" className="shrink-0 text-[10px] tabular-nums">
+                                          {elements.filter((e) => e.subDomainId === sub.id).length} Data Element
+                                        </Badge>
+                                      </button>
+                                      <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 px-2 text-[11px]"
+                                          onClick={() => openCreateElement(sub.id, node.name ? `${node.name} / ${sub.name}` : sub.name)}
+                                          title="เพิ่ม Data Element ใต้โดเมนย่อยนี้"
+                                        >
+                                          <Plus className="size-3" aria-hidden="true" /> Data Element
+                                        </Button>
+                                        <Button size="icon" variant="ghost" className="size-7" onClick={() => openEditDomain(sub)} aria-label={`แก้ไขโดเมนย่อย ${sub.name}`}>
+                                          <Pencil className="size-3.5" aria-hidden="true" />
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="size-7 text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-35"
+                                          disabled={!subDeletable}
+                                          onClick={() => setDeleteDomainId(sub.id)}
+                                          title={subDeletable ? 'ลบโดเมนย่อย' : 'ลบได้เฉพาะโดเมนย่อยที่ว่าง (ไม่มี element/ข้อมูลผูก/ชุดข้อมูล/คอลัมน์จัดหมวด)'}
+                                          aria-label={`ลบโดเมนย่อย ${sub.name}`}
+                                        >
+                                          <Trash2 className="size-3.5" aria-hidden="true" />
+                                        </Button>
+                                      </div>
+                                    </div>
+
+                                    {subOpen && (
+                                      <div className="space-y-1.5 border-t p-2.5">
+                                        {subElements.length === 0 ? (
+                                          <div className="rounded border border-dashed p-3 text-center">
+                                            <p className="text-[11px] font-medium">ยังไม่มี Data Element</p>
+                                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                              ขั้นที่ 3 — กด &quot;Data Element&quot; ตั้งชื่อ (เช่น ค่าเงิน ชื่อลูกค้า) แล้วเลือกคอลัมน์อ้างอิงจาก Data Asset
+                                            </p>
+                                          </div>
+                                        ) : (
+                                          subElements.map((e) => {
+                                            const eKey = `e:${e.id}`
+                                            const eOpen = isNodeOpen(eKey)
+                                            const status = ELEMENT_STATUS_LABELS[e.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE
+                                            const dt = ELEMENT_DATA_TYPE_LABELS[e.dataType as ElementDataType] ?? { th: e.dataType }
+                                            const values = e.referenceSetId ? metaValues[e.referenceSetId] : undefined
+                                            const cdeWarning = e.isCde && e.ruleCount === 0
+                                            return (
+                                              <div key={e.id} className="rounded-lg border bg-card" role="listitem">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    if (e.referenceSetId && !eOpen) void loadMetaValues(e.referenceSetId)
+                                                    toggleCatalogNode(eKey)
+                                                  }}
+                                                  aria-expanded={eOpen}
+                                                  className="w-full px-2.5 py-2 text-left transition-colors hover:bg-emerald-50/40"
+                                                  aria-label={`${eOpen ? 'ปิด' : 'กาง'} Meta Data ของ ${e.nameTh}`}
+                                                >
+                                                  <span className="flex flex-wrap items-center gap-1.5">
+                                                    {eOpen ? (
+                                                      <ChevronDown className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                                    ) : (
+                                                      <ChevronRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                                    )}
+                                                    <span className="font-mono text-[10px] text-muted-foreground">{e.code}</span>
+                                                    <span className="break-words text-sm font-medium [overflow-wrap:anywhere]">{e.nameTh}</span>
+                                                    {e.nameEn && <span className="text-xs text-muted-foreground">{e.nameEn}</span>}
+                                                    <Badge variant="outline" className="text-[9px]">{dt.th}</Badge>
+                                                    {e.isCde && (
+                                                      <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[9px] font-medium text-amber-800">
+                                                        <Star className="mr-0.5 size-2.5" aria-hidden="true" /> CDE
+                                                      </Badge>
+                                                    )}
+                                                    {e.isFinancial && (
+                                                      <Badge variant="outline" className="border-teal-300 bg-teal-50 text-[9px] font-medium text-teal-800">
+                                                        <Banknote className="mr-0.5 size-2.5" aria-hidden="true" /> การเงิน
+                                                      </Badge>
+                                                    )}
+                                                    {e.pii && (
+                                                      <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[9px] text-rose-700">
+                                                        <ShieldAlert className="mr-0.5 size-2.5" aria-hidden="true" /> PII
+                                                      </Badge>
+                                                    )}
+                                                    <Badge variant="outline" className={`text-[9px] ${status.chip}`}>{status.th}</Badge>
+                                                    <span className={`inline-flex items-center gap-1 text-[10px] ${cdeWarning ? 'font-medium text-amber-700' : 'text-muted-foreground'}`}>
+                                                      <Braces className="size-3" aria-hidden="true" /> ผูกกฎ {e.ruleCount} ข้อ
+                                                    </span>
+                                                  </span>
+                                                  <span className="mt-1 flex flex-wrap items-center gap-1 pl-5">
+                                                    <span className="text-[10px] font-medium text-muted-foreground">อ้างอิง:</span>
+                                                    {e.columnMappings.length === 0 ? (
+                                                      <span className="text-[10px] italic text-muted-foreground">ยังไม่ระบุคอลัมน์ — กด &quot;ดู Meta Data ครบ&quot; เพื่อเลือกจาก Data Asset</span>
+                                                    ) : (
+                                                      e.columnMappings.map((m) => <ReferenceChip key={`${m.assetId}.${m.columnName}`} assetName={m.assetName} columnName={m.columnName} />)
+                                                    )}
+                                                  </span>
+                                                  {eOpen && (
+                                                    <span className="mt-1 block pl-5 text-[11px] leading-relaxed text-muted-foreground">
+                                                      <span className="font-medium text-foreground">Meta Data (ค่ามาตรฐาน):</span>{' '}
+                                                      {!e.referenceSetId ? (
+                                                        <span className="italic">ยังไม่ผูกทะเบียน — เปิดรายละเอียดเพื่อกำหนด Meta Data</span>
+                                                      ) : !values ? (
+                                                        <span className="inline-flex items-center gap-1">
+                                                          <Loader2 className="size-3 animate-spin" aria-hidden="true" /> กำลังโหลดค่า…
+                                                        </span>
+                                                      ) : values.length === 0 ? (
+                                                        <span className="italic">ทะเบียนยังไม่มีค่า — เพิ่มค่าที่หน้า &quot;ข้อมูลอ้างอิง&quot;</span>
+                                                      ) : (
+                                                        <span className="break-words [overflow-wrap:anywhere]">
+                                                          {values
+                                                            .slice(0, 8)
+                                                            .map((v) => `${v.value} = ${v.labelTh || v.definition || '—'}`)
+                                                            .join(' · ')}
+                                                          {values.length > 8 ? ` · +${values.length - 8} ค่า` : ''}
+                                                        </span>
+                                                      )}
+                                                    </span>
+                                                  )}
+                                                  {e.definition && <span className="mt-1 block truncate pl-5 text-[11px] text-muted-foreground">{e.definition}</span>}
+                                                </button>
+                                                <div className="flex items-center justify-end gap-1 border-t px-2.5 py-1.5">
+                                                  <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => openElementDetail(e)} title="ดู Meta Data 4 กลุ่ม + คอลัมน์อ้างอิง + กฎ">
+                                                    <Box className="size-3" aria-hidden="true" /> ดู Meta Data ครบ
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            )
+                                          })
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              <p className="flex items-start gap-1.5 rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
+                <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                ลบโดเมนได้เฉพาะโดเมนที่ว่าง (ไม่มีโดเมนย่อย · ข้อมูลผูก · ชุดข้อมูล · คอลัมน์จัดหมวด · Data Element) — ทุกการเปลี่ยนแปลงต้องมีสิทธิ์จัดการข้อมูลและบันทึก Audit Trail
+              </p>
+            </TabsContent>
 
               {/* ------------------------- แท็บ 2: จัดหมวดรายคอลัมน์ (v0.15.0) ------------------------- */}
               <TabsContent value="columns" className="mt-0 space-y-3">
@@ -1509,7 +1729,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                     {domainTree.length === 0 ? (
                       <p className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                        ยังไม่มีโดเมนข้อมูล — สร้างโดเมนหลักและโดเมนย่อยในแผง &quot;โครงสร้างโดเมนข้อมูล&quot; ด้านซ้ายก่อนจึงจะจัดหมวดรายคอลัมน์ได้
+                        ยังไม่มีโดเมนข้อมูล — สร้างในแท็บ &quot;แคตตาล็อกข้อมูล&quot; ก่อนจึงจะจัดหมวดรายคอลัมน์ได้
                       </p>
                     ) : assignLoading ? (
                       <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
@@ -1681,7 +1901,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
             </Tabs>
           </CardContent>
         </Card>
-      </div>
 
       {/* ------------------------- Dialog รายละเอียด Data Element (Meta Data 4 ระดับ) ------------------------- */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
@@ -2206,7 +2425,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
             <DialogTitle>{elFormMode === 'create' ? 'เพิ่ม Data Element' : 'แก้ไข Meta Data ของ Data Element'}</DialogTitle>
             <DialogDescription>
               {elFormMode === 'create'
-                ? `สร้างใต้โดเมนย่อย "${selectedDomainLabel}" — กรอก Meta Data 4 กลุ่มครั้งเดียวต่อ element (รหัส EL-#### สร้างอัตโนมัติ · สถานะเริ่มต้น "ร่าง" ต้องผ่านการอนุมัติจึงใช้งานได้)`
+                ? `ขั้นที่ 3 — สร้างใต้ Sub Data Domain "${elFormSubLabel}" — ตั้งชื่อ (เช่น ค่าเงิน ชื่อลูกค้า) เลือกคอลัมน์อ้างอิงจาก Data Asset และกรอก Meta Data (รหัส EL-#### สร้างอัตโนมัติ · สถานะเริ่มต้น "ร่าง")`
                 : 'แก้ไขได้ทุกฟิลด์ Meta Data (สถานะเปลี่ยนผ่าน workflow อนุมัติในแท็บธรรมาภิบาล · ย้ายโดเมนย่อย = ลบแล้วสร้างใหม่เพื่อคงประวัติ)'}
             </DialogDescription>
           </DialogHeader>
@@ -2442,6 +2661,57 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 placeholder='{"source_system": "CRM", "update_frequency": "daily"}'
               />
             </div>
+
+            {/* v0.39.0 — คอลัมน์อ้างอิงจาก Data Asset (reference ว่านำมาจากข้อมูลที่ไหน) */}
+            <div className="grid gap-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
+                <Link2 className="size-3.5" aria-hidden="true" /> คอลัมน์อ้างอิงจาก Data Asset (Reference) — ระบุว่าข้อมูลนี้นำมาจากที่ใด
+              </p>
+              <Select value={elRefAssetId} onValueChange={(v) => void loadElRefColumns(v)}>
+                <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือก Data Asset เพื่อเลือกคอลัมน์อ้างอิง">
+                  <SelectValue placeholder="— เลือก Data Asset จากคลัง —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {assets.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name} · {a.columnCount} คอลัมน์
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {elRefAssetId && (
+                elRefLoading ? (
+                  <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> กำลังโหลดคอลัมน์…
+                  </div>
+                ) : (
+                  <div className="grid max-h-40 gap-1 overflow-y-auto rounded border bg-card p-2 sm:grid-cols-2" role="group" aria-label="เลือกคอลัมน์อ้างอิง">
+                    {elRefColumns.map((c) => {
+                      const checked = elRefDraft.some((m) => m.assetId === elRefAssetId && m.columnName === c.name)
+                      return (
+                        <label key={c.name} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/60">
+                          <Checkbox checked={checked} onCheckedChange={() => toggleElRef(elRefAssetId, c.name)} aria-label={`เลือกคอลัมน์ ${c.name}`} />
+                          <span className="font-mono">{c.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{DATA_TYPE_LABELS[c.dataType] ?? c.dataType}</span>
+                        </label>
+                      )
+                    })}
+                    {elRefColumns.length === 0 && <p className="p-2 text-xs text-muted-foreground">ไม่พบคอลัมน์ของ Data Asset นี้</p>}
+                  </div>
+                )
+              )}
+              {elRefDraft.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {elRefDraft.map((m) => {
+                    const asset = assets.find((a) => a.id === m.assetId)
+                    return <ReferenceChip key={`${m.assetId}.${m.columnName}`} assetName={asset?.name ?? '(asset)'} columnName={m.columnName} />
+                  })}
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground">
+                เลือกแล้ว {elRefDraft.length} คอลัมน์ — reference จะแสดงบนแคตตาล็อกว่า element นี้นำมาจาก Data Asset ใดคอลัมน์ใด (แก้ไขภายหลังได้ที่แท็บ "เชิงเทคนิค")
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setElFormOpen(false)}>
@@ -2456,13 +2726,15 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
 
       {/* ------------------------- Dialog ฟอร์มโดเมน (สร้าง/แก้ไข) ------------------------- */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{formMode === 'create' ? (formParentId ? 'เพิ่มโดเมนย่อย' : 'เพิ่มโดเมนหลัก') : 'แก้ไขโดเมน'}</DialogTitle>
+            <DialogTitle>{formMode === 'create' ? (formParentId ? 'เพิ่ม Sub Data Domain' : 'เพิ่ม Data Domain') : 'แก้ไขโดเมน'}</DialogTitle>
             <DialogDescription>
               {formMode === 'create' && formParentId
-                ? `สร้างโดเมนย่อยภายใต้ "${formParentName}" — ระบบรองรับโดเมนลึกสุด 2 ระดับ`
-                : 'ตั้งชื่อให้สื่อหมวดหมู่ข้อมูล เช่น ลูกค้า การเงิน การปฏิบัติตามกฎเกณฑ์'}
+                ? `ขั้นที่ 2 — สร้างส่วนย่อยภายใต้ "${formParentName}" (เช่น อัตราแลกเปลี่ยน ข้อมูลลูกค้า) แล้วเพิ่ม Data Element ภายหลัง — ระบบรองรับโดเมนลึกสุด 2 ระดับ`
+                : formMode === 'create'
+                  ? 'ขั้นที่ 1 — ตั้งชื่อระบบบริการให้สื่อความหมาย (เช่น ระบบข้อมูลการเงิน) และเลือก Data Asset เข้ามาประกอบการสร้าง'
+                  : 'แก้ไขชื่อ/คำอธิบาย/สีป้าย (การผูก Data Asset จัดการที่ปุ่ม "จัดการ Data Asset")'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -2475,7 +2747,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 maxLength={DOMAIN_NAME_MAX}
-                placeholder="เช่น ลูกค้า"
+                placeholder={formParentId ? 'เช่น อัตราแลกเปลี่ยน' : 'เช่น ระบบข้อมูลการเงิน'}
               />
             </div>
             <div className="grid gap-1.5">
@@ -2485,7 +2757,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 value={formNameEn}
                 onChange={(e) => setFormNameEn(e.target.value)}
                 maxLength={DOMAIN_NAME_MAX}
-                placeholder="เช่น Customer"
+                placeholder="เช่น Financial Data"
               />
             </div>
             <div className="grid gap-1.5">
@@ -2498,6 +2770,40 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 placeholder="อธิบายขอบเขตของโดเมนสั้น ๆ"
               />
             </div>
+
+            {/* v0.39.0 — เลือก Data Asset เข้ามาในโดเมน (เฉพาะสร้างโดเมนหลัก) */}
+            {formMode === 'create' && !formParentId && (
+              <div className="grid gap-1.5 rounded-lg border bg-muted/30 p-3">
+                <Label className="text-xs">เลือก Data Asset เข้ามาในโดเมนนี้ (ไม่บังคับ — เลือกเพิ่มภายหลังด้วย "จัดการ Data Asset")</Label>
+                {assets.length === 0 ? (
+                  <p className="rounded border border-dashed bg-card p-2 text-[11px] text-muted-foreground">
+                    ยังไม่มีข้อมูลในคลัง — นำเข้าข้อมูลก่อนที่เมนู "นำเข้าข้อมูล" แล้วค่อยเลือกที่ปุ่ม "จัดการ Data Asset"
+                  </p>
+                ) : (
+                  <div className="max-h-44 space-y-1 overflow-y-auto rounded border bg-card p-2" role="group" aria-label="เลือก Data Asset เข้าโดเมน">
+                    {assets.map((a) => (
+                      <label key={a.id} className="flex cursor-pointer items-start gap-2 rounded px-1 py-0.5 text-xs hover:bg-muted/60">
+                        <Checkbox
+                          checked={formAssetIds.includes(a.id)}
+                          onCheckedChange={() => toggleFormAsset(a.id)}
+                          aria-label={`เลือก ${a.name}`}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block break-words font-medium [overflow-wrap:anywhere]">{a.name}</span>
+                          <span className="block text-[10px] text-muted-foreground">
+                            {SOURCE_LABELS[a.sourceType] ?? a.sourceType} · {a.columnCount} คอลัมน์
+                            {a.domain ? ` · ขณะนี้อยู่โดเมน "${a.domain.name}"` : ' · ยังไม่ระบุโดเมน'}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground">เลือกแล้ว {formAssetIds.length} รายการ — Data Asset ที่อยู่โดเมนอื่นจะถูกย้ายเข้าโดเมนนี้</p>
+              </div>
+            )}
+
             <div className="grid gap-1.5">
               <Label>สีป้ายกำกับ</Label>
               <div className="flex flex-wrap gap-1.5">
@@ -2597,6 +2903,56 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
             </Button>
             <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={dsBusy || !dsName.trim() || !operatorEmail} onClick={() => void createDataset()}>
               {dsBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} สร้างชุดข้อมูล
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ------------------------- Dialog จัดการ Data Asset ในโดเมน (v0.39.0) ------------------------- */}
+      <Dialog open={manageAssetsOpen} onOpenChange={setManageAssetsOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>จัดการ Data Asset — {manageAssetDomain?.name ?? ''}</DialogTitle>
+            <DialogDescription>
+              เลือกข้อมูลจากคลัง (Data Asset) ที่จะนำเข้ามาประกอบโดเมนนี้ — รายการที่เคยอยู่โดเมนอื่นจะถูกย้ายเข้าโดเมนนี้ และรายการที่เอาออกจะกลับเป็น &quot;ไม่ระบุโดเมน&quot;
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            {assets.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                ยังไม่มีข้อมูลในคลัง — นำเข้าข้อมูลก่อนที่เมนู &quot;นำเข้าข้อมูล&quot;
+              </p>
+            ) : (
+              <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border p-2" role="group" aria-label="เลือก Data Asset ในโดเมน">
+                {assets.map((a) => (
+                  <label key={a.id} className="flex cursor-pointer items-start gap-2 rounded px-1 py-0.5 text-xs hover:bg-muted/60">
+                    <Checkbox
+                      checked={manageAssetIds.includes(a.id)}
+                      onCheckedChange={() => toggleManageAsset(a.id)}
+                      aria-label={`เลือก ${a.name}`}
+                      className="mt-0.5"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words text-xs font-medium [overflow-wrap:anywhere]">{a.name}</span>
+                      <span className="block text-[10px] text-muted-foreground">
+                        {SOURCE_LABELS[a.sourceType] ?? a.sourceType} · {a.columnCount} คอลัมน์ · {a.rowCount} แถว
+                        {a.domain && a.domain.id !== manageAssetDomain?.id ? ` · ขณะนี้อยู่โดเมน "${a.domain.name}"` : ''}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="text-[10px] text-muted-foreground">
+              เลือกแล้ว {manageAssetIds.length} รายการ — บันทึกแล้วระบบอัปเดตจำนวนบนแคตตาล็อกทันที (บันทึก Audit Trail ทุกครั้ง)
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManageAssetsOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={manageAssetsBusy || !manageAssetDomain} onClick={() => void saveDomainAssets()}>
+              {manageAssetsBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null} บันทึก
             </Button>
           </DialogFooter>
         </DialogContent>

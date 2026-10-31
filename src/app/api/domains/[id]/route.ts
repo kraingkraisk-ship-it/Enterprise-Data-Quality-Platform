@@ -5,11 +5,12 @@ import { DOMAIN_DESC_MAX, DOMAIN_NAME_MAX, isValidDomainColor } from '@/lib/doma
 
 /**
  * PATCH /api/domains/[id] — แก้ไขหรือลบโดเมนข้อมูล
- *   body: { operatorEmail, action: 'UPDATE' | 'DELETE', name?, nameEn?, description?, color? }
+ *   body: { operatorEmail, action: 'UPDATE' | 'DELETE' | 'SET_ASSETS', name?, nameEn?, description?, color?, assetIds? }
  * สิทธิ์: MANAGE_DATASETS — ทุกการเปลี่ยนแปลงบันทึก Audit Trail
  * กติกา (deny-by-default):
  * - แก้ชื่อซ้ำในระดับเดียวกันไม่ได้ · ห้ามย้ายระดับ (กัน depth เกิน 2 — ย้าย = ลบแล้วสร้างใหม่)
  * - ลบได้เฉพาะโดเมนที่ว่าง (ไม่มีโดเมนย่อย · ไม่มี Data Asset · ไม่มีชุดข้อมูล DQ · ไม่มีคอลัมน์จัดหมวด) — กันข้อมูลหลุดโดเมนโดยไม่ตั้งใจ
+ * v0.39.0 — action SET_ASSETS: ตั้งชุด Data Asset ที่ผูกกับโดเมน (replace ใน 1 transaction — ตัวที่ถูกถอนจะกลับเป็น "ไม่ระบุโดเมน")
  */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -21,8 +22,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!op.ok) return NextResponse.json({ error: op.message }, { status: op.status })
 
     const action = String(body.action ?? 'UPDATE').trim().toUpperCase()
-    if (!['UPDATE', 'DELETE'].includes(action)) {
-      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (UPDATE | DELETE)' }, { status: 400 })
+    if (!['UPDATE', 'DELETE', 'SET_ASSETS'].includes(action)) {
+      return NextResponse.json({ error: 'การดำเนินการไม่ถูกต้อง (UPDATE | DELETE | SET_ASSETS)' }, { status: 400 })
     }
 
     const domain = await db.dataDomain.findUnique({
@@ -30,6 +31,43 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       include: { _count: { select: { children: true, assets: true, columnAssignments: true, datasets: true, elements: true } } },
     })
     if (!domain) return NextResponse.json({ error: 'ไม่พบโดเมนข้อมูลนี้ในระบบ' }, { status: 404 })
+
+    // ---------- v0.39.0: ตั้งชุด Data Asset ของโดเมน (replace-all ใน 1 transaction) ----------
+    if (action === 'SET_ASSETS') {
+      const assetIdsRaw = Array.isArray(body.assetIds) ? body.assetIds : []
+      const assetIds = [...new Set(assetIdsRaw.map((v) => String(v ?? '').trim()).filter(Boolean))]
+      if (assetIds.length > 0) {
+        const found = await db.dataAsset.findMany({ where: { id: { in: assetIds } }, select: { id: true } })
+        if (found.length !== assetIds.length) {
+          return NextResponse.json({ error: 'ไม่พบ Data Asset บางรายการที่เลือก — ตรวจสอบแล้วลองใหม่' }, { status: 404 })
+        }
+      }
+
+      const before = await db.dataAsset.findMany({ where: { domainId: id }, select: { id: true } })
+      const beforeIds = new Set(before.map((a) => a.id))
+      const toRemove = [...beforeIds].filter((x) => !assetIds.includes(x))
+      const toAdd = assetIds.filter((x) => !beforeIds.has(x))
+
+      await db.$transaction(async (tx) => {
+        if (toRemove.length > 0) {
+          await tx.dataAsset.updateMany({ where: { id: { in: toRemove } }, data: { domainId: null } })
+        }
+        if (toAdd.length > 0) {
+          await tx.dataAsset.updateMany({ where: { id: { in: toAdd } }, data: { domainId: id } })
+        }
+      })
+
+      await db.auditLog.create({
+        data: {
+          action: 'SET_DATA_DOMAIN_ASSETS',
+          actor: op.ctx.email,
+          target: domain.name,
+          detail: `จัดการ Data Asset ของ${domain.parentId ? 'โดเมนย่อย' : 'โดเมนหลัก'} "${domain.name}" — ผูก ${assetIds.length} รายการ (เพิ่มใหม่ ${toAdd.length} · ถอนออก ${toRemove.length}) โดย ${op.ctx.name} (บทบาท ${op.ctx.roleTh})`,
+        },
+      })
+
+      return NextResponse.json({ message: `ผูก Data Asset ${assetIds.length} รายการกับโดเมน "${domain.name}" เรียบร้อย` })
+    }
 
     if (action === 'DELETE') {
       if (domain._count.children > 0) {

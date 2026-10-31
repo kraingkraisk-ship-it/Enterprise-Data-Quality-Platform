@@ -15,6 +15,7 @@ import {
  *
  * GET  /api/elements?subDomainId=… — รายการ element ทั้งหมด (หรือกรองตามโดเมนย่อย)
  *      คืน flat list พร้อม ruleCount/mappingCount ธง CDE/Financial + สถานะและข้อมูลโดเมนย่อย+โดเมนหลัก (client ประกอบ path เอง)
+ *      v0.39.0 — เพิ่ม columnMappings (assetName+columnName) เพื่อแสดง "อ้างอิงจากข้อมูลที่ไหน" บนหน้า Data Catalog
  * POST /api/elements — สร้าง element ใหม่ (สถานะเริ่มต้น DRAFT เสมอ — เปิดใช้งานเป็น ACTIVE ด้วยสิทธิ์ MANAGE_DATASETS เมื่อพร้อม)
  *      body: { operatorEmail, subDomainId, nameTh, nameEn?, definition?, examples?, dataType?,
  *              formatPattern?, valueDomain?, maxLength?, unit?, ownerId?, stewardId?, custodianId?,
@@ -39,6 +40,11 @@ export async function GET(req: NextRequest) {
         include: {
           subDomain: { select: { id: true, name: true, nameEn: true, parentId: true } },
           referenceSet: { select: { id: true, code: true, name: true, status: true } }, // v0.31.0
+          columnMappings: {
+            // v0.39.0 — แหล่งอ้างอิงจริง (Data Asset + คอลัมน์) สำหรับแสดงบน Data Catalog
+            select: { assetId: true, columnName: true, note: true, asset: { select: { id: true, name: true } } },
+            orderBy: [{ assetId: 'asc' }, { columnName: 'asc' }],
+          },
         },
       }),
       db.dqRule.groupBy({ by: ['dataElementId'], _count: { _all: true }, where: { dataElementId: { not: null } } }),
@@ -84,6 +90,12 @@ export async function GET(req: NextRequest) {
         position: e.position,
         ruleCount: rulesByElement.get(e.id) ?? 0,
         mappingCount: mappingsByElement.get(e.id) ?? 0,
+        columnMappings: e.columnMappings.map((m) => ({
+          assetId: m.assetId,
+          assetName: m.asset.name,
+          columnName: m.columnName,
+          note: m.note,
+        })), // v0.39.0 — reference แสดงบน Data Catalog
         createdAt: e.createdAt,
         updatedAt: e.updatedAt,
       })),

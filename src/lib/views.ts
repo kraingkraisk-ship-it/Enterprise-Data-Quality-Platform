@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.38.2'
+export const APP_VERSION = 'v0.39.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -179,9 +179,9 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
   },
   'asset-domain': {
     key: 'asset-domain',
-    th: 'Data Domain',
-    en: 'Data Domain · Element · Meta',
-    desc: 'โครงสร้าง 4 ระดับ: Data Domain > Sub Data Domain > Data Element > Meta Data (ISO/IEC 11179) — Meta Data 4 กลุ่ม (Business/Technical/Operational/Governance) กรอกครั้งเดียวต่อ element + ธง CDE/การเงิน + เปิดใช้งาน/เลิกใช้ตามสิทธิ์บทบาท (Audit Trail 100%) + แมปคอลัมน์จริงจากคลังข้อมูล',
+    th: 'Data Catalog',
+    en: 'Data Catalog',
+    desc: 'สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) — ค้นหาและตรวจสอบชนิดข้อมูล รายละเอียดข้อมูล และประเภทข้อมูล ครบ 4 ระดับ: Data Domain (สร้างระบบบริการ พร้อมเลือก Data Asset เข้ามา) > Sub Data Domain (เช่น อัตราแลกเปลี่ยน ข้อมูลลูกค้า) > Data Element (เช่น ค่าเงิน ชื่อลูกค้า — เลือกคอลัมน์อ้างอิงพร้อมบอกว่านำมาจากข้อมูลที่ไหน) > Meta Data (ค่ามาตรฐานภายใน เช่น THB = ค่าเงินบาทไทย) — ครบตาม ISO/IEC 11179 + Audit Trail',
     icon: FolderTree,
   },
   'asset-reference': {
