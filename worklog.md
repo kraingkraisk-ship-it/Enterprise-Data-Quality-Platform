@@ -2233,3 +2233,26 @@ Stage Summary:
 - tag v0.40.0 · push ด้วย PAT รอบที่ 16 inline (ตรวจแล้ว: user/repo 200 · admin/maintain/push true) · ยืนยันผ่าน GitHub API หลัง push
 
 ---
+Task ID: 73
+Agent: Z.ai Code (main orchestrator)
+Task: v0.41.0 — คำสั่งผู้ใช้ (Data Catalog › Sub Data Domain): (1) ออกแบบ UX รองรับหลาย Sub Data Domain — กดยุบ/ขยายได้, เพิ่มเมนู Delete Data Element, เปลี่ยน "ดู Meta Data ครบ" → "รายละเอียด Data Element" (2) ออกแบบข้อมูลภายใน Data Element ใหม่ตามหลัก DQ — นำเสนอดีไซน์ก่อน implement ผู้ใช้อนุมัติ: กางหมวดแรกไว้ + แผงกางเฉพาะ ธุรกิจ/เทคนิค 2 กลุ่ม (ตัดค่ามาตรฐาน/กำกับดูแลออกทั้งหมด — กลุ่มอื่นดูใน dialog รายละเอียด)
+
+Work Log:
+- นำเสนอดีไซน์ 2 ข้อก่อนเขียนโค้ด (Element Panel v2 ตามกรอบ DAMA-DMBOK2 Meta 4 กลุ่ม + ISO/IEC 11179) — ผู้ใช้ตอบกลับ: "1.กางหมวดแรกไว้ 2.เน้นธุรกิจ/เทคนิค 2 อย่างพอ ส่วนอื่นตัดออกทั้งหมด" → implement ตามข้อกำหนดสุดท้าย
+- Sub Data Domain ยุบ/ขยายได้: หัวหมวดทั้งแถวเป็นปุ่ม toggle (chevron ▸/▾ + จุดสี + ชื่อ/EN + คำอธิบาย + badge "n Data Element" + aria-expanded/aria-controls/aria-label) คงปุ่ม + Data Element / แก้ไข / ลบ ใช้ได้แม้ยุบ · ค่าเริ่มต้นกางหมวดแรก (expanded[s:<id>] ?? isFirstChild) ผู้ใช้ยุบ/กางเองจำได้ขณะสลับโดเมน · ค้นหาแล้วกางอัตโนมัติเฉพาะหมวดที่มีผลค้น (derived: q ? subElements.length>0 : expanded ?? first)
+- แก้บั๊กที่ E2E จับได้: toggle หมวดใช้ toggleCatalogNode (!prev[key] → !undefined = true) ทำให้กดยุบหมวดแรก (ที่ default กางจาก ??) ครั้งแรกไม่มีผล → เปลี่ยนเป็น setExpanded(prev => ({...prev, [subKey]: !subOpen})) เทียบค่า effective ปัจจุบัน — ทดสอบแล้วกดครั้งเดียวยุบจริง
+- แถว Data Element ใหม่ (โซน A แถวรวม 3 บรรทัด): บรรทัด 1 = chevron + จุดสีสถานะ workflow (ACTIVE เขียว/DRAFT เหลือง/DEPRECATED เทา — ELEMENT_STATUS_DOTS ใหม่, role=img aria-label) + รหัส + ชื่อไทย/EN + badge ประเภทข้อมูล/CDE/การเงิน/PII (ย้าย badge สถานะออกเพื่อลดความรก) · บรรทัด 2 = นิยาม (ยุบ=truncate / กาง=break-words) · บรรทัด 3 = "อ้างอิง:" ชิป asset·column (หรือข้อความอ้างปุ่มใหม่) + ml-auto badge กฎ DQ 3 สถานะ: CDE ยังไม่มีกฎ (เหลืองเตือน) / กฎ DQ n ข้อ (เขียว) / ยังไม่ผูกกฎ DQ (เทา) — เชื่อม Catalog ↔ DQ ตามแนวทาง CDE monitoring
+- แผงกาง element (โซน B — 2 กลุ่มตามสั่ง): ธุรกิจ (นิยามเต็ม · ตัวอย่างค่าถ้ามี · เจ้าของข้อมูล resolve จาก users โดย email fallback แสดง raw ownerId) + เทคนิค (ชนิดข้อมูล · รูปแบบ/พาเทิร์น · ความยาว · หน่วย · ค่า Domain · ทะเบียนอ้างอิง — โชว์เฉพาะช่องที่มีค่า) — ตัด "Meta Data (ค่ามาตรฐาน)" inline และกลุ่มกำกับดูแลออกทั้งหมดตามคำสั่ง · ใช้ข้อมูลจาก GET /api/elements เดิม 100% ไม่ยิง API เพิ่ม
+- เพิ่มปุ่ม "ลบ" รายแถว (footer ของ element): เปิด AlertDialog ยืนยันเดิม · แสดงเฉพาะ canManage (MANAGE_ROLES รวมบทบาทผู้เข้าสู่ระบบ — v0.41.0) · disabled เมื่อมีกฎผูก (ruleCount>0, title อธิบายเหตุผล — ตรงข้อความ dialog "ลบได้เฉพาะ element ที่ไม่มีกฎผูกอยู่")
+- เปลี่ยนปุ่ม "ดู Meta Data ครบ" → "รายละเอียด Data Element" (ไอคอน Box→FileText + title ใหม่) + แก้ข้อความอ้างอิงในแถว "ยังไม่ระบุคอลัมน์ — กด รายละเอียด Data Element…" + aria-label ปุ่มกาง → "กาง/ปิด รายละเอียดของ …"
+- ล้าง dead code จากการตัดค่ามาตรฐาน inline: state metaValues + fn loadMetaValues (fetch /api/reference/sets/[id] เฉพาะ inline display) + ตัวแปร values ใน map · dialog รายละเอียด (5 แท็บ) ไม่เคยใช้ metaValues — ไม่กระทบ
+- อัปเดตคู่มือ "วิธีใช้งาน" ขั้น 2/4: หมวดยุบ/ขยายได้ · กด element กางสรุป ธุรกิจ/เทคนิค หรือ "รายละเอียด Data Element" ดูครบทุกกลุ่ม · อัปเดต desc ของเมนูใน views.ts (v0.41.0 + ฟีเจอร์ใหม่) · bump APP_VERSION v0.41.0
+- ทดสอบ: lint ผ่าน · E2E Agent Browser (somchai.owner DATA_OWNER): กางหมวดแรกอัตโนมัติ (ทะเบียนลูกค้า open=true) · ยุบ/กางใช้ได้หลังแก้บั๊ก · จำสถานะข้ามโดเมน (ยุบ ข้อมูลลูกค้า → สลับ Finance อัตราแลกเปลี่ยนกาง default → กลับมายังยุบอยู่) · ค้น "กลุ่ม" → ลิสต์เหลือ ข้อมูลลูกค้า + หมวดกางเอง · แถวใหม่ครบ 3 บรรทัด + badge กฎครบ 3 แบบ (EL-0002 กฎ 1/EL-0001 กฎ 2/EL-0004 ยังไม่ผูก) · กางแผง EL-0002 ได้ ธุรกิจ (นิยาม+เจ้าของ สมชาย ใจดีงาม·somchai.owner) + เทคนิค (ข้อความ+ทะเบียนกลุ่มลูกค้าองค์กร) ไม่มีค่ามาตรฐาน/กำกับดูแล · flow สร้างจริง "EL-0006 ทดสอบลบแถว" (API ยืนยัน) → ลบด้วยปุ่มใหม่บนแถว → AlertDialog ถูกต้อง → ยืนยันลบ (API ยืนยันหายจริง กลับ 5 elements) · ปุ่มลบของ element ที่มีกฎ disabled จริง (คลิกไม่มีผล) · dialog รายละเอียดครบ 5 แท็บ+ลบข้างใน · ข้อมูล "EL-0005 test" ที่ผู้ใช้สร้างเองไม่ถูกแตะ · desktop 1280 + mobile 375 ไม่มี h-scroll (sw=375/1280=iw) · mobile ปุ่มกลับ/ยุบ-กาง/footer ถูกผลักลงตามเนื้อหา · 0 page error · dev.log สะอาด
+- ภาพหลักฐาน: tmp/t73-desktop-initial.png · t73-element-rows.png · t73-element-panel.png · t73-search.png · t73-dialog.png · t73-mobile-list.png · t73-mobile-collapsed.png
+- หมายเหตุขอบเขต: แตะเฉพาะ UI หน้า Data Catalog + views.ts (label/desc/version) ตามโจทย์ · ไม่แตะ schema/API · ค่ามาตรฐานยังดู/แก้ได้ครบใน dialog รายละเอียดและหน้าข้อมูลอ้างอิง
+
+Stage Summary:
+- Data Catalog รองรับหลาย Sub Data Domain อย่างเป็นระบบ: หมวดยุบ/ขยายได้ (หมวดแรกกางไว้ จำสถานะ ค้นแล้วกางเอง) · แถว Data Element ใหม่ตามกรอบ DAMA (แถวรวม 3 บรรทัด + กางสรุป ธุรกิจ/เทคนิค) · ลบ element ได้จากแถวโดยตรง (มีสิทธิ์ + ไม่มีกฎผูก + ยืนยัน + Audit Trail) · ปุ่ม "รายละเอียด Data Element" ชื่อตรงงาน · แก้บั๊ก toggle ครั้งแรก · ไม่มี schema/API change · ข้อมูลเดม่าคืนสภาพเดิม ข้อมูลผู้ใช้ (EL-0005 test) ครบถ้วน
+- tag v0.41.0 · push ด้วย PAT รอบที่ 17 inline (ตรวจแล้ว: user/repo 200 · admin/maintain/push true) · ยืนยันผ่าน GitHub API หลัง push
+
+---

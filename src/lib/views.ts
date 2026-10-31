@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.40.0'
+export const APP_VERSION = 'v0.41.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -181,7 +181,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'asset-domain',
     th: 'Data Catalog',
     en: 'Data Catalog',
-    desc: 'สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) แบบ Master–Detail (v0.40.0): เลือก Data Domain จากรายการซ้ายเพื่อเจาะดูรายละเอียด — Sub Data Domain › Data Element (พร้อมคอลัมน์อ้างอิงว่านำมาจากข้อมูลใด) › Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) · สร้างโดเมนพร้อมเลือก Data Asset · ค้นหาแบบ Data Dictionary · ปุ่มวิธีใช้งาน อธิบาย 4 ขั้นตอนการจัดทำ',
+    desc: 'สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) แบบ Master–Detail (v0.41.0): เลือก Data Domain จากรายการซ้ายเพื่อเจาะดูรายละเอียด — Sub Data Domain (ยุบ/ขยายได้ หมวดแรกกางไว้) › Data Element (แถวรวม + กางสรุปธุรกิจ/เทคนิค พร้อมคอลัมน์อ้างอิงว่านำมาจากข้อมูลใด) › Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) · ลบ/ดูรายละเอียด element ได้จากแถวโดยตรง · สร้างโดเมนพร้อมเลือก Data Asset · ค้นหาแบบ Data Dictionary · ปุ่มวิธีใช้งาน อธิบาย 4 ขั้นตอนการจัดทำ',
     icon: FolderTree,
   },
   'asset-reference': {

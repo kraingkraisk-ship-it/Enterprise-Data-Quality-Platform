@@ -8,9 +8,12 @@ import {
   Box,
   Boxes,
   Braces,
+  Briefcase,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Cog,
+  FileText,
   FolderPlus,
   FolderTree,
   HelpCircle,
@@ -103,6 +106,8 @@ import type { ExpandedMapping, LineageResponse } from '@/components/data-mapping
 /* (1) แคตตาล็อกแบบลำดับชั้น ค้นหา/ตรวจสอบชนิดข้อมูล รายละเอียด ประเภทข้อมูล             */
 /* (2) Meta Data ราย element + คอลัมน์อ้างอิง (reference) จาก Data Asset จริง             */
 /* (3) v0.40.0 — ตัดแท็บเครื่องมือเสริม (จัดหมวดคอลัมน์ / ชุดข้อมูล DQ) ออกตามคำสั่งผู้ใช้      */
+/* (4) v0.41.0 — Sub Data Domain ยุบ/ขยายได้ (หมวดแรกกางไว้) · แถว element ใหม่ 3 บรรทัด +      */
+/*     แผงกาง ธุรกิจ/เทคนิค + ปุ่มลบรายแถว + ปุ่ม "รายละเอียด Data Element" (เดิม ดู Meta Data ครบ) */
 /* ------------------------------------------------------------------ */
 
 interface AssetItem {
@@ -250,6 +255,13 @@ const SEVERITY_DOT: Record<string, string> = {
   LOW: 'bg-slate-400',
 }
 
+/** จุดสีสถานะ workflow ของ element (v0.41.0 — ใช้จุดแทน badge เพื่อลดความรกบนแถวรวม) */
+const ELEMENT_STATUS_DOTS: Record<string, string> = {
+  ACTIVE: 'bg-emerald-500',
+  DRAFT: 'bg-amber-500',
+  DEPRECATED: 'bg-slate-400',
+}
+
 /* ------------------------- ชิปคอลัมน์อ้างอิง (v0.39.0) ------------------------- */
 
 /** ชิป "asset · column" — บอกว่า Data Element นี้นำมาจากข้อมูลที่ไหน (reference) */
@@ -280,6 +292,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   // v0.33.0 — ผู้ดำเนินการ = ผู้เข้าสู่ระบบเสมอ (session) — ไม่ให้เลือก/ปลอมบัญชีอื่น
   const { user: sessionUser } = useCurrentUser()
   const operatorEmail = sessionUser?.email ?? ''
+  // v0.41.0 — สิทธิ์จัดการ (แสดง/ซ่อนปุ่มลบ Data Element รายแถว)
+  const canManage = MANAGE_ROLES.includes(sessionUser?.role ?? '')
 
   /* ---------- แคตตาล็อก (v0.40.0 — master–detail) ---------- */
   const [activeDomainId, setActiveDomainId] = useState('') // v0.40.0 — โดเมนที่เลือกดูรายละเอียด
@@ -296,9 +310,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [manageAssetDomain, setManageAssetDomain] = useState<DomainItem | null>(null)
   const [manageAssetIds, setManageAssetIds] = useState<string[]>([])
   const [manageAssetsBusy, setManageAssetsBusy] = useState(false)
-
-  /* ---------- ค่า Meta Data จากทะเบียนอ้างอิง (โหลดเมื่อกาง element — v0.39.0) ---------- */
-  const [metaValues, setMetaValues] = useState<Record<string, Array<{ id: string; value: string; labelTh: string; definition: string; status: string }>>>({})
 
   /* ---------- Data Element (v0.18.0) ---------- */
   const [elements, setElements] = useState<ElementRow[]>([])
@@ -966,23 +977,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     })
   }
 
-  /** v0.39.0 — โหลดค่า Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) จากทะเบียนอ้างอิง เมื่อกาง element บนแคตตาล็อก */
-  async function loadMetaValues(setId: string) {
-    if (!setId || metaValues[setId]) return
-    try {
-      const res = await fetch(`/api/reference/sets/${setId}`)
-      const data = await res.json()
-      if (res.ok) {
-        setMetaValues((prev) => ({
-          ...prev,
-          [setId]: (data?.values ?? []).filter((v: { status: string }) => v.status === 'ACTIVE'),
-        }))
-      }
-    } catch {
-      /* แสดง "ไม่สามารถโหลด" ไว้ก่อน */
-    }
-  }
-
   return (
     <div className="space-y-5">
       {/* หัวหน้า — กระชับ + ปุ่มวิธีใช้งาน (v0.40.0) */}
@@ -1276,17 +1270,34 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                         (e) => !q || `${e.nameTh} ${e.nameEn} ${e.code} ${e.definition}`.toLowerCase().includes(q),
                       )
                       const subDeletable = (sub.elementCount ?? 0) === 0 && sub.assetCount === 0 && (sub.datasetCount ?? 0) === 0 && sub.columnCount === 0
+                      // v0.41.0 — ยุบ/กางโดเมนย่อย: ค่าเริ่มต้นกางหมวดแรก (ผู้ใช้ยุบเองจำได้) · ค้นหาแล้วกางเฉพาะหมวดที่มีผล
+                      const subKey = `s:${sub.id}`
+                      const subOpen = q ? subElements.length > 0 : Boolean(expanded[subKey] ?? sub.id === activeDomain.children[0]?.id)
                       return (
                         <div key={sub.id} className="rounded-lg border bg-card" role="listitem">
                           <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 p-2.5">
-                            <span className={`size-2 shrink-0 rounded-full ${subCol.dot}`} aria-hidden="true" />
-                            <div className="min-w-0 flex-1">
-                              <p className="break-words text-sm font-medium [overflow-wrap:anywhere]">{sub.name}</p>
-                              {sub.description && <p className="break-words text-[11px] text-muted-foreground [overflow-wrap:anywhere]">{sub.description}</p>}
-                            </div>
-                            <Badge variant="outline" className="shrink-0 text-[10px] tabular-nums">
-                              {subAll.length} Data Element
-                            </Badge>
+                            <button
+                              type="button"
+                              onClick={() => setExpanded((prev) => ({ ...prev, [subKey]: !subOpen }))}
+                              aria-expanded={subOpen}
+                              aria-controls={`sub-elements-${sub.id}`}
+                              aria-label={`${subOpen ? 'ยุบ' : 'กาง'} โดเมนย่อย ${sub.name}`}
+                              className="flex min-w-0 flex-1 items-center gap-2 rounded text-left transition-colors hover:text-emerald-800"
+                            >
+                              {subOpen ? (
+                                <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                              ) : (
+                                <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                              )}
+                              <span className={`size-2 shrink-0 rounded-full ${subCol.dot}`} aria-hidden="true" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block break-words text-sm font-medium [overflow-wrap:anywhere]">{sub.name}</span>
+                                {sub.description && <span className="block break-words text-[11px] text-muted-foreground [overflow-wrap:anywhere]">{sub.description}</span>}
+                              </span>
+                              <Badge variant="outline" className="shrink-0 text-[10px] tabular-nums">
+                                {subAll.length} Data Element
+                              </Badge>
+                            </button>
                             <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0">
                               <Button
                                 size="sm"
@@ -1313,7 +1324,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                               </Button>
                             </div>
                           </div>
-                          <div className="space-y-1.5 p-2.5">
+                          {subOpen && (
+                            <div id={`sub-elements-${sub.id}`} className="space-y-1.5 p-2.5">
                             {subElements.length === 0 ? (
                               q ? (
                                 <p className="rounded border border-dashed p-3 text-center text-[11px] text-muted-foreground">ไม่มี Data Element ตรงคำค้นในหมวดนี้</p>
@@ -1331,19 +1343,18 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                 const eOpen = Boolean(expanded[eKey])
                                 const status = ELEMENT_STATUS_LABELS[e.status as ElementStatus] ?? ELEMENT_STATUS_LABELS.ACTIVE
                                 const dt = ELEMENT_DATA_TYPE_LABELS[e.dataType as ElementDataType] ?? { th: e.dataType }
-                                const values = e.referenceSetId ? metaValues[e.referenceSetId] : undefined
                                 const cdeWarning = e.isCde && e.ruleCount === 0
+                                const ownerUser = e.ownerId ? users.find((u) => u.email === e.ownerId) : undefined
                                 return (
                                   <div key={e.id} className="rounded-lg border bg-card" role="listitem">
+                                    {/* โซน A — แถวรวม (v0.41.0): บรรทัด 1 รหัส+ชื่อ+badge / บรรทัด 2 นิยาม / บรรทัด 3 อ้างอิง+กฎ DQ */}
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        if (e.referenceSetId && !eOpen) void loadMetaValues(e.referenceSetId)
-                                        toggleCatalogNode(eKey)
-                                      }}
+                                      onClick={() => toggleCatalogNode(eKey)}
                                       aria-expanded={eOpen}
+                                      aria-controls={`element-panel-${e.id}`}
                                       className="w-full px-2.5 py-2 text-left transition-colors hover:bg-emerald-50/40"
-                                      aria-label={`${eOpen ? 'ปิด' : 'กาง'} Meta Data ของ ${e.nameTh}`}
+                                      aria-label={`${eOpen ? 'ปิด' : 'กาง'} รายละเอียดของ ${e.nameTh}`}
                                     >
                                       <span className="flex flex-wrap items-center gap-1.5">
                                         {eOpen ? (
@@ -1351,6 +1362,12 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                         ) : (
                                           <ChevronRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
                                         )}
+                                        <span
+                                          role="img"
+                                          aria-label={`สถานะ: ${status.th}`}
+                                          title={status.th}
+                                          className={`size-2 shrink-0 rounded-full ${ELEMENT_STATUS_DOTS[e.status] ?? 'bg-slate-400'}`}
+                                        />
                                         <span className="font-mono text-[10px] text-muted-foreground">{e.code}</span>
                                         <span className="break-words text-sm font-medium [overflow-wrap:anywhere]">{e.nameTh}</span>
                                         {e.nameEn && <span className="text-xs text-muted-foreground">{e.nameEn}</span>}
@@ -1370,53 +1387,98 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                             <ShieldAlert className="mr-0.5 size-2.5" aria-hidden="true" /> PII
                                           </Badge>
                                         )}
-                                        <Badge variant="outline" className={`text-[9px] ${status.chip}`}>{status.th}</Badge>
-                                        <span className={`inline-flex items-center gap-1 text-[10px] ${cdeWarning ? 'font-medium text-amber-700' : 'text-muted-foreground'}`}>
-                                          <Braces className="size-3" aria-hidden="true" /> ผูกกฎ {e.ruleCount} ข้อ
-                                        </span>
                                       </span>
+                                      {e.definition && (
+                                        <span className={`mt-1 block pl-5 text-[11px] text-muted-foreground ${eOpen ? 'break-words [overflow-wrap:anywhere]' : 'truncate'}`}>
+                                          {e.definition}
+                                        </span>
+                                      )}
                                       <span className="mt-1 flex flex-wrap items-center gap-1 pl-5">
                                         <span className="text-[10px] font-medium text-muted-foreground">อ้างอิง:</span>
                                         {e.columnMappings.length === 0 ? (
-                                          <span className="text-[10px] italic text-muted-foreground">ยังไม่ระบุคอลัมน์ — กด &quot;ดู Meta Data ครบ&quot; เพื่อเลือกจาก Data Asset</span>
+                                          <span className="text-[10px] italic text-muted-foreground">ยังไม่ระบุคอลัมน์ — กด &quot;รายละเอียด Data Element&quot; เพื่อเลือกจาก Data Asset</span>
                                         ) : (
                                           e.columnMappings.map((m) => <ReferenceChip key={`${m.assetId}.${m.columnName}`} assetName={m.assetName} columnName={m.columnName} />)
                                         )}
+                                        <span className="ml-auto" />
+                                        {cdeWarning ? (
+                                          <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[9px] font-medium text-amber-800">CDE ยังไม่มีกฎ</Badge>
+                                        ) : e.ruleCount > 0 ? (
+                                          <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-[9px] text-emerald-800">กฎ DQ {e.ruleCount} ข้อ</Badge>
+                                        ) : (
+                                          <Badge variant="outline" className="text-[9px] text-muted-foreground">ยังไม่ผูกกฎ DQ</Badge>
+                                        )}
                                       </span>
-                                      {eOpen && (
-                                        <span className="mt-1 block pl-5 text-[11px] leading-relaxed text-muted-foreground">
-                                          <span className="font-medium text-foreground">Meta Data (ค่ามาตรฐาน):</span>{' '}
-                                          {!e.referenceSetId ? (
-                                            <span className="italic">ยังไม่ผูกทะเบียน — เปิดรายละเอียดเพื่อกำหนด Meta Data</span>
-                                          ) : !values ? (
-                                            <span className="inline-flex items-center gap-1">
-                                              <Loader2 className="size-3 animate-spin" aria-hidden="true" /> กำลังโหลดค่า…
-                                            </span>
-                                          ) : values.length === 0 ? (
-                                            <span className="italic">ทะเบียนยังไม่มีค่า — เพิ่มค่าที่หน้า &quot;ข้อมูลอ้างอิง&quot;</span>
-                                          ) : (
-                                            <span className="break-words [overflow-wrap:anywhere]">
-                                              {values
-                                                .slice(0, 8)
-                                                .map((v) => `${v.value} = ${v.labelTh || v.definition || '—'}`)
-                                                .join(' · ')}
-                                              {values.length > 8 ? ` · +${values.length - 8} ค่า` : ''}
-                                            </span>
-                                          )}
-                                        </span>
-                                      )}
-                                      {e.definition && <span className="mt-1 block truncate pl-5 text-[11px] text-muted-foreground">{e.definition}</span>}
                                     </button>
+                                    {/* โซน B — แผงกางสรุป ธุรกิจ/เทคนิค (v0.41.0 — ผู้ใช้กำหนด 2 กลุ่มพอ กลุ่มอื่นดูใน dialog รายละเอียด) */}
+                                    {eOpen && (
+                                      <div id={`element-panel-${e.id}`} className="space-y-2.5 border-t px-2.5 py-2.5 text-[11px] leading-relaxed">
+                                        <div>
+                                          <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                            <Briefcase className="size-3" aria-hidden="true" /> ธุรกิจ
+                                          </p>
+                                          <div className="mt-1 space-y-0.5 pl-4">
+                                            <p className="break-words [overflow-wrap:anywhere]">
+                                              {e.definition || <span className="italic text-muted-foreground">ยังไม่ระบุนิยาม</span>}
+                                            </p>
+                                            {e.examples && (
+                                              <p className="break-words [overflow-wrap:anywhere]">
+                                                <span className="font-medium">ตัวอย่างค่า:</span> {e.examples}
+                                              </p>
+                                            )}
+                                            <p className="break-words [overflow-wrap:anywhere]">
+                                              <span className="font-medium">เจ้าของข้อมูล:</span>{' '}
+                                              {ownerUser ? `${ownerUser.name} · ${ownerUser.email}` : e.ownerId || <span className="italic text-muted-foreground">ยังไม่กำหนด</span>}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                            <Cog className="size-3" aria-hidden="true" /> เทคนิค
+                                          </p>
+                                          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 pl-4 text-muted-foreground">
+                                            <span><span className="font-medium text-foreground">ชนิดข้อมูล:</span> {dt.th}</span>
+                                            {e.formatPattern && (
+                                              <span><span className="font-medium text-foreground">รูปแบบ:</span> <span className="font-mono">{e.formatPattern}</span></span>
+                                            )}
+                                            {e.maxLength != null && (
+                                              <span><span className="font-medium text-foreground">ความยาว:</span> {e.maxLength}</span>
+                                            )}
+                                            {e.unit && <span><span className="font-medium text-foreground">หน่วย:</span> {e.unit}</span>}
+                                            {e.valueDomain && (
+                                              <span className="break-words [overflow-wrap:anywhere]"><span className="font-medium text-foreground">ค่า Domain:</span> {e.valueDomain}</span>
+                                            )}
+                                            {e.referenceSet && (
+                                              <span><span className="font-medium text-foreground">ทะเบียนอ้างอิง:</span> {e.referenceSet.name}</span>
+                                            )}
+                                            {e.columnMappings.length === 0 && <span className="italic">ยังไม่ระบุคอลัมน์อ้างอิง</span>}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
                                     <div className="flex items-center justify-end gap-1 border-t px-2.5 py-1.5">
-                                      <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => openElementDetail(e)} title="ดู Meta Data 4 กลุ่ม + คอลัมน์อ้างอิง + กฎ">
-                                        <Box className="size-3" aria-hidden="true" /> ดู Meta Data ครบ
+                                      <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => openElementDetail(e)} title="เปิดรายละเอียดครบทุกกลุ่ม (ธุรกิจ เทคนิค เชิงปฏิบัติการ กำกับดูแล การแมป)">
+                                        <FileText className="size-3" aria-hidden="true" /> รายละเอียด Data Element
                                       </Button>
+                                      {canManage && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-35"
+                                          disabled={e.ruleCount > 0}
+                                          onClick={() => setDeleteElementId(e.id)}
+                                          title={e.ruleCount > 0 ? 'ลบได้เฉพาะ element ที่ยังไม่มีกฎผูกอยู่' : 'ลบ Data Element'}
+                                        >
+                                          <Trash2 className="size-3" aria-hidden="true" /> ลบ
+                                        </Button>
+                                      )}
                                     </div>
                                   </div>
                                 )
                               })
                             )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -1466,7 +1528,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   <span className="font-semibold text-foreground">Data Asset</span> เข้ามาเป็นแหล่งข้อมูลต้นทาง
                 </li>
                 <li>
-                  สร้าง <span className="font-semibold text-foreground">Sub Data Domain</span> — แบ่งส่วนย่อยของโดเมนได้หลายรายการ (เช่น อัตราแลกเปลี่ยน, ข้อมูลลูกค้า)
+                  สร้าง <span className="font-semibold text-foreground">Sub Data Domain</span> — แบ่งส่วนย่อยของโดเมนได้หลายรายการ (เช่น อัตราแลกเปลี่ยน, ข้อมูลลูกค้า) ·
+                  กดที่หัวหมวดเพื่อยุบ/ขยายรายการ element ภายใต้ได้
                 </li>
                 <li>
                   สร้าง <span className="font-semibold text-foreground">Data Element</span> — ตั้งชื่อข้อมูลรายหน่วย (เช่น ค่าเงิน ชื่อลูกค้า) แล้วเลือกคอลัมน์อ้างอิงจาก Data Asset —
@@ -1474,7 +1537,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 </li>
                 <li>
                   กำหนด <span className="font-semibold text-foreground">Meta Data</span> ให้ครบถ้วน — ชนิดข้อมูล ค่ามาตรฐานภายใน (เช่น THB = ค่าเงินบาทไทย) และผู้รับผิดชอบ
-                  กดที่ element เพื่อดู Meta Data 4 กลุ่ม
+                  กดที่ element เพื่อกางสรุป ธุรกิจ/เทคนิค หรือกด &quot;รายละเอียด Data Element&quot; เพื่อดูครบทุกกลุ่ม
                 </li>
               </ol>
             </div>
