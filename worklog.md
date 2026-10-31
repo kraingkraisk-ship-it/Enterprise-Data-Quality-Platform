@@ -2013,3 +2013,17 @@ Work Log:
 Stage Summary:
 - หน้าผลการตรวจสอบไม่มี "การตัดสินโดยคน" แล้ว — ML แนะนำ (read-only) มนุษย์สอนโมเดลที่ ML Studio จุดเดียว (คลัง label + สุ่มตรวจ = ground truth สำหรับ retrain)
 - ภาษาทั้งระบบใช้ "คำแนะนำจาก ML" ตรงเทคโนโลยีจริง (สถิติโปร่งใส Train/Test ไม่ใช่ AI กล่องดำ) · สิทธิ์คง 12 รายการ (REVIEW_SIGNALS อยู่ครบในบทบาทเดิม) · tag v0.36.1
+
+---
+Task ID: 66-b
+Agent: Z.ai Code (main orchestrator)
+Task: รับ PAT ใหม่ (rotate ครั้งที่ 10 ตาม pattern Task 51/57/59/61/63/64-b/65-a) — ตรวจอ่าน+เขียนผ่าน · ยืนยัน Task 66 (v0.36.1) ส่งมอบครบแล้วบน remote (commit 12328dc + tag v0.36.1) · ไม่มีงานค้าง push
+
+Work Log:
+- ผู้ใช้ส่ง PAT ใหม่พร้อมคำสั่ง "push ก่อน" — ตรวจ read: GET repo ได้ 200 · ตรวจสิทธิ์: permissions = push/admin/maintain/triage/pull ครบ true · ตรวจ write: POST /git/blobs สร้าง blob สำเร็จ (ได้ SHA — DELETE blob 404 เพราะ GitHub API ไม่รองรับการลบ blob ไม่ใช่ปัญหาสิทธิ์) · ไม่บันทึกลง git config หรือไฟล์ใดๆ — ใช้ inline เท่านั้น
+- ยืนยันสถานะ Task 66 จาก session ก่อน ส่งมอบครบแล้ว: commit 12328dc (v0.36.1 เปลี่ยนชื่อ "สัญญาณ AI รอทบทวน" → "คำแนะนำจาก ML" + ยกเลิกการสอนโดยคนในหน้าผลการตรวจสอบ · worklog Task 66 อยู่ใน commit เดียว) อยู่บน remote main แล้ว · tag v0.36.1 → 12328dc อยู่บน remote แล้ว (ตรวจผ่าน git ls-remote) · git fetch origin แล้ว local = remote = 12328dc in sync สมบูรณ์ · ไม่มี commit ค้าง push (origin/main..main ว่าง) · working tree clean
+- commit worklog นี้คือการพิสูจน์ push ด้วย PAT รอบที่ 10 (ยืนยันซ้ำผ่าน GitHub API หลัง push)
+
+Stage Summary:
+- PAT รอบที่ 10 ใช้งานได้ครบ (อ่าน 200 + สิทธิ์ push/admin/maintain true + เขียนผ่าน blob probe + push worklog สำเร็จ)
+- v0.36.1 (Task 66 เมนู "คำแนะนำจาก ML") สมบูรณ์ทั้ง local/remote/tag · working tree clean · ระบบรอคำสั่งถัดไปจากผู้ใช้
