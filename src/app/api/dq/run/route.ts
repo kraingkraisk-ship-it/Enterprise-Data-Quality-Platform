@@ -60,15 +60,22 @@ export async function POST(req: NextRequest) {
     const datasetId = String(body.datasetId ?? '').trim()
     if (!datasetId) return NextResponse.json({ error: 'กรุณาเลือกชุดข้อมูล' }, { status: 400 })
 
+    // v0.38.0 — เลือกกฎที่จะรันได้ (จากหน้า Data Quality Check) — ไม่ส่ง = รันกฎที่เปิดใช้งานทั้งหมด (เหมือนเดิม)
+    const ruleIds = Array.isArray(body.ruleIds) ? body.ruleIds.map((v) => String(v).trim()).filter(Boolean) : []
+
     const dataset = await db.dataset.findUnique({ where: { id: datasetId } })
     if (!dataset) {
       return NextResponse.json({ error: 'ไม่พบชุดข้อมูลนี้ในระบบ' }, { status: 404 })
     }
 
-    // กฎที่ใช้ร่วมกับชุดข้อมูลนี้ (many-to-many ผ่าน RuleDataset)
+    // กฎที่ใช้ร่วมกับชุดข้อมูลนี้ (many-to-many ผ่าน RuleDataset) — กรองตาม ruleIds ถ้าผู้ใช้เลือกมา
     const [rulesForDataset, allTemplates] = await Promise.all([
       db.dqRule.findMany({
-        where: { enabled: true, datasets: { some: { datasetId } } },
+        where: {
+          enabled: true,
+          datasets: { some: { datasetId } },
+          ...(ruleIds.length > 0 ? { id: { in: ruleIds } } : {}),
+        },
         orderBy: { createdAt: 'asc' },
       }),
       db.conditionTemplate.findMany(),

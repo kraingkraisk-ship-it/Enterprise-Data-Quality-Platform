@@ -164,7 +164,7 @@ function HomeShell() {
             <DqFailedRecords active={view === 'failed-records'} />
           </div>
           <div className={view === 'profiling' ? '' : 'hidden'} aria-hidden={view !== 'profiling'}>
-            <DqProfiling active={view === 'profiling'} />
+            <DqProfiling active={view === 'profiling'} onViewChange={setView} />
           </div>
           <div className={view === 'issues' ? '' : 'hidden'} aria-hidden={view !== 'issues'}>
             <DqIssues active={view === 'issues'} />

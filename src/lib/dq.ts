@@ -464,6 +464,162 @@ export function buildRuleSentence(rule: RuleLike): string {
   return sentence
 }
 
+/* ------------------------------------------------------------------ */
+/* ภาษาคน — ประโยคกฎภาษาไทยอ่านง่ายต่อเอนจิน (v0.38.0)                 */
+/* ปกติระบบแสดงประโยคกฎแบบมาตรฐาน (buildRuleSentence ด้านบน) เพื่อการ  */
+/* ตรวจสอบย้อนกลับ — บรรทัดนี้ช่วยให้ผู้ใช้ทั่วไปเข้าใจกฎใน 1 วินาที     */
+/* ------------------------------------------------------------------ */
+
+/** ประโยคภาษาไทยสั้น ๆ อธิบายว่า "กฎเอนจินนี้เช็คอะไร" — ครบทุกเอนจินใน CONDITIONS */
+export const ENGINE_SENTENCE_TH: Record<ConditionKey, string> = {
+  NOT_NULL: 'ทุกแถวต้องมีค่า — ห้ามว่าง',
+  EMAIL: 'ต้องเป็นรูปแบบอีเมลที่ถูกต้อง',
+  REGEX: 'ต้องตรงตามรูปแบบที่กำหนด',
+  RANGE: 'ต้องอยู่ในช่วงตัวเลขที่กำหนด',
+  IN_LIST: 'ต้องเป็นค่าที่ระบบอนุญาตเท่านั้น',
+  UNIQUE: 'ต้องไม่ซ้ำกันในชุดข้อมูลเดียวกัน',
+  MAX_AGE_DAYS: 'ต้องไม่เก่าเกินจำนวนวันที่กำหนด',
+  REFERENCE_MATCH: 'ต้องตรงกับค่ามาตรฐานของระบบต้นทาง',
+  MAX_AGE_HOURS: 'ต้องมาทันเวลา — ไม่เก่าเกินจำนวนชั่วโมงที่กำหนด',
+  EXISTS_IN_DATASET: 'ต้องมีอยู่จริงในชุดข้อมูลอ้างอิง',
+}
+
+/* ------------------------------------------------------------------ */
+/* ไอเดีย "Data Element เป็นกฎในการตรวจ" (v0.38.0)                     */
+/* แปลง metadata ของ Data Element ให้เป็นข้อเสนอกฎอัตโนมัติ —           */
+/* มิติที่ได้ขึ้นกับชนิดของข้อมูลและค่าที่กรอกไว้ใน Element:             */
+/*   formatPattern → VALIDITY (REGEX) · ทะเบียนอ้างอิง → ACCURACY       */
+/*   (REFERENCE_MATCH) · valueDomain → CONSISTENCY (IN_LIST) ·         */
+/*   DATE/DATETIME → CURRENTNESS (MAX_AGE_DAYS) · NUMBER →             */
+/*   REASONABLENESS (RANGE) · CDE → COMPLETENESS (NOT_NULL) ·          */
+/*   ชื่อ/code มี email → VALIDITY (EMAIL)                              */
+/* ------------------------------------------------------------------ */
+
+/** รูปร่าง Element ที่ฟังก์ชันนี้ต้องการ — ส่วนเกินไม่บังคับ */
+export interface ElementCheckSource {
+  nameTh: string
+  dataType: string
+  formatPattern?: string
+  valueDomain?: string
+  referenceSetId?: string | null
+  referenceSetName?: string | null
+  isCde?: boolean
+  unit?: string
+}
+
+/** ข้อเสนอกฎ 1 ข้อที่ได้จาก Element */
+export interface ElementSuggestion {
+  /** กุญแจไม่ซ้ำภายใน Element เดียว เช่น 'pattern' | 'ref' | 'domain' | 'age' | 'range' | 'cde' | 'email' */
+  key: string
+  engine: ConditionKey
+  dimension: DimensionKey
+  /** ชื่อข้อเสนอภาษาไทย เช่น "ตรงตามรูปแบบที่ Element กำหนด" */
+  title: string
+  /** เหตุผลที่แนะนำ — อ้าง metadata ที่ใช้ เช่น "รูปแบบ: ^0[0-9]{9}$" */
+  reason: string
+  /** พารามิเตอร์ครบ กดสร้างกฎได้ทันที (false = ต้องกรอกเพิ่ม เช่น ช่วงค่า min/max) */
+  autoFillable: boolean
+  /** พารามิเตอร์ที่กรอกให้ล่วงหน้าได้จาก Element */
+  params: Record<string, string>
+}
+
+/** ผู้ใช้กรอกอะไรไว้ใน Element → ระบบเสนอกฎอะไร พร้อมมิติตามชนิดข้อมูล */
+export function suggestChecksForElement(el: ElementCheckSource): ElementSuggestion[] {
+  const out: ElementSuggestion[] = []
+  const dataType = (el.dataType || 'TEXT').toUpperCase()
+
+  // 1) รูปแบบที่กำหนดไว้ → ตรวจด้วย REGEX (ความถูกต้องตามรูปแบบ)
+  if (el.formatPattern && el.formatPattern.trim()) {
+    out.push({
+      key: 'pattern',
+      engine: 'REGEX',
+      dimension: 'VALIDITY',
+      title: 'ตรงตามรูปแบบที่ Element กำหนด',
+      reason: `จาก "รูปแบบ" ของ element: ${el.formatPattern}`,
+      autoFillable: true,
+      params: { pattern: el.formatPattern },
+    })
+  }
+
+  // 2) ผูกทะเบียนอ้างอิงไว้ → ตรวจความถูกต้องเทียบแหล่งมาตรฐาน (ACCURACY)
+  if (el.referenceSetId) {
+    out.push({
+      key: 'ref',
+      engine: 'REFERENCE_MATCH',
+      dimension: 'ACCURACY',
+      title: 'ตรงกับทะเบียนข้อมูลอ้างอิง',
+      reason: `element ผูกทะเบียน${el.referenceSetName ? ` "${el.referenceSetName}"` : ''}ไว้ (single source of truth)`,
+      autoFillable: true,
+      params: { referenceSetId: el.referenceSetId },
+    })
+  } else if (el.valueDomain && el.valueDomain.trim()) {
+    // 3) ค่าอนุญาต (ยังไม่ผูกทะเบียน) → IN_LIST (ความสอดคล้อง)
+    out.push({
+      key: 'domain',
+      engine: 'IN_LIST',
+      dimension: 'CONSISTENCY',
+      title: 'อยู่ในรายการค่าอนุญาตของ element',
+      reason: `จาก "ค่าอนุญาต" ของ element: ${el.valueDomain}`,
+      autoFillable: true,
+      params: { values: el.valueDomain },
+    })
+  }
+
+  // 4) ข้อมูลวันที่/เวลา → ความเป็นปัจจุบัน (เสนอ 30 วัน — ปรับได้)
+  if (dataType === 'DATE' || dataType === 'DATETIME') {
+    out.push({
+      key: 'age',
+      engine: 'MAX_AGE_DAYS',
+      dimension: 'CURRENTNESS',
+      title: 'ข้อมูลไม่เก่าเกิน 30 วัน',
+      reason: `ชนิดข้อมูล ${dataType} — กันข้อมูลค้างเก่า (ปรับจำนวนวันได้)`,
+      autoFillable: true,
+      params: { days: '30' },
+    })
+  }
+
+  // 5) ตัวเลข → ความสมเหตุสมผล (ต้องกรอกช่วงเพิ่ม)
+  if (dataType === 'NUMBER' || dataType === 'INTEGER') {
+    out.push({
+      key: 'range',
+      engine: 'RANGE',
+      dimension: 'REASONABLENESS',
+      title: 'อยู่ในช่วงค่าที่สมเหตุสมผล',
+      reason: `ชนิดข้อมูล ${dataType}${el.unit ? ` (หน่วย ${el.unit})` : ''} — กรอกค่าต่ำสุด/สูงสุดต่อ`,
+      autoFillable: false,
+      params: {},
+    })
+  }
+
+  // 6) อีเมลจากชื่อ/code → ตรวจรูปแบบอีเมลโดยตรง
+  if (/email|อีเมล/i.test(`${el.nameTh}`)) {
+    out.push({
+      key: 'email',
+      engine: 'EMAIL',
+      dimension: 'VALIDITY',
+      title: 'รูปแบบอีเมลถูกต้อง',
+      reason: 'ชื่อ element ระบุว่าเป็นอีเมล — ใช้เอนจินตรวจอีเมลโดยตรง',
+      autoFillable: true,
+      params: {},
+    })
+  }
+
+  // 7) CDE (ข้อมูลวิกฤต) → ต้องมีค่าครบ (ความสมบูรณ์)
+  if (el.isCde) {
+    out.push({
+      key: 'cde',
+      engine: 'NOT_NULL',
+      dimension: 'COMPLETENESS',
+      title: 'ต้องมีค่า (CDE)',
+      reason: 'element นี้คือ Critical Data Element — ต้องมีค่าครบทุกแถว',
+      autoFillable: true,
+      params: {},
+    })
+  }
+
+  return out
+}
+
 /* ---------------------------- evaluation ---------------------------------- */
 
 export type Row = Record<string, unknown>

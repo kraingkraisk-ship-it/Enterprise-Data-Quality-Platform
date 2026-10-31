@@ -6,6 +6,7 @@ import {
   Play,
   BrainCircuit,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -63,9 +64,13 @@ import {
   DIMENSION_KEYS,
   DIMENSION_LABELS,
   DIMENSION_META,
+  ENGINE_SENTENCE_TH,
   isConditionKey,
   SEVERITY_KEYS,
   SEVERITY_LABELS,
+  suggestChecksForElement,
+  type DimensionKey,
+  type ElementSuggestion,
   type TemplateParamDef,
 } from '@/lib/dq'
 import { ROLE_LIST, type PermissionKey, type RoleKey } from '@/lib/rbac'
@@ -94,6 +99,8 @@ interface ElementRowLite {
   dataType: string
   formatPattern: string
   valueDomain: string
+  referenceSetId: string | null // v0.38.0 — ทะเบียนอ้างอิงที่ valueDomain ผูกไว้ (ใช้เสนอกฎจาก Element)
+  referenceSetName: string | null
   pii: boolean
   isCde: boolean
   isFinancial: boolean
@@ -178,52 +185,6 @@ interface ApiSignal {
   createdAt: string
 }
 
-interface RunResponse {
-  batchId?: string
-  datasetName: string
-  rowsCount: number
-  rulesCount: number
-  skipped?: number
-  newSignals: number
-  overallScore: number | null
-  overallGrade: { band: string; label: string; badgeClass: string; textClass: string } | null
-  summary: string
-  /** ครบทั้ง 9 มาตรา — score = null เมื่อไม่มีกฎในมิตินั้น (ยังไม่ได้ประเมิน) */
-  dimensionScores: Array<{
-    dimension: string
-    th: string
-    en: string
-    clauseNo: number
-    statement: string
-    measure: string
-    formula: string
-    score: number | null
-    grade: { band: string; label: string; badgeClass: string; barClass: string; textClass: string } | null
-    rulesCount: number
-    failedRules: number
-    advice: string | null
-  }>
-  results: Array<{
-    ruleId: string
-    column: string
-    condition: string
-    conditionName: string
-    severity: string
-    dimension: string
-    dimensionTh: string
-    dimensionEn: string
-    clauseNo: number
-    sentence: string
-    /** คำตัดสินตามมาตรา (ภาษาไทยอ่านง่าย) */
-    verdict: string
-    advice: string | null
-    status: 'PASSED' | 'FAILED' | 'NO_DATA'
-    totalRows: number
-    failedRows: number
-    passRate: number
-    failedSamples: string[]
-  }>
-}
 
 interface DashboardData {
   totals: { pendingSignals: number; activeExceptions: number; rulesEnabled: number; datasetsWithRun: number; datasetsTotal: number }
@@ -302,9 +263,9 @@ function scoreColor(score: number | null): string {
 
 /* Rule Builder wizard (v0.18.1) — ชื่อขั้นตอน 4 ขั้นของการสร้างกฎ */
 const RB_STEPS = [
-  { title: 'เป้าหมาย', desc: 'ชุดข้อมูล + Data Element' },
+  { title: 'มิติ + เป้าหมาย', desc: 'เลือกมิติ 9 มิติ · ชุดข้อมูล + Data Element' },
   { title: 'คอลัมน์', desc: 'จากตัวอย่างข้อมูลจริง' },
-  { title: 'เงื่อนไข', desc: 'must + พารามิเตอร์' },
+  { title: 'เงื่อนไข', desc: 'เลือกจากมิติที่เลือก + พารามิเตอร์' },
   { title: 'ตั้งค่า', desc: 'รุนแรง · เกณฑ์ · บันทึก' },
 ] as const
 
@@ -348,8 +309,9 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const { user } = useCurrentUser()
   const actorEmail = user?.email ?? ''
 
-  // โหมด library — สลับแท็บกฎ/เงื่อนไขภายในหน้าเดียว (ไม่เปลี่ยนเมนู)
-  const [libraryTab, setLibraryTab] = useState<'rules' | 'conditions'>('rules')
+  // โหมด library (v0.38.0) — ไม่มีแท็บภายในแล้ว: จัดกลุ่มกฎตามมิติ 9 มิติ · คลังเงื่อนไขยุบเป็น "เงื่อนไขขั้นสูง"
+  const [dimFilter, setDimFilter] = useState<'ALL' | DimensionKey>('ALL') // กรองรายการกฎตามมิติที่คลิก
+  const [advOpen, setAdvOpen] = useState(false) // แผงเงื่อนไขขั้นสูง (คลังเงื่อนไขเดิม)
 
   // shared data
   // v0.32.0 — รายชื่อผู้ใช้ย้ายไปโหลดครั้งเดียวที่ UserSwitcher (CurrentUserProvider) — ไม่โหลดซ้ำที่นี่
@@ -362,6 +324,8 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [reloadTick, setReloadTick] = useState(0)
 
   // tab 1 — rule builder form
+  // v0.38.0 — ขั้นที่ 1 เริ่มจาก "เลือกมิติ" (มิตินำ) — เงื่อนไขขั้นที่ 3 จะกรองตามมิตินี้
+  const [rbDimension, setRbDimension] = useState<DimensionKey | ''>('')
   const [rbDatasets, setRbDatasets] = useState<string[]>([])
   const [rbPreviewDataset, setRbPreviewDataset] = useState('')
   const [rbPreview, setRbPreview] = useState<MultiPreviewData | null>(null)
@@ -403,19 +367,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [cnParams, setCnParams] = useState<Array<{ key: string; label: string; type: TemplateParamDef['type']; placeholder: string }>>(
     CONDITIONS.REGEX.params.map((p) => ({ key: p.key, label: p.label, type: p.type, placeholder: p.placeholder ?? '' })),
   )
-
-  // tab 3 — run + review
-  const [runDataset, setRunDataset] = useState('')
-  const [runResult, setRunResult] = useState<RunResponse | null>(null)
-  // B2 (v0.37.0) — สรุปหลังตรวจจาก ML Studio (ผู้ช่วยเสนอแนะ — ไม่ตัดสินแทนคะแนนกฎ)
-  const [mlSummary, setMlSummary] = useState<{
-    summaryText: string
-    modelVersion: number | null
-    advice: string[]
-    commonCauses: Array<{ signature: string; failedRows: number; hypothesis: string }>
-  } | null>(null)
-  const [mlSummaryOpen, setMlSummaryOpen] = useState(true)
-
 
   const refetch = useCallback(() => setReloadTick((t) => t + 1), [])
 
@@ -640,11 +591,11 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   )
 
   /* -------- Rule Builder wizard — ความถูกต้องรายขั้น + การเดินหน้า/ย้อนกลับ (v0.18.1) --------
-     ขั้น 1 ต้องเลือกชุดข้อมูล ≥ 1 · ขั้น 2 ต้องเลือกคอลัมน์ · ขั้น 3 ต้องเลือกเงื่อนไข
+     ขั้น 1 ต้องเลือกมิติ + ชุดข้อมูล ≥ 1 (มิตินำ v0.38.0) · ขั้น 2 ต้องเลือกคอลัมน์ · ขั้น 3 ต้องเลือกเงื่อนไข
      ไปขั้นถัดไปได้เฉพาะเมื่อทุกขั้นก่อนหน้าถูกต้อง (deny-by-default ต่อขั้นตอน) */
   const rbStepValid = useMemo<boolean[]>(
-    () => [rbDatasets.length > 0, rbColumn.trim() !== '', rbCondition !== '', true],
-    [rbDatasets.length, rbColumn, rbCondition],
+    () => [rbDimension !== '' && rbDatasets.length > 0, rbColumn.trim() !== '', rbCondition !== '', true],
+    [rbDimension, rbDatasets.length, rbColumn, rbCondition],
   )
   const rbCanGoTo = useCallback(
     (step: number) => step <= 1 || rbStepValid.slice(0, step - 1).every(Boolean),
@@ -665,6 +616,55 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   )
 
   const pendingSignals = useMemo(() => signals.filter((s) => s.status === 'PENDING_REVIEW'), [signals])
+
+  /* -------- v0.38.0 — มิตินำ: จัดกลุ่มกฎตามมิติ + ข้อเสนอกฎจาก Data Element -------- */
+  /** กฎที่ผ่านตัวกรองมิติ (แท็บมุมมอง "ทั้งหมด" = ทุกมิติ) */
+  const dimFilteredRules = useMemo(
+    () => (dimFilter === 'ALL' ? rules ?? [] : (rules ?? []).filter((r) => r.dimension === dimFilter)),
+    [rules, dimFilter],
+  )
+  /** จำนวนกฎต่อมิติ (เปิดใช้งาน/ทั้งหมด) — สำหรับการ์ดภาพรวม 9 มิติ */
+  const ruleCountsByDimension = useMemo(() => {
+    const m = new Map<DimensionKey, { total: number; enabled: number }>()
+    for (const k of DIMENSION_KEYS) m.set(k, { total: 0, enabled: 0 })
+    for (const r of rules ?? []) {
+      if (!r.dimension || !(DIMENSION_KEYS as string[]).includes(r.dimension)) continue
+      const cur = m.get(r.dimension as DimensionKey)!
+      cur.total += 1
+      if (r.enabled) cur.enabled += 1
+    }
+    return m
+  }, [rules])
+  /** มิติที่มีกฎอย่างน้อย 1 ข้อ — ใช้เตือนมิติว่าง */
+  const dimsWithRules = useMemo(() => DIMENSION_KEYS.filter((k) => (ruleCountsByDimension.get(k)?.total ?? 0) > 0), [ruleCountsByDimension])
+  /** ข้อเสนอกฎจาก Element ที่เลือกใน builder — แปลง metadata เป็นข้อเสนอตามชนิดข้อมูล */
+  const rbElSuggestions = useMemo<ElementSuggestion[]>(
+    () =>
+      rbSelectedElement
+        ? suggestChecksForElement({
+            nameTh: rbSelectedElement.nameTh,
+            dataType: rbSelectedElement.dataType,
+            formatPattern: rbSelectedElement.formatPattern,
+            valueDomain: rbSelectedElement.valueDomain,
+            referenceSetId: rbSelectedElement.referenceSetId,
+            referenceSetName: rbSelectedElement.referenceSetName,
+            isCde: rbSelectedElement.isCde,
+          })
+        : [],
+    [rbSelectedElement],
+  )
+  /** เงื่อนไขในมิติที่เลือกของ builder (ขั้นที่ 3) — แสดงเฉพาะเงื่อนไขในมิตินั้น */
+  const rbDimensionConditions = useMemo(
+    () => (rbDimension ? conditions.filter((c) => c.enabled && c.dimension === rbDimension) : conditions),
+    [conditions, rbDimension],
+  )
+  /** กด "ใช้ข้อเสนอ" — เติมมิติ + เงื่อนไข + พารามิเตอร์แล้วพาไปขั้น 3 */
+  function applyElementSuggestion(s: ElementSuggestion) {
+    setRbDimension(s.dimension)
+    setRbCondition(s.engine)
+    setRbParams({ ...s.params })
+    setRbStep(3)
+  }
 
   // ความครอบคลุมมิติของคลังเงื่อนไข (เฉพาะที่เปิดใช้งาน) — แสดง "ครอบคลุม X/9 มิติ"
   const coveredDimensions = useMemo(() => new Set(conditions.filter((c) => c.enabled && c.dimension).map((c) => c.dimension)), [conditions])
@@ -841,69 +841,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     if (ok) refetch()
   }
 
-  async function handleRun() {
-    setRunResult(null)
-    setBusy('run')
-    try {
-      const res = await fetch('/api/dq/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datasetId: runDataset, operatorEmail: actorEmail }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({ title: 'รันการตรวจสอบไม่สำเร็จ', description: data.error ?? `HTTP ${res.status}`, variant: 'destructive' })
-        return
-      }
-      setRunResult(data as RunResponse)
-      toast({
-        title: 'รันตรวจสอบสำเร็จ',
-        description: `ตรวจ ${data.rulesCount} กฎ บน ${data.rowsCount} แถว — คำแนะนำใหม่ ${data.newSignals} รายการ`,
-      })
-      refetch()
-    } catch {
-      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  // B2 (v0.37.0) — โหลดสรุปหลังตรวจจาก ML Studio เมื่อรันเสร็จ (ผู้ช่วยเสนอแนะ — ล้มเหลวแล้วไม่กระทบผลตรวจ)
-  useEffect(() => {
-    if (!runResult?.batchId) {
-      setMlSummary(null)
-      return
-    }
-    let alive = true
-    ;(async () => {
-      try {
-        const res = await fetch(`/api/ml/run-summary?batchId=${runResult.batchId}`)
-        if (!res.ok) {
-          if (alive) setMlSummary(null)
-          return
-        }
-        const data = (await res.json()) as {
-          summary?: { summaryText: string; modelVersion: number | null; advice: string[]; commonCauses: Array<{ signature: string; failedRows: number; hypothesis: string }> } | null
-        }
-        if (alive && data?.summary) {
-          setMlSummary({
-            summaryText: data.summary.summaryText,
-            modelVersion: data.summary.modelVersion,
-            advice: data.summary.advice ?? [],
-            commonCauses: data.summary.commonCauses ?? [],
-          })
-          setMlSummaryOpen(true)
-        } else if (alive) {
-          setMlSummary(null)
-        }
-      } catch {
-        /* สรุป ML ใช้ไม่ได้ — แสดงผลตรวจปกติ */
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [runResult?.batchId])
 
   // B1 (v0.37.0) — คำแนะนำเงื่อนไขจาก ML Studio เมื่อเลือกคอลัมน์ใน Rule Builder (ขั้นที่ 3)
   useEffect(() => {
@@ -1007,83 +944,99 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
 
   return (
     <Tabs
-      value={mode === 'library' ? libraryTab : isCoreView(activeView) ? activeView : 'rules'}
+      value={mode === 'library' ? 'rules' : isCoreView(activeView) ? activeView : 'rules'}
       onValueChange={(v) => {
-        if (mode === 'library') setLibraryTab(v as 'rules' | 'conditions')
-        else onViewChange(v as ViewKey)
+        if (mode !== 'library') onViewChange(v as ViewKey)
       }}
       className="w-full"
     >
-      {/* แถบแนะนำลำดับการใช้งาน 3 ขั้น (โหมด library) — อธิบายภาพรวมก่อนเจอฟอร์ม เพื่อลดความสับสน */}
+      {/* แถบแนะนำแบบมิตินำ (v0.38.0 — แทน onboarding 3 ขั้นเดิม) — เข้าใจโครงของหน้าใน 10 วินาที */}
       {mode === 'library' && (
         <Card className="border-emerald-200 bg-emerald-50/50">
-          <CardContent className="grid gap-2 p-3 sm:grid-cols-3 sm:gap-3">
-            <div className={`flex items-start gap-2.5 rounded-lg p-2 ${libraryTab === 'conditions' ? 'bg-white shadow-sm' : ''}`}>
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white" aria-hidden="true">
-                1
-              </span>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-emerald-900">เตรียมเงื่อนไข (must) — ข้ามได้</p>
-                <p className="mt-0.5 text-[11px] leading-snug text-emerald-800/80">
-                  ระบบมีเงื่อนไขมาตรฐานให้ใช้ทันที หรือสร้างเพิ่มในแท็บ “คลังเงื่อนไข”
-                </p>
-                <Button variant="ghost" size="sm" className="mt-1 h-6 gap-1 px-2 text-[11px] text-emerald-800 hover:text-emerald-900" onClick={() => setLibraryTab('conditions')}>
-                  ไปคลังเงื่อนไข
-                  <ChevronRight className="size-3" aria-hidden="true" />
-                </Button>
-              </div>
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-900">
+                <Lightbulb className="size-4 shrink-0" aria-hidden="true" />
+                กฎทุกข้อถูกจัดตาม <strong>มิติคุณภาพข้อมูล 9 มิติ</strong> (DAMA-DMBOK)
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-emerald-800/90">
+                สร้างกฎใหม่ = เลือกมิติ → เป้าหมาย (ชุดข้อมูล / Data Element) → เงื่อนไข → ตั้งค่า · เลือก Data Element แล้วระบบจะ
+                <strong> แนะนำกฎจาก metadata ของ element</strong> ให้อัตโนมัติ · เมื่อพร้อมตรวจ ไปที่หน้า “Data Quality Check”
+              </p>
             </div>
-            <div className={`flex items-start gap-2.5 rounded-lg p-2 ${libraryTab === 'rules' ? 'bg-white shadow-sm' : ''}`}>
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white" aria-hidden="true">
-                2
-              </span>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-emerald-900">สร้างกฎ 4 ขั้นตอน</p>
-                <p className="mt-0.5 text-[11px] leading-snug text-emerald-800/80">
-                  เลือกเป้าหมาย → คอลัมน์ → เงื่อนไข → ตั้งค่า แล้วบันทึก (ระบบนำทางทีละขั้น)
-                </p>
-                <Button variant="ghost" size="sm" className="mt-1 h-6 gap-1 px-2 text-[11px] text-emerald-800 hover:text-emerald-900" onClick={() => setLibraryTab('rules')}>
-                  เริ่มสร้างกฎ
-                  <ChevronRight className="size-3" aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
-            <div className="flex items-start gap-2.5 rounded-lg p-2">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white" aria-hidden="true">
-                3
-              </span>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-emerald-900">รันตรวจและดูผล</p>
-                <p className="mt-0.5 text-[11px] leading-snug text-emerald-800/80">
-                  รันตามชุดข้อมูลหรือตามโดเมน (Data Element) พร้อมคะแนน rollup — อยู่หน้า “ผลการตรวจสอบ”
-                </p>
-                <Button variant="ghost" size="sm" className="mt-1 h-6 gap-1 px-2 text-[11px] text-emerald-800 hover:text-emerald-900" onClick={() => onViewChange('validation-results')}>
-                  ไปผลการตรวจสอบ
-                  <ChevronRight className="size-3" aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
+            <Button
+              size="sm"
+              className="shrink-0 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+              onClick={() => onViewChange('profiling')}
+            >
+              <Play className="size-3.5" aria-hidden="true" />
+              ไป Data Quality Check
+            </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* แท็บภายในหน้าคลังกฎ (โหมด library เท่านั้น) */}
-      {mode === 'library' && (
-        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-slate-100 p-1 sm:w-fit">
-          <TabsTrigger value="rules" className="gap-1.5 data-[state=active]:bg-white">
-            <GitBranch className="size-3.5" aria-hidden="true" />
-            กฎตรวจสอบทั้งหมด
-          </TabsTrigger>
-          <TabsTrigger value="conditions" className="gap-1.5 data-[state=active]:bg-white">
-            <Library className="size-3.5" aria-hidden="true" />
-            คลังเงื่อนไข (must)
-          </TabsTrigger>
-        </TabsList>
-      )}
-
       {/* ============================ TAB 1: RULE BUILDER ============================ */}
       <TabsContent value="rules" className="mt-4">
-        <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+        {/* v0.38.0 — ภาพรวมตามมิติ 9 มิติ (โหมด library) — คลิกการ์ดเพื่อกรองรายการกฎด้านล่าง */}
+        {mode === 'library' && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-800">ภาพรวมกฎตามมิติคุณภาพข้อมูล (คลิกเพื่อกรอง)</h2>
+              <p className="text-[11px] text-muted-foreground" role="status" aria-live="polite">
+                แสดง {dimFilter === 'ALL' ? 'ทุกมิติ' : `มิติ ${DIMENSION_META[dimFilter as DimensionKey].th}`} · {dimFilteredRules.length} กฎ
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+              {/* การ์ด "ทั้งหมด" */}
+              <button
+                type="button"
+                onClick={() => setDimFilter('ALL')}
+                aria-pressed={dimFilter === 'ALL'}
+                className={`rounded-lg border p-3 text-left transition-colors ${
+                  dimFilter === 'ALL' ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-border bg-white hover:bg-slate-50'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <GitBranch className="size-4 text-emerald-700" aria-hidden="true" />
+                  <span className="text-xs font-bold text-slate-800">ทั้งหมด</span>
+                </span>
+                <span className="mt-1.5 block text-2xl font-bold text-emerald-700">{rules?.length ?? 0}</span>
+                <span className="text-[10.5px] text-muted-foreground">กฎทั้งหมดในคลัง</span>
+              </button>
+              {DIMENSION_KEYS.map((k) => {
+                const Icon = DIMENSION_ICONS[k]
+                const meta = DIMENSION_META[k]
+                const counts = ruleCountsByDimension.get(k)!
+                const active = dimFilter === k
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setDimFilter(active ? 'ALL' : k)}
+                    aria-pressed={active}
+                    className={`rounded-lg border p-3 text-left transition-colors ${
+                      active ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-border bg-white hover:bg-slate-50'
+                    } ${counts.total === 0 ? 'opacity-80' : ''}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Icon className={`size-4 ${active ? 'text-emerald-700' : 'text-slate-500'}`} aria-hidden="true" />
+                      <span className="truncate text-xs font-bold text-slate-800">{meta.th}</span>
+                    </span>
+                    <span className="mt-1.5 flex items-baseline gap-1">
+                      <span className={`text-2xl font-bold ${counts.total > 0 ? 'text-emerald-700' : 'text-slate-300'}`}>{counts.total}</span>
+                      <span className="text-[10.5px] text-muted-foreground">กฎ{counts.enabled < counts.total ? ` (เปิด ${counts.enabled})` : ''}</span>
+                    </span>
+                    <span className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted-foreground" title={meta.question}>
+                      {meta.question}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+        <div className="mt-4 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -1140,9 +1093,26 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
               </ol>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* ขั้นที่ 1 — เป้าหมาย: ชุดข้อมูล + Data Element */}
+              {/* ขั้นที่ 1 — มิติ + เป้าหมาย: มิติ 9 มิติ + ชุดข้อมูล + Data Element */}
               {rbStep === 1 && (
               <div className="space-y-4">
+              {/* 0) มิติ (Which Dimension) — มิตินำ v0.38.0: กำหนดมุมมองการตรวจก่อนเสมอ */}
+              <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                <p className="text-xs font-semibold text-emerald-900">มิติคุณภาพข้อมูล (Dimension) — เลือกก่อนเสมอ</p>
+                <p className="text-[11px] text-muted-foreground">
+                  มิติกำหนดว่ากฎนี้ตรวจมุมไหน เช่น ความสมบูรณ์ (ค่าว่าง) · ความถูกต้องตามรูปแบบ (อีเมล/เบอร์โทร) — ขั้นถัดไปจะแสดงเฉพาะเงื่อนไขในมิตินี้
+                </p>
+                <DimensionPicker
+                  value={rbDimension}
+                  onChange={(v) => {
+                    setRbDimension(v)
+                    setRbCondition('')
+                    setRbParams({})
+                  }}
+                />
+                {rbDimension && <DimensionHint value={rbDimension} />}
+              </div>
+
               {/* 1) ชุดข้อมูล — เลือกได้หลายชุด */}
               <div className="space-y-1.5">
                 <Label>ชุดข้อมูล (For) — เลือกได้มากกว่า 1 ชุด</Label>
@@ -1251,6 +1221,57 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     {rbSelectedElement.status === 'DRAFT' && <span className="text-amber-700">element สถานะร่าง — เปิดใช้งานที่หน้า Data Domain ก่อนรันโดเมนได้</span>}
                     {rbSelectedElement.status === 'DEPRECATED' && <span className="text-muted-foreground">element เลิกใช้ — จะไม่ถูกรันในรอบโดเมน</span>}
                   </div>
+                )}
+                {/* v0.38.0 — ไอเดีย "Data Element เป็นกฎในการตรวจ": metadata ของ element → ข้อเสนอกฎตามชนิดข้อมูล */}
+                {rbSelectedElement && rbElSuggestions.length > 0 && (
+                  <div className="rounded-lg border border-teal-200 bg-teal-50/60 p-3">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-teal-900">
+                      <Sparkles className="size-3.5" aria-hidden="true" />
+                      แนะนำกฎจาก metadata ของ element นี้ ({rbElSuggestions.length} ข้อ)
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-teal-800/80">
+                      ระบบอ่านค่าที่กรอกไว้ (รูปแบบ · ค่าอนุญาต · ทะเบียนอ้างอิง · ชนิดข้อมูล · CDE) แล้วเสนอกฎ — มิติของข้อเสนอขึ้นกับชนิดของข้อมูล
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {rbElSuggestions.map((s) => {
+                        const SIcon = DIMENSION_ICONS[s.dimension]
+                        return (
+                          <li key={s.key} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-white px-2.5 py-2">
+                            <div className="min-w-0">
+                              <p className="flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-800">
+                                <SIcon className={`size-3.5 shrink-0 ${DIMENSION_META[s.dimension].badgeClass}`} aria-hidden="true" />
+                                {s.title}
+                                {!s.autoFillable && (
+                                  <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[9px] font-normal text-amber-800">
+                                    ต้องกรอกค่าเพิ่ม
+                                  </Badge>
+                                )}
+                              </p>
+                              <p className="mt-0.5 truncate text-[10.5px] text-muted-foreground" title={s.reason}>
+                                {s.reason} · มิติ {DIMENSION_META[s.dimension].th} · เงื่อนไข “{CONDITIONS[s.engine].th}”
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 shrink-0 gap-1 border-teal-300 px-2 text-[11px] text-teal-800 hover:bg-teal-100"
+                              onClick={() => applyElementSuggestion(s)}
+                              aria-label={`ใช้ข้อเสนอ: ${s.title}`}
+                            >
+                              ใช้ข้อเสนอนี้
+                              <ChevronRight className="size-3" aria-hidden="true" />
+                            </Button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
+                {rbSelectedElement && rbElSuggestions.length === 0 && (
+                  <p className="rounded-md border border-dashed px-2.5 py-1.5 text-[10.5px] text-muted-foreground">
+                    element นี้ยังไม่มี metadata ที่ใช้เสนอกฎอัตโนมัติ — เติม “รูปแบบ / ค่าอนุญาต / ทะเบียนอ้างอิง” ในหน้า Data Domain แล้วระบบจะแนะนำให้ทันที
+                  </p>
                 )}
               </div>
               </div>
@@ -1363,10 +1384,10 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
               {/* ขั้นที่ 3 — เงื่อนไข (must) + พารามิเตอร์ */}
               {rbStep === 3 && (
               <div className="space-y-4">
-              {/* 3) เงื่อนไขจากคลังส่วนกลาง */}
+              {/* 3) เงื่อนไขจากมิติที่เลือก (v0.38.0 — กรองตามมิตินำ) */}
               <div className="space-y-1.5">
                   <Label htmlFor="rb-condition" className="gap-1">
-                    เงื่อนไข (must) — จากคลังส่วนกลาง
+                    เงื่อนไข (must){rbDimension ? ` — ในมิติ “${DIMENSION_META[rbDimension].th}” เท่านั้น` : ''}
                   </Label>
                   <Select
                     value={rbCondition}
@@ -1376,21 +1397,21 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     }}
                   >
                     <SelectTrigger id="rb-condition">
-                      <SelectValue placeholder="เลือกเงื่อนไข" />
+                      <SelectValue placeholder={rbDimension ? 'เลือกเงื่อนไขในมิตินี้' : 'เลือกเงื่อนไข'} />
                     </SelectTrigger>
                     <SelectContent className="max-h-72">
                       <SelectGroup>
-                        <SelectLabel>มาตรฐานของระบบ</SelectLabel>
-                        {systemConditions.map((c) => (
+                        <SelectLabel>มาตรฐานของระบบ{rbDimension ? ` · มิติ ${DIMENSION_META[rbDimension].th}` : ''}</SelectLabel>
+                        {rbDimensionConditions.filter((c) => c.isSystem).map((c) => (
                           <SelectItem key={c.key} value={c.key}>
                             {c.name}
                           </SelectItem>
                         ))}
                       </SelectGroup>
-                      {customConditions.length > 0 && (
+                      {rbDimensionConditions.filter((c) => !c.isSystem).length > 0 && (
                         <SelectGroup>
                           <SelectLabel>ส่วนกลางที่สร้างเอง</SelectLabel>
-                          {customConditions.map((c) => (
+                          {rbDimensionConditions.filter((c) => !c.isSystem).map((c) => (
                             <SelectItem key={c.key} value={c.key}>
                               {c.name}
                             </SelectItem>
@@ -1400,7 +1421,9 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                     </SelectContent>
                   </Select>
                   <p className="text-[11px] text-muted-foreground">
-                    ต้องการเงื่อนไขเฉพาะขององค์กร? สร้างได้ในแท็บ “คลังเงื่อนไข (must)” แล้วกลับมาเลือกที่นี่
+                    {rbDimensionConditions.length === 0
+                      ? 'มิตินี้ยังไม่มีเงื่อนไขมาตรฐาน — เลือกมิติอื่น หรือเพิ่ม “เงื่อนไขขั้นสูง” ด้านล่างรายการกฎ'
+                      : 'ต้องการเงื่อนไขเฉพาะขององค์กร? เพิ่มได้ที่แผง “เงื่อนไขขั้นสูง” ด้านล่างรายการกฎ (สำหรับผู้ดูแลระบบ)'}
                   </p>
               </div>
 
@@ -1819,24 +1842,39 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
             </CardContent>
           </Card>
 
-          {/* rule list */}
+          {/* rule list — v0.38.0 จัดกลุ่ม/กรองตามมิติ */}
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-base">กฎที่มีทั้งหมด ({rules?.length ?? '…'})</CardTitle>
+                <CardTitle className="text-base">
+                  {dimFilter === 'ALL' ? `กฎที่มีทั้งหมด (${rules?.length ?? '…'})` : `กฎมิติ “${DIMENSION_META[dimFilter as DimensionKey].th}” (${dimFilteredRules.length})`}
+                </CardTitle>
                 <Button variant="ghost" size="sm" onClick={refetch} aria-label="รีเฟรชรายการกฎ">
                   <RefreshCw className="size-4" aria-hidden="true" />
                 </Button>
               </div>
-              <CardDescription>ผลรันล่าสุดของแต่ละกฎ แสดงเคียงข้างกฎเสมอ — กฎที่ใช้ร่วมหลายชุดข้อมูลแสดงหลายป้าย</CardDescription>
+              <CardDescription>
+                ผลรันล่าสุดของแต่ละกฎ แสดงเคียงข้างกฎเสมอ · ประโยคภาษาไทยช่วยให้เข้าใจกฎได้ใน 1 วินาที — ประโยคมาตรฐาน (For … must …) ใช้เพื่อการตรวจสอบย้อนหลัง
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="max-h-[32rem] space-y-2.5 overflow-y-auto pr-1">
                 {rules === null && <p className="py-8 text-center text-sm text-muted-foreground">กำลังโหลด…</p>}
                 {rules?.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">ยังไม่มีกฎ — สร้างกฎแรกจากฟอร์มด้านซ้าย</p>}
-                {rules?.map((rule) => (
+                {rules !== null && dimFilteredRules.length === 0 && dimFilter !== 'ALL' && (
+                  <div className="rounded-lg border border-dashed p-6 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      ยังไม่มีกฎในมิติ “{DIMENSION_META[dimFilter as DimensionKey].th}”
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      สร้างกฎใหม่โดยเลือกมิตินี้ในขั้นที่ 1 ของฟอร์มสร้างกฎ
+                    </p>
+                  </div>
+                )}
+                {dimFilteredRules.map((rule) => (
                   <div key={rule.id} className={`rounded-lg border p-3 ${rule.enabled ? '' : 'opacity-60'}`}>
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      {rule.dimension && <DimensionBadge dimension={rule.dimension} />}
                       {rule.datasetNames.map((name) => (
                         <Badge key={name} variant="outline" className="text-[11px]">
                           {name}
@@ -1895,7 +1933,15 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                         </Badge>
                       )}
                     </div>
-                    <p className="font-mono text-[12px] leading-relaxed text-slate-700">{rule.sentence}</p>
+                    {/* v0.38.0 — ประโยคภาษาไทยอ่านง่ายก่อน แล้วค่อยประโยคมาตรฐานแบบ mono */}
+                    {rule.engineType && isConditionKey(rule.engineType) && (
+                      <p className="mb-1 text-[12.5px] font-medium leading-relaxed text-slate-800">
+                        <span className="mr-1.5 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 align-middle">แปลงเป็นภาษาคน</span>
+                        {rule.datasetNames.length > 0 && <span className="text-slate-600">{rule.datasetNames.join(', ')}: </span>}
+                        คอลัมน์ <span className="font-mono">{rule.column}</span> {ENGINE_SENTENCE_TH[rule.engineType]}
+                      </p>
+                    )}
+                    <p className="font-mono text-[12px] leading-relaxed text-slate-500">{rule.sentence}</p>
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <span className="text-[11px] text-muted-foreground">
                         {rule.lastRun ? `ตรวจเมื่อ ${fmtTime(rule.lastRun.at)} · ล้มเหลว ${rule.lastRun.failedRows}/${rule.lastRun.totalRows} แถว` : 'ยังไม่เคยรันตรวจสอบ'}
@@ -1928,10 +1974,29 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
             </CardContent>
           </Card>
         </div>
-      </TabsContent>
+        {/* v0.38.0 — คลังเงื่อนไขเดิม → แผง "เงื่อนไขขั้นสูง" ยุบไว้ (เฉพาะผู้ดูแลระบบ) — ตัดแท็บออกตามมิตินำ */}
+        <div className="mt-4 rounded-lg border border-slate-200 bg-white">
+          <button
+            type="button"
+            onClick={() => setAdvOpen((o) => !o)}
+            aria-expanded={advOpen}
+            aria-controls="advanced-conditions"
+            className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <Library className="size-4 shrink-0 text-slate-500" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-slate-800">เงื่อนไขขั้นสูง (must) — สำหรับผู้ดูแลระบบ</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  เงื่อนไขมาตรฐานของระบบครอบคลุมทุกมิติแล้ว — ส่วนนี้ใช้เมื่อต้องการเงื่อนไขเฉพาะขององค์กร (สร้าง/ปิดใช้งาน/ลบ) · ครอบคลุม {coveredCount}/9 มิติ
+                </span>
+              </span>
+            </span>
+            <ChevronDown className={`size-4 shrink-0 text-slate-500 transition-transform ${advOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+          {advOpen && (
+            <div id="advanced-conditions" className="border-t px-0 py-0">
 
-      {/* ====================== TAB 2: CONDITION LIBRARY ====================== */}
-      <TabsContent value="conditions" className="mt-4">
         <div className="grid min-w-0 gap-4 lg:grid-cols-[1fr_1fr]">
           {/* create new global condition */}
           <Card className="min-w-0">
@@ -2208,281 +2273,36 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
             </CardContent>
           </Card>
         </div>
+            </div>
+          )}
+        </div>
+
       </TabsContent>
 
-      {/* ========================= TAB 3: RUN + SIGNALS ========================= */}
+      {/* ===================== TAB 3: ผลการตรวจสอบ — ประวัติรอบตรวจ + คำแนะนำ ML (v0.38.0: การรันตรวจย้ายไป Data Quality Check) ===================== */}
       <TabsContent value="run" className="mt-4">
-        <Tabs defaultValue="dataset-mode">
-          <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-slate-100 p-1 sm:w-fit">
-            <TabsTrigger value="dataset-mode" className="gap-1.5 data-[state=active]:bg-white">
-              <Play className="size-3.5" aria-hidden="true" />
-              รันตามชุดข้อมูล
-            </TabsTrigger>
-            <TabsTrigger value="domain-mode" className="gap-1.5 data-[state=active]:bg-white">
-              <Box className="size-3.5" aria-hidden="true" />
-              รันตามโดเมน (Data Element)
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="dataset-mode" className="mt-4">
         <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Play className="size-4 text-emerald-700" aria-hidden="true" />
-                รันการตรวจสอบคุณภาพข้อมูล
-              </CardTitle>
-              <CardDescription>รันกฎทั้งหมดที่เปิดใช้งานกับข้อมูลตัวอย่าง (sandbox) — ไม่แตะข้อมูลต้นทางจริงเสมอ</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-              <div className="space-y-1.5">
-                <Label htmlFor="run-dataset">ชุดข้อมูล</Label>
-                <Select value={runDataset} onValueChange={setRunDataset}>
-                  <SelectTrigger id="run-dataset">
-                    <SelectValue placeholder="เลือกชุดข้อมูล" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {datasets.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="run-operator">ผู้รัน (ต้องมีสิทธิ์ RUN_VALIDATION)</Label>
-                <ActorChip id="run-operator" permission={PERMISSIONS_BY_ACTION.RUN_VALIDATION} />
+          <Card className="border-emerald-200 bg-emerald-50/50">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-900">
+                  <Play className="size-4 shrink-0" aria-hidden="true" />
+                  การรันตรวจย้ายไปหน้า “Data Quality Check” แล้ว
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-emerald-800/90">
+                  จุดรันตรวจเดียวของระบบ: เลือกชุดข้อมูล → ดูโปรไฟล์ → เลือกกฎที่จะตรวจ (จัดกลุ่มตามมิติ) → รัน · หรือเจาะตรวจราย Sub Data Domain / Data Element — หน้านี้ไว้ดูประวัติรอบตรวจและคำแนะนำจาก ML
+                </p>
               </div>
               <Button
-                className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={handleRun}
-                disabled={!runDataset || busy !== null}
+                size="sm"
+                className="shrink-0 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={() => onViewChange('profiling')}
               >
-                <Play className="size-4" aria-hidden="true" />
-                {busy === 'run' ? 'กำลังรัน…' : 'รันการตรวจสอบ'}
+                ไปรันตรวจที่ Data Quality Check
+                <ChevronRight className="size-3.5" aria-hidden="true" />
               </Button>
             </CardContent>
           </Card>
-
-          {runResult && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  ผลการตรวจสอบ — {runResult.datasetName}
-                </CardTitle>
-                <CardDescription>
-                  {runResult.rowsCount} แถว · {runResult.rulesCount} กฎ
-                  {runResult.skipped ? ` · ข้าม ${runResult.skipped} กฎ (เงื่อนไขไม่พบในคลัง)` : ''} · คำแนะนำใหม่ {runResult.newSignals} รายการ
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* สรุปผลรวมตามมาตรา — คะแนนรวม + เกรด + ประโยคสรุปภาษาคน */}
-                <div className="flex flex-col gap-3 rounded-lg border bg-emerald-50/50 p-4 sm:flex-row sm:items-center">
-                  <div className="shrink-0">
-                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Scale className="size-3.5" aria-hidden="true" />
-                      คะแนนคุณภาพข้อมูลรวม (เฉลี่ย 9 มาตรา)
-                    </p>
-                    <p className={`text-3xl font-bold ${runResult.overallGrade?.textClass ?? scoreColor(runResult.overallScore)}`}>
-                      {runResult.overallScore !== null ? runResult.overallScore.toFixed(1) : '—'}
-                      <span className="text-base">/100</span>
-                    </p>
-                  </div>
-                  {runResult.overallGrade && (
-                    <Badge variant="outline" className={`w-fit border text-xs font-semibold ${runResult.overallGrade.badgeClass}`}>
-                      เกรด {runResult.overallGrade.label}
-                    </Badge>
-                  )}
-                  <p className="text-xs leading-relaxed text-slate-700 sm:border-l sm:border-emerald-200 sm:pl-3" role="note">
-                    {runResult.summary}
-                  </p>
-                </div>
-
-                {/* B2 (v0.37.0) — สรุปหลังตรวจ + ขั้นตอนถัดไปจาก ML Studio (ผู้ช่วยเสนอแนะ) */}
-                {mlSummary && (
-                  <div className="rounded-lg border border-teal-200 bg-teal-50/40 p-3">
-                    <button
-                      type="button"
-                      className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
-                      onClick={() => setMlSummaryOpen((o) => !o)}
-                      aria-expanded={mlSummaryOpen}
-                    >
-                      <span className="flex items-center gap-1.5 text-xs font-semibold text-teal-900">
-                        <BrainCircuit className="size-3.5" aria-hidden="true" />
-                        ผู้ช่วย ML สรุปหลังตรวจ
-                        {mlSummary.modelVersion ? ` (โมเดล v${mlSummary.modelVersion})` : ' (ยังไม่มีโมเดลเทรน)'}
-                      </span>
-                      <span className="text-[10.5px] text-teal-700">{mlSummaryOpen ? 'ซ่อน' : 'แสดง'}</span>
-                    </button>
-                    {mlSummaryOpen && (
-                      <div className="mt-2 space-y-2">
-                        <p className="text-xs text-teal-900 [overflow-wrap:anywhere]">{mlSummary.summaryText}</p>
-                        {mlSummary.commonCauses.length > 0 && (
-                          <ul className="list-inside list-disc space-y-0.5 text-[11.5px] text-slate-700">
-                            {mlSummary.commonCauses.slice(0, 3).map((c) => (
-                              <li key={c.signature} className="[overflow-wrap:anywhere]">
-                                <span className="font-medium">{c.signature}</span> — {c.hypothesis}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
-                          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-amber-800">ขั้นตอนถัดไปที่แนะนำ</p>
-                          <ul className="mt-0.5 list-inside list-disc space-y-0.5 text-[11.5px] text-amber-900">
-                            {mlSummary.advice.map((a, i) => (
-                              <li key={i} className="[overflow-wrap:anywhere]">
-                                {a}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* บัตรคะแนนรายมาตรา 9 ใบ — เรียงมาตรา 1–9 ตามลำดับ DAMA-DMBOK */}
-                <div>
-                  <p className="mb-2 text-xs font-semibold text-slate-700">
-                    ผลประเมินรายมาตรา — เรียงตามมาตรฐาน DAMA-DMBOK (มาตราที่ 1–9)
-                  </p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {runResult.dimensionScores.map((d) => {
-                      const Icon = DIMENSION_ICONS[d.dimension as keyof typeof DIMENSION_ICONS]
-                      return (
-                        <div
-                          key={d.dimension}
-                          className={`rounded-lg border p-3 ${d.score !== null ? 'bg-white' : 'border-dashed bg-slate-50/60 opacity-75'}`}
-                          title={d.score !== null ? `${d.statement}\nมาตราการวัด: ${d.measure}\nสูตร: ${d.formula}` : `${d.statement} — ยังไม่มีกฎที่เปิดใช้ในมิตินี้`}
-                        >
-                          <div className="mb-1.5 flex items-center gap-1.5">
-                            {Icon && <Icon className={`size-3.5 shrink-0 ${d.score !== null ? 'text-slate-700' : 'text-slate-400'}`} aria-hidden="true" />}
-                            <span className="truncate text-xs font-semibold text-slate-800">มาตรา {d.clauseNo}: {d.th}</span>
-                            {d.grade && (
-                              <Badge variant="outline" className={`ml-auto shrink-0 border text-[10px] font-semibold ${d.grade.badgeClass}`}>
-                                {d.grade.label}
-                              </Badge>
-                            )}
-                          </div>
-                          {d.score !== null ? (
-                            <>
-                              <div className="flex items-baseline gap-1">
-                                <span className={`text-xl font-bold ${d.grade?.textClass ?? scoreColor(d.score)}`}>{d.score.toFixed(0)}</span>
-                                <span className="text-[10px] text-muted-foreground">/100</span>
-                                <span className="ml-auto text-[10px] text-muted-foreground">
-                                  กฎ {d.rulesCount} ข้อ{d.failedRules > 0 ? ` · ล้มเหลว ${d.failedRules}` : ' · ผ่านทั้งหมด'}
-                                </span>
-                              </div>
-                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                                <div className={`h-full rounded-full ${d.grade?.barClass ?? 'bg-slate-400'}`} style={{ width: `${d.score}%` }} />
-                              </div>
-                              {d.advice && (
-                                <p className="mt-1.5 flex items-start gap-1 text-[10.5px] leading-snug text-amber-800">
-                                  <Lightbulb className="mt-0.5 size-3 shrink-0 text-amber-500" aria-hidden="true" />
-                                  {d.advice}
-                                </p>
-                              )}
-                            </>
-                          ) : (
-                            <p className="text-[11px] text-muted-foreground">ยังไม่ได้ประเมิน — ไม่มีกฎที่เปิดใช้ในมิตินี้</p>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* มาตราฉบับเต็ม — ข้อกำหนด + มาตราการวัด + สูตร ของทั้ง 9 มาตรา (ช่วยให้ผู้ใช้เข้าใจวิธีตัดสิน) */}
-                <details className="rounded-lg border bg-slate-50/60 p-3">
-                  <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-700">
-                    <BookOpen className="size-3.5 text-emerald-700" aria-hidden="true" />
-                    ดูข้อกำหนดและวิธีคำนวณของมาตราทั้ง 9 (DAMA-DMBOK)
-                  </summary>
-                  <ol className="mt-2 space-y-2">
-                    {runResult.dimensionScores.map((d) => (
-                      <li key={d.dimension} className="rounded-md border bg-white p-2.5 text-[11.5px] leading-relaxed">
-                        <p className="font-semibold text-slate-800">
-                          มาตราที่ {d.clauseNo} — {d.th} ({d.en})
-                        </p>
-                        <p className="text-slate-600">{d.statement}</p>
-                        <p className="mt-0.5 text-muted-foreground">
-                          <span className="font-medium text-slate-600">มาตราการวัด:</span> {d.measure}
-                        </p>
-                        <p className="font-mono text-[11px] text-emerald-800">สูตร: {d.formula}</p>
-                      </li>
-                    ))}
-                  </ol>
-                </details>
-
-                <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
-                  {runResult.results.map((r) => (
-                    <div key={r.ruleId} className="rounded-lg border p-3">
-                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                        {r.status === 'PASSED' ? (
-                          <CheckCircle2 className="size-4 text-emerald-600" aria-label="ผ่าน" />
-                        ) : r.status === 'NO_DATA' ? (
-                          <CircleMinus className="size-4 text-amber-600" aria-label="ไม่มีข้อมูลให้ตรวจ" />
-                        ) : (
-                          <XCircle className="size-4 text-rose-600" aria-label="ล้มเหลว" />
-                        )}
-                        <Badge variant="outline" className={`border text-[11px] ${SEVERITY_BADGE[r.severity] ?? ''}`}>
-                          {SEVERITY_LABELS[r.severity as keyof typeof SEVERITY_LABELS]?.th ?? r.severity}
-                        </Badge>
-                        <DimensionBadge dimension={r.dimension} />
-                        <Badge variant="outline" className="gap-1 text-[11px]">
-                          <Scale className="size-3" aria-hidden="true" />
-                          มาตรา {r.clauseNo} · {r.dimensionTh}
-                        </Badge>
-                        <Badge variant="outline" className="text-[11px]">
-                          {r.conditionName}
-                        </Badge>
-                        <span
-                          className={`text-xs font-semibold ${
-                            r.status === 'PASSED'
-                              ? 'text-emerald-700'
-                              : r.status === 'NO_DATA'
-                                ? 'text-amber-700'
-                                : 'text-rose-700'
-                          }`}
-                        >
-                          {r.status === 'PASSED'
-                            ? 'ผ่าน'
-                            : r.status === 'NO_DATA'
-                              ? 'ไม่มีข้อมูลให้ตรวจ (0 แถว)'
-                              : `ล้มเหลว ${r.failedRows}/${r.totalRows} แถว (${Math.round(r.passRate * 100)}%)`}
-                        </span>
-                      </div>
-                      <p className="font-mono text-[12px] text-slate-700">{r.sentence}</p>
-                      {/* คำตัดสินตามมาตรา — อ่านง่าย รู้ทันทีว่าผ่าน/ไม่ผ่านมาตราใด เพราะอะไร */}
-                      <p
-                        className={`mt-1.5 text-[12.5px] leading-relaxed ${
-                          r.status === 'PASSED' ? 'text-emerald-800' : r.status === 'NO_DATA' ? 'text-amber-800' : 'text-rose-800'
-                        }`}
-                        role="note"
-                      >
-                        {r.verdict}
-                      </p>
-                      {r.advice && (
-                        <p className="mt-1 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11.5px] leading-relaxed text-amber-900">
-                          <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-amber-500" aria-hidden="true" />
-                          <span>
-                            <strong>คำแนะนำ:</strong> {r.advice} <span className="text-amber-700">(เป็นข้อแนะนำ — การแก้ไขข้อมูลต้องดำเนินการโดยมนุษย์)</span>
-                          </span>
-                        </p>
-                      )}
-                      {r.failedSamples.length > 0 && (
-                        <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-rose-800">
-                          {r.failedSamples.map((s) => (
-                            <li key={s}>• {s}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {/* รอบการตรวจ (batch) — ประวัติย้อนหลัง + drill-down รายรอบ */}
           <BatchHistory reloadKey={reloadTick} datasets={datasets} onGoFailedRecords={() => onViewChange('failed-records')} />
@@ -2544,11 +2364,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
             </CardContent>
           </Card>
         </div>
-          </TabsContent>
-          <TabsContent value="domain-mode" className="mt-4">
-            <DomainRunPanel runOperator={actorEmail} />
-          </TabsContent>
-        </Tabs>
       </TabsContent>
 
       {/* ===================== TAB 4: DASHBOARD — 3 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Risk) ===================== */}

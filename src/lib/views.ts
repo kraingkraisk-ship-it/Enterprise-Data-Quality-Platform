@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.37.1'
+export const APP_VERSION = 'v0.38.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -102,16 +102,16 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
   },
   'rule-library': {
     key: 'rule-library',
-    th: 'คลังกฎตรวจสอบ',
-    en: 'DQ Rule Library',
-    desc: 'สร้างกฎแบบทีละขั้น 4 ขั้น (เป้าหมาย → คอลัมน์ → เงื่อนไข → ตั้งค่า) · จัดการกฎที่มี · คลังเงื่อนไข (must) ส่วนกลาง',
+    th: 'Data Quality Rules',
+    en: 'DQ Rules',
+    desc: 'คลังกฎตรวจคุณภาพข้อมูลจัดกลุ่มตามมิติ 9 มิติ DAMA-DMBOK — เลือกมิติ → เป้าหมาย (ชุดข้อมูล / Data Element) → เงื่อนไข → ตั้งค่า · แนะนำกฎจาก metadata ของ Data Element อัตโนมัติ · กฎอ่านเป็นภาษาไทยเข้าใจง่าย',
     icon: Library,
   },
   profiling: {
     key: 'profiling',
-    th: 'โปรไฟล์ข้อมูล',
-    en: 'Data Profiling',
-    desc: 'สำรวจลักษณะข้อมูลจริงรายคอลัมน์: ค่าว่าง ความไม่ซ้ำ ช่วงค่า ค่าที่พบบ่อย และการแจ้งเตือน PII (อ่านอย่างเดียว)',
+    th: 'Data Quality Check',
+    en: 'DQ Check',
+    desc: 'จุดรันตรวจคุณภาพข้อมูล 1 หน้า: เลือกชุดข้อมูล → ดูโปรไฟล์ข้อมูล → เลือกกฎที่จะตรวจ (จัดกลุ่มตามมิติ) → รันและสรุปผลรายมิติ · เจาะตรวจราย Sub Data Domain / Data Element ได้',
     icon: ScanSearch,
   },
   'validation-results': {

@@ -26,19 +26,17 @@ import { NAV_GROUPS, SIDEBAR_FOOTER_LINKS, VIEWS, APP_VERSION, type ViewKey } fr
 interface NavCounts {
   pendingSignals: number
   openIssues: number
-  conditions: number
   newFailures: number
 }
 
-const INITIAL_COUNTS: NavCounts = { pendingSignals: 0, openIssues: 0, conditions: 0, newFailures: 0 }
+const INITIAL_COUNTS: NavCounts = { pendingSignals: 0, openIssues: 0, newFailures: 0 }
 
 /** ดึงตัวเลขสำหรับ badge ของเมนู (เรียกจาก timer callback — ไม่อยู่ใน effect body) */
 async function fetchNavCountsInto(onDone: (counts: NavCounts) => void) {
   try {
-    const [s, i, c, f] = await Promise.all([
+    const [s, i, f] = await Promise.all([
       fetch('/api/dq/signals').then((r) => r.json()),
       fetch('/api/dq/issues?status=OPEN&take=1').then((r) => r.json()),
-      fetch('/api/dq/conditions').then((r) => r.json()),
       fetch('/api/dq/failures?status=NEW&take=1').then((r) => r.json()),
     ])
     onDone({
@@ -46,7 +44,6 @@ async function fetchNavCountsInto(onDone: (counts: NavCounts) => void) {
         s?.stats?.pending ??
         (Array.isArray(s?.signals) ? s.signals.filter((v: { status: string }) => v.status === 'PENDING_REVIEW').length : 0),
       openIssues: i?.stats?.OPEN ?? 0,
-      conditions: Array.isArray(c?.conditions) ? c.conditions.length : 0,
       newFailures: f?.stats?.NEW ?? 0,
     })
   } catch {
@@ -61,10 +58,9 @@ function useNavCounts(reloadKey: ViewKey): NavCounts {
     let alive = true
     ;(async () => {
       try {
-        const [s, i, c, f] = await Promise.all([
+        const [s, i, f] = await Promise.all([
           fetch('/api/dq/signals').then((r) => r.json()),
           fetch('/api/dq/issues?status=OPEN&take=1').then((r) => r.json()),
-          fetch('/api/dq/conditions').then((r) => r.json()),
           fetch('/api/dq/failures?status=NEW&take=1').then((r) => r.json()),
         ])
         if (!alive) return
@@ -73,7 +69,6 @@ function useNavCounts(reloadKey: ViewKey): NavCounts {
             s?.stats?.pending ??
             (Array.isArray(s?.signals) ? s.signals.filter((v: { status: string }) => v.status === 'PENDING_REVIEW').length : 0),
           openIssues: i?.stats?.OPEN ?? 0,
-          conditions: Array.isArray(c?.conditions) ? c.conditions.length : 0,
           newFailures: f?.stats?.NEW ?? 0,
         })
       } catch {
@@ -111,7 +106,6 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
   function badgeFor(view: ViewKey): number | undefined {
     if (view === 'validation-results' && counts.pendingSignals > 0) return counts.pendingSignals
     if (view === 'issues' && counts.openIssues > 0) return counts.openIssues
-    if (view === 'rule-library' && counts.conditions > 0) return counts.conditions
     if (view === 'failed-records' && counts.newFailures > 0) return counts.newFailures
     return undefined
   }
