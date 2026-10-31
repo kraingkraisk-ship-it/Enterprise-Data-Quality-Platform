@@ -2551,7 +2551,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         </Tabs>
       </TabsContent>
 
-      {/* ===================== TAB 4: DASHBOARD — 5 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Regulation / Risk / Data Classification) ===================== */}
+      {/* ===================== TAB 4: DASHBOARD — 3 ส่วน (ภาพรวม / รายละเอียดการตรวจ / Risk) ===================== */}
       <TabsContent value="dashboard" className="mt-4">
         <DqDashboard datasets={datasets} reloadTick={reloadTick} onRefetch={refetch} onGoMlCenter={() => onViewChange('ml-studio')} onGoCompliance={() => onViewChange('compliance-assessment')} />
       </TabsContent>

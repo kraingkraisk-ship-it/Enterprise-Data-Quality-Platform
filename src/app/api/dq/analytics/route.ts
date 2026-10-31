@@ -11,7 +11,6 @@ import { buildRuleVerdict, fixHintFor, gradeOf, type GradeBand } from '@/lib/dam
 import {
   CLASSIFICATION_KEYS,
   DATA_CLASSIFICATIONS,
-  FRAMEWORKS,
   UNCLASSIFIED,
   classificationLabel,
   impactsOf,
@@ -338,11 +337,6 @@ export async function GET(req: NextRequest) {
       .filter((p) => p.classification === 'UNCLASSIFIED')
       .map((p) => ({ id: p.id, name: p.name, sourceType: p.sourceType, score: p.score }))
 
-    // ---------- มาตรฐานข้อมูล (Regulation — v0.23.0) ----------
-    // คะแนน = ค่าที่วัดได้จากกฎ DQ ล่าสุด ("ข้อมูลเดิมไม่มีกฎ = 0" ให้ frontend ใช้เป็นจุดเทียบ)
-    // คะแนนส่วนย่อย (domain) = เฉลี่ยคะแนนมิติใน domain นั้น (ข้ามมิติที่ยังไม่มีผลตรวจ)
-    // คะแนนกรอบ = Σ(คะแนนส่วนย่อย × น้ำหนัก) / Σ(น้ำหนัก) เฉพาะส่วนย่อยที่วัดได้
-    const globalScoreByDimension = new Map<DimensionKey, number | null>(dimensions.map((d) => [d.dimension, d.score]))
     const dimensionOfRule = new Map<string, DimensionKey>()
     for (const rule of rulesEnabled) {
       dimensionOfRule.set(rule.id, dimensionOf(rule.condition, engineOf(rule.condition)))
@@ -351,88 +345,6 @@ export async function GET(req: NextRequest) {
     function avgOf(nums: number[]): number | null {
       return nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : null
     }
-
-    function dimensionScoresForDataset(p: (typeof perDataset)[number], dims: DimensionKey[]): number[] {
-      const out: number[] = []
-      for (const dim of dims) {
-        const s = p.dimensionScores.find((x) => x.dimension === dim)?.score
-        if (typeof s === 'number') out.push(s)
-      }
-      return out
-    }
-
-    function gradeView(score: number | null) {
-      const g = gradeOf(score)
-      return g ? { band: g.band, label: g.label, badgeClass: g.badgeClass, textClass: g.textClass } : null
-    }
-
-    const regulationFrameworks = FRAMEWORKS.map((fw) => {
-      const fwDimSet = new Set<DimensionKey>()
-      for (const dom of fw.domains) for (const dim of dom.dimensions) fwDimSet.add(dim)
-
-      const domains = fw.domains.map((dom) => {
-        const globalScores = dom.dimensions
-          .map((dim) => globalScoreByDimension.get(dim))
-          .filter((s): s is number => typeof s === 'number')
-        const rulesCount = [...dimensionOfRule.entries()].filter(([, dim]) => dom.dimensions.includes(dim)).length
-        const perDatasetView = perDataset.map((p) => {
-          const byDim = rulesByDatasetByDimension.get(p.id)
-          const dsRulesCount = byDim ? dom.dimensions.reduce((s, dim) => s + (byDim.get(dim) ?? 0), 0) : 0
-          return { datasetId: p.id, score: avgOf(dimensionScoresForDataset(p, dom.dimensions)), rulesCount: dsRulesCount }
-        })
-        return {
-          id: dom.id,
-          th: dom.th,
-          en: dom.en,
-          detail: dom.detail,
-          category: dom.category ?? null,
-          weight: dom.weight,
-          dimensions: [...dom.dimensions],
-          score: avgOf(globalScores),
-          rulesCount,
-          perDataset: perDatasetView,
-        }
-      })
-
-      let wSum = 0
-      let wTotal = 0
-      for (const dom of domains) {
-        if (dom.score !== null) {
-          wSum += dom.score * dom.weight
-          wTotal += dom.weight
-        }
-      }
-
-      const fwDatasets = perDataset.map((p) => {
-        let sum = 0
-        let w = 0
-        for (const dom of fw.domains) {
-          if (dom.dimensions.length === 0) continue
-          const dsScore = avgOf(dimensionScoresForDataset(p, dom.dimensions))
-          if (dsScore === null) continue
-          sum += dsScore * dom.weight
-          w += dom.weight
-        }
-        const score = w > 0 ? sum / w : null
-        const byDim = rulesByDatasetByDimension.get(p.id)
-        const rulesCount = byDim ? [...fwDimSet].reduce((s, dim) => s + (byDim.get(dim) ?? 0), 0) : 0
-        return { datasetId: p.id, name: p.name, rulesCount, score, lastRunAt: p.lastRunAt, grade: gradeView(score) }
-      })
-
-      return {
-        id: fw.id,
-        no: fw.no,
-        groupTh: fw.groupTh,
-        name: fw.name,
-        fullName: fw.fullName,
-        description: fw.description,
-        totalDomains: fw.domains.length,
-        measuredDomains: fw.domains.filter((d) => d.dimensions.length > 0).length,
-        weightedScore: wTotal > 0 ? wSum / wTotal : null,
-        domains,
-        datasets: fwDatasets,
-      }
-    })
 
     // ---------- ความเสี่ยง Inherent vs Residual (v0.23.0) ----------
     // Inherent = สมมติยังไม่มีกฎ DQ รองรับ → โอกาสเกิดระดับ 5 (สูงมาก) × น้ำหนักความรุนแรงของกฎ
@@ -504,13 +416,6 @@ export async function GET(req: NextRequest) {
       return { dimension: k, th: DIMENSION_LABELS[k].th, en: DIMENSION_LABELS[k].en, ...inherentStatsOf(ruleIds), rulesCount }
     })
 
-    const inherentByFramework = FRAMEWORKS.map((fw) => {
-      const dimSet = new Set<DimensionKey>()
-      for (const dom of fw.domains) for (const dim of dom.dimensions) dimSet.add(dim)
-      const ruleIds = new Set(inherentPairs.filter((p) => dimSet.has(p.dimension)).map((p) => p.ruleId))
-      const rulesCount = [...dimensionOfRule.entries()].filter(([, dim]) => dimSet.has(dim)).length
-      return { frameworkId: fw.id, name: fw.name, no: fw.no, ...inherentStatsOf(ruleIds), rulesCount }
-    })
 
     // ผ่านการจำแนกประเภทของชุดข้อมูลที่กฎผูก (กฎหนึ่งอาจปรากฏหลายประเภท — นับ unique ต่อประเภท)
     const classificationRuleIds = new Map<string, Set<string>>()
@@ -558,9 +463,6 @@ export async function GET(req: NextRequest) {
       },
       perDataset,
       latestRuns: latestRuns.slice(0, 60),
-      regulation: {
-        frameworks: regulationFrameworks,
-      },
       risks: {
         items: riskItems,
         counts: riskCounts,
@@ -572,7 +474,6 @@ export async function GET(req: NextRequest) {
           residualAvg: overallInherent.residualAvg,
           reductionPct: overallInherent.reductionPct,
           byDimension: inherentByDimension,
-          byFramework: inherentByFramework,
           byClassification: inherentByClassification,
         },
       },

@@ -1,14 +1,12 @@
 'use client'
 
 /**
- * DQ Dashboard — แดชบอร์ดคุณภาพข้อมูล 5 ส่วน (v0.10.0 · v0.32.0 ยุบหมวด ML ไปที่ศูนย์ ML จุดเดียว)
+ * DQ Dashboard — แดชบอร์ดคุณภาพข้อมูล 3 ส่วน (v0.37.1 ตัดส่วน Regulation และ Data Classification ออกตามคำสั่งผู้ใช้)
  * 1) ภาพรวมทั้งหมดของ Data Quality (คะแนนรวม + มาตรา 1–9 + ต่อชุดข้อมูล + PII masking)
  * 2) รายละเอียดการตรวจ Data Quality (ผลรันล่าสุดรายกฎ + คำตัดสินตามมาตรา + คำแนะนำ)
- * 3) Regulation — กรอบมาตรฐาน 5 กรอบ (DAMA-DMBOK / ISO/IEC 25012 / ISO 8000 / ISO/IEC 25024 / ISO/IEC 11179)
- *    เลือกแตกย่อยได้ และเลือก data source เพื่อประเมินสถานะจากข้อมูลจริงในระบบ
- * 4) Risk — ความเสี่ยงในมุม Data Quality Impact (โอกาส × ผลกระทบ + แผนที่ความเสี่ยง + ผลกระทบธุรกิจ)
+ * 3) Risk — ความเสี่ยงในมุม Data Quality Impact (โอกาส × ผลกระทบ + แผนที่ความเสี่ยง + ผลกระทบธุรกิจ)
  *    + การ์ดลิงก์ไป "ศูนย์ ML" (สัญญาณ ML ทั้ง 4 ตัว + ปรับเกณฑ์ อยู่ที่นั่นจุดเดียว — v0.32.0)
- * 5) Data Classification — การจำแนกข้อมูล 11 ประเภท และ mapping กับมาตรฐาน (ธปท./BCBS 239/PDPA/PCI DSS/ฯลฯ)
+ *    + ประเมินความสอดคล้องรายมาตรฐานอยู่ที่เมนู "ประเมินความสอดคล้อง" (v0.34.0)
  * ข้อมูลทั้งหมดมาจาก /api/dq/analytics — คำนวณจากผลรันตรวจล่าสุดของทุกกฎที่เปิดใช้งาน
  * มุมมองบทบาท/ผู้ดำเนินการ = ผู้ใช้ปัจจุบันจาก UserSwitcher บน header (v0.32.0 — identity ศูนย์กลาง)
  */
@@ -24,11 +22,9 @@ import {
   LayoutDashboard,
   ListChecks,
   Minus,
-  Network,
   RefreshCw,
   Scale,
   ShieldCheck,
-  Tags,
   TrendingDown,
   TrendingUp,
   UserRound,
@@ -46,8 +42,6 @@ import { type RoleKey } from '@/lib/rbac'
 import { SEVERITY_KEYS, SEVERITY_LABELS, rolesWithPermission, type DimensionKey, type SeverityKey } from '@/lib/dq'
 import {
   classificationLabel,
-  DATA_CLASSIFICATIONS,
-  FRAMEWORKS,
   LIKELIHOOD_BANDS,
   RISK_BANDS,
   riskBandOf,
@@ -125,65 +119,6 @@ interface RiskItem {
   at: string
 }
 
-/* --- ส่วนที่ 3 Regulation — โครงข้อมูลรายมาตรฐาน (จาก /api/dq/analytics key "regulation") --- */
-
-interface RegulationGradeView {
-  band: string
-  label: string
-  badgeClass: string
-  textClass: string
-}
-
-/** คะแนนของส่วนย่อย เมื่อเลือกดูเฉพาะชุดข้อมูลใดชุดข้อมูลหนึ่ง */
-interface RegulationDomainPerDataset {
-  datasetId: string
-  score: number | null
-  rulesCount: number
-}
-
-/** ส่วนย่อย (ข้อกำหนด) ของกรอบมาตรฐาน — dimensions ว่าง = เกณฑ์ระดับกระบวนการ (ไม่เข้าการคำนวณคะแนน) */
-interface RegulationDomainView {
-  id: string
-  th: string
-  en: string
-  detail: string
-  category: string | null
-  /** น้ำหนักของส่วนย่อยในการคำนวณคะแนนรวมของกรอบ (เช่น 1 หรือ 1.5) */
-  weight: number
-  dimensions: string[]
-  /** คะแนนเฉลี่ยถ่วงน้ำหนักจากทุกชุดข้อมูล (ผลประเมินล่าสุด) — null = ยังไม่ได้รันตรวจ */
-  score: number | null
-  rulesCount: number
-  perDataset: RegulationDomainPerDataset[]
-}
-
-/** แถวชุดข้อมูลใน "มุมมองชุดข้อมูล" ของแต่ละกรอบมาตรฐาน */
-interface RegulationDatasetRow {
-  datasetId: string
-  name: string
-  rulesCount: number
-  /** คะแนนประเมินล่าสุด — null = ยังไม่ได้รันตรวจ */
-  score: number | null
-  lastRunAt: string | null
-  grade: RegulationGradeView | null
-}
-
-interface RegulationFrameworkView {
-  id: string
-  no: string
-  groupTh: string
-  name: string
-  fullName: string
-  description: string
-  totalDomains: number
-  /** จำนวนส่วนย่อยที่มีเกณฑ์ตรวจ (dimensions.length > 0) และวัดคะแนนได้จริง */
-  measuredDomains: number
-  /** คะแนนรวมถ่วงน้ำหนักของกรอบ (ผลประเมินล่าสุด) — null = ยังวัดไม่ได้ */
-  weightedScore: number | null
-  domains: RegulationDomainView[]
-  datasets: RegulationDatasetRow[]
-}
-
 /* --- ส่วนที่ 4 Risk — ความเสี่ยง Inherent vs Residual (key "risks.inherent") --- */
 
 /** แถวความเสี่ยงรายขอบเขต (มิติ DQ / กรอบมาตรฐาน / ประเภทข้อมูล) */
@@ -209,7 +144,6 @@ interface RiskInherentSummary {
   /** % ความเสี่ยงที่ลดลงได้ = (inherent − residual) / inherent × 100 */
   reductionPct: number
   byDimension: Array<{ dimension: string; th: string; en: string; inherentAvg: number; residualAvg: number; reductionPct: number; rulesCount: number }>
-  byFramework: Array<{ frameworkId: string; name: string; no: string; inherentAvg: number; residualAvg: number; reductionPct: number; rulesCount: number }>
   byClassification: Array<{ id: string; th: string; en: string; no: string; inherentAvg: number; residualAvg: number; reductionPct: number; rulesCount: number }>
 }
 
@@ -244,10 +178,6 @@ interface AnalyticsData {
     dimensionScores: DimScore[]
   }>
   latestRuns: RunRow[]
-  /** ส่วนที่ 3 — โครงข้อมูลรายมาตรฐาน (optional: รอ backend เปิดใช้ key นี้) */
-  regulation?: {
-    frameworks: RegulationFrameworkView[]
-  }
   risks: {
     items: RiskItem[]
     counts: Record<string, number>
@@ -293,11 +223,6 @@ function scoreColor(score: number | null): string {
   return 'text-rose-700'
 }
 
-/** จัดรูปแบบน้ำหนักส่วนย่อย — จำนวนเต็มแสดงเลย เศษแสดง 1 ตำแหน่ง (×1, ×1.5) */
-function fmtWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : weight.toFixed(1)
-}
-
 function scoreBarClass(score: number | null): string {
   if (score === null) return 'bg-slate-300'
   if (score >= 90) return 'bg-emerald-500'
@@ -322,55 +247,14 @@ const STATUS_BADGE: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, string> = { PASSED: 'ผ่าน', FAILED: 'ไม่ผ่าน', NO_DATA: 'ไม่มีข้อมูล (0 แถว)' }
 
-/* ------------------------- classification editor -------------------------- */
-
-function ClassificationEditor({
-  datasetId,
-  current,
-  busy,
-  onSave,
-}: {
-  datasetId: string
-  current: string
-  busy: boolean
-  onSave: (datasetId: string, value: string) => void
-}) {
-  // ค่าเริ่มต้นจาก current — พ่อแม่ใช้ key ที่ผูกกับ current เพื่อ reset เมื่อค่าเปลี่ยน (ไม่ต้อง sync ด้วย effect)
-  const [value, setValue] = useState(current)
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Select value={value} onValueChange={setValue}>
-        <SelectTrigger className="h-8 w-[240px] text-xs" aria-label={`เลือกประเภทข้อมูลของ ${datasetId}`}>
-          <SelectValue placeholder="เลือกประเภทข้อมูล" />
-        </SelectTrigger>
-        <SelectContent>
-          {DATA_CLASSIFICATIONS.map((c) => (
-            <SelectItem key={c.id} value={c.id} className="text-xs">
-              {c.no} {c.th}
-            </SelectItem>
-          ))}
-          <SelectItem value={UNCLASSIFIED} className="text-xs">
-            ยังไม่จำแนกประเภท
-          </SelectItem>
-        </SelectContent>
-      </Select>
-      <Button size="sm" className="h-8 text-xs" disabled={busy || value === current} onClick={() => onSave(datasetId, value)}>
-        บันทึก
-      </Button>
-    </div>
-  )
-}
-
 /* ----------------------------- component --------------------------------- */
 
-export type DashboardSection = 'overview' | 'checks' | 'regulation' | 'risk' | 'classification'
+export type DashboardSection = 'overview' | 'checks' | 'risk'
 
 const SECTIONS: Array<{ id: DashboardSection; th: string; en: string; icon: typeof LayoutDashboard; desc: string }> = [
   { id: 'overview', th: 'ภาพรวมทั้งหมด', en: 'Overall', icon: LayoutDashboard, desc: 'คะแนนรวม มาตรา 1–9 และคะแนนต่อชุดข้อมูล' },
   { id: 'checks', th: 'รายละเอียดการตรวจ', en: 'Check Details', icon: ClipboardList, desc: 'ผลตรวจล่าสุดรายกฎ พร้อมคำตัดสินตามมาตรา' },
-  { id: 'regulation', th: 'Regulation', en: 'Regulatory Standards', icon: Scale, desc: 'มาตรฐานอ้างอิง 5 กรอบ แตกย่อยได้ อ้างอิงข้อมูลในระบบ' },
   { id: 'risk', th: 'Risk', en: 'DQ Impact', icon: AlertTriangle, desc: 'ความเสี่ยงในมุม Data Quality Impact' },
-  { id: 'classification', th: 'Data Classification', en: 'Classification', icon: Tags, desc: 'จำแนกข้อมูล 11 ประเภท และ mapping มาตรฐาน' },
 ]
 
 interface DqDashboardProps {
@@ -394,19 +278,10 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
   const [detailDataset, setDetailDataset] = useState('all')
   const [detailStatus, setDetailStatus] = useState('all')
 
-  // section 3 — regulation
-  const [fwId, setFwId] = useState(FRAMEWORKS[0]?.id ?? 'DAMA_DMBOK')
-  const [fwDataset, setFwDataset] = useState('all')
-  const [regTab, setRegTab] = useState<'datasets' | 'clauses'>('datasets')
-
-  // section 4 — risk (v0.34.0 — แท็บ "รายมาตรฐาน" ย้ายไปรวมที่เมนู ประเมินความสอดคล้อง จุดเดียว)
+  // section 3 — risk (v0.34.0 — แท็บ "รายมาตรฐาน" ย้ายไปรวมที่เมนู ประเมินความสอดคล้อง จุดเดียว)
   const [riskScope, setRiskScope] = useState<'dimension' | 'classification'>('dimension')
   const [matrixView, setMatrixView] = useState<'residual' | 'inherent'>('residual')
   const [methodologyOpen, setMethodologyOpen] = useState(true)
-
-  // section 5 — classification (ผู้ดำเนินการ = ผู้ใช้ปัจจุบันของระบบ — v0.32.0)
-  const [selectedCls, setSelectedCls] = useState(DATA_CLASSIFICATIONS[0]?.id ?? 'DATA_GOVERNANCE')
-  const [clsBusy, setClsBusy] = useState(false)
 
   // PII masking demo (ส่วนภาพรวม) — บทบาทผู้ชม = ผู้ใช้ปัจจุบัน (v0.32.0)
   const [previewDataset, setPreviewDataset] = useState('')
@@ -450,31 +325,6 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
     }
   }, [previewDataset, user])
 
-  /* ------------------------------ actions -------------------------------- */
-
-  async function handleSetClassification(datasetId: string, value: string) {
-    setClsBusy(true)
-    try {
-      const res = await fetch('/api/dq/classification', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datasetId, classification: value, operatorEmail: user?.email ?? '' }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast({ title: 'กำหนดการจำแนกไม่สำเร็จ', description: json.error ?? `HTTP ${res.status}`, variant: 'destructive' })
-        return
-      }
-      toast({ title: 'บันทึกการจำแนกประเภทข้อมูลเรียบร้อย', description: json.message })
-      await loadAnalytics()
-      onRefetch()
-    } catch {
-      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
-    } finally {
-      setClsBusy(false)
-    }
-  }
-
   /* ------------------------------ derived -------------------------------- */
 
   const filteredRuns = useMemo(() => {
@@ -484,64 +334,8 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
     )
   }, [data, detailDataset, detailStatus])
 
-  // ================= ส่วนที่ 3 — Regulation: ข้อมูลรายมาตรฐานจาก API =================
-  // ถ้า backend ยังไม่เปิด key "regulation" → fallback โครงมาตรฐานจาก FRAMEWORKS (คะแนนยังว่าง — ไม่ crash)
-  const regFws: RegulationFrameworkView[] = useMemo(() => {
-    const apiList = data?.regulation?.frameworks
-    if (apiList && apiList.length > 0) return apiList
-    return FRAMEWORKS.map((f) => ({
-      id: f.id,
-      no: f.no,
-      groupTh: f.groupTh,
-      name: f.name,
-      fullName: f.fullName,
-      description: f.description,
-      totalDomains: f.domains.length,
-      measuredDomains: 0,
-      weightedScore: null,
-      domains: f.domains.map((d) => ({
-        id: d.id,
-        th: d.th,
-        en: d.en,
-        detail: d.detail,
-        category: d.category ?? null,
-        weight: 1,
-        dimensions: d.dimensions as string[],
-        score: null,
-        rulesCount: 0,
-        perDataset: [],
-      })),
-      datasets: [],
-    }))
-  }, [data])
-  const regFw = regFws.find((f) => f.id === fwId) ?? regFws[0]
-  const regMeasuredDomains = regFw.domains.filter((d) => d.dimensions.length > 0)
-  const regProcessDomains = regFw.domains.filter((d) => d.dimensions.length === 0)
-
-  /** คะแนน/จำนวนกฎของส่วนย่อยตามขอบเขตที่เลือก — ทุกชุดข้อมูล = domain.score · เฉพาะชุด = domain.perDataset */
-  function regDomainScore(dom: RegulationDomainView, datasetId: string): { score: number | null; rulesCount: number } {
-    if (datasetId !== 'all') {
-      const row = dom.perDataset.find((p) => p.datasetId === datasetId)
-      return { score: row ? row.score : null, rulesCount: row ? row.rulesCount : 0 }
-    }
-    return { score: dom.score, rulesCount: dom.rulesCount }
-  }
-
-  // ตัวเลือกขอบเขตชุดข้อมูล (แท็บรายละเอียดข้อกำหนด) — ใช้ fw.datasets จาก API ก่อน ถ้ายังไม่มีใช้ perDataset เดิม
-  const regDatasetOptions = useMemo(() => {
-    if (regFw.datasets.length > 0) return regFw.datasets.map((d) => ({ id: d.datasetId, name: d.name }))
-    return (data?.perDataset ?? []).map((d) => ({ id: d.id, name: d.name }))
-  }, [regFw, data])
-
-  // ================= ส่วนที่ 4 — Risk: Inherent vs Residual =================
+  // ================= ส่วนที่ 3 — Risk: Inherent vs Residual =================
   const inherent = data?.risks.inherent ?? null
-
-  /** ความเสี่ยงรายมาตรฐาน (ใช้บนการ์ดเลือกกรอบของส่วน Regulation — v0.34.0 ยุบส่วนแสดงซ้ำออก) */
-  const fwRiskMap = useMemo(() => {
-    const m = new Map<string, RiskInherentSummary['byFramework'][number]>()
-    for (const row of inherent?.byFramework ?? []) m.set(row.frameworkId, row)
-    return m
-  }, [inherent])
 
   // แถวความเสี่ยงรายขอบเขต ตาม switcher — เรียงจาก Residual สูงสุดไปต่ำสุด
   const inherentScopeRows: RiskInherentScopeRow[] = useMemo(() => {
@@ -591,12 +385,6 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
     }))
   }, [data, matrixView])
 
-  const selectedCategory = useMemo(
-    () => data?.classification.categories.find((c) => c.id === selectedCls) ?? null,
-    [data, selectedCls],
-  )
-  const selectedClsDef = DATA_CLASSIFICATIONS.find((c) => c.id === selectedCls)
-
   /** v0.34.0 — ความเสี่ยงรวมรายประเภทข้อมูล (แท็บ "รายประเภทข้อมูล" ของส่วน Risk — เนื้อหาต่างจากแท็บรายมิติ DQ) */
   const clsRiskRows = useMemo(() => {
     const groups = new Map<
@@ -628,11 +416,11 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
 
   return (
     <div className="space-y-4">
-      {/* -------- ตัวเลือกส่วนของแดชบอร์ด (5 ส่วน) -------- */}
+      {/* -------- ตัวเลือกส่วนของแดชบอร์ด (3 ส่วน) -------- */}
       <div
         role="tablist"
-        aria-label="ส่วนของแดชบอร์ดคุณภาพข้อมูล 5 ส่วน"
-        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+        aria-label="ส่วนของแดชบอร์ดคุณภาพข้อมูล 3 ส่วน"
+        className="grid grid-cols-1 gap-2 sm:grid-cols-3"
       >
         {SECTIONS.map((s) => {
           const Icon = s.icon
@@ -1029,326 +817,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
           )}
 
           {/* ================================================================ */}
-          {/* ส่วนที่ 3 — Regulation (มาตรฐานอ้างอิง 5 กรอบ)                       */}
-          {/* ================================================================ */}
-          {section === 'regulation' && (
-            <div className="space-y-4">
-              {/* v0.34.0 — เลือกกรอบมาตรฐานจุดเดียว: การ์ดเดียวรวมคะแนนรวมถ่วงน้ำหนัก + ความเสี่ยง Inherent→Residual
-                  (เดิมมีการแสดงมาตรฐานซ้ำ 2 จุด: การ์ดเลือกด้านบน + ส่วน "ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน" — ยุบรวมตาม feedback ผู้ใช้) */}
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5" role="radiogroup" aria-label="เลือกกรอบมาตรฐาน">
-                {regFws.map((f) => {
-                  const active = f.id === fwId
-                  const rk = fwRiskMap.get(f.id)
-                  const bandIH = rk ? riskBandOf(rk.inherentAvg) : null
-                  const bandRS = rk ? riskBandOf(rk.residualAvg) : null
-                  return (
-                    <button
-                      key={f.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => {
-                        setFwId(f.id)
-                        setFwDataset('all')
-                      }}
-                      className={`rounded-lg border p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-                        active ? 'border-emerald-500 bg-emerald-50/80 ring-1 ring-emerald-500' : 'bg-white hover:border-emerald-300'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-mono text-[10px] text-muted-foreground">{f.no}</p>
-                          <p className={`truncate text-sm font-semibold ${active ? 'text-emerald-900' : 'text-slate-800'}`}>{f.name}</p>
-                          <p className="truncate text-[10.5px] text-muted-foreground" title={f.groupTh}>
-                            {f.groupTh}
-                          </p>
-                        </div>
-                        <span
-                          className={`shrink-0 font-mono text-base font-bold ${scoreColor(f.weightedScore)}`}
-                          title="คะแนนรวมถ่วงน้ำหนักจากการประเมินล่าสุด"
-                        >
-                          {f.weightedScore !== null ? f.weightedScore.toFixed(1) : '—'}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-[10px] text-muted-foreground">
-                        วัดได้ {f.measuredDomains}/{f.totalDomains} ข้อกำหนด
-                      </p>
-                      {/* ความเสี่ยง Inherent → Residual ของมาตรฐานนี้ (จากกฎ DQ ที่แมปกับมาตรฐาน) */}
-                      {rk && bandIH && bandRS ? (
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                          <span
-                            className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${bandIH.className}`}
-                            title={`Inherent ระดับ${bandIH.label} (คะแนน ${rk.inherentAvg.toFixed(1)}/25)`}
-                          >
-                            {bandIH.label}
-                          </span>
-                          <span className="shrink-0 font-mono text-[10.5px] font-semibold text-rose-700">{rk.inherentAvg.toFixed(1)}</span>
-                          <ArrowRight className="size-3 shrink-0 text-slate-400" aria-hidden="true" />
-                          <span
-                            className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${bandRS.className}`}
-                            title={`Residual ระดับ${bandRS.label} (คะแนน ${rk.residualAvg.toFixed(1)}/25)`}
-                          >
-                            {bandRS.label}
-                          </span>
-                          <span className="shrink-0 font-mono text-[10.5px] font-bold text-emerald-700">{rk.residualAvg.toFixed(1)}</span>
-                          <span className="shrink-0 text-[9.5px] text-slate-400">/25</span>
-                          {rk.reductionPct > 0 ? (
-                            <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 font-mono text-[10px] text-emerald-800">
-                              −{Math.round(rk.reductionPct)}%
-                            </Badge>
-                          ) : rk.reductionPct < 0 ? (
-                            <Badge variant="outline" className="shrink-0 border-amber-200 bg-amber-50 font-mono text-[10px] text-amber-900">
-                              +{Math.round(-rk.reductionPct)}%
-                            </Badge>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <p className="mt-1.5 text-[10px] text-muted-foreground">ความเสี่ยง: ยังไม่มีกฎแมปมาตรฐานนี้</p>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <h3 className="text-base font-semibold leading-none text-slate-900">
-                    {regFw.no} {regFw.groupTh}: {regFw.name}
-                  </h3>
-                  <CardDescription className="mt-1">{regFw.fullName}</CardDescription>
-                  <p className="pt-1 text-xs leading-relaxed text-slate-600">{regFw.description}</p>
-                  <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-                    <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
-                      ข้อกำหนด {regFw.totalDomains} ข้อ
-                    </Badge>
-                    <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
-                      วัดได้ {regFw.measuredDomains} ข้อ
-                    </Badge>
-                    <Badge variant="outline" className="border-slate-200 bg-white font-mono text-slate-800">
-                      คะแนนรวม {regFw.weightedScore !== null ? `${regFw.weightedScore.toFixed(1)}/100` : '—'}
-                    </Badge>
-                    {!data.regulation && (
-                      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">
-                        รอข้อมูลวิเคราะห์รายมาตรฐานจากเซิร์ฟเวอร์ — แสดงโครงมาตรฐานอย่างเดียว
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* v0.34.0 — ส่วน "ประเมินความเสี่ยงที่อ้างอิงตามแต่ละมาตรฐาน" ถูกยุบรวมเข้าการ์ดเลือกกรอบด้านบน (แก้มาตรฐานซ้ำ 2 จุด)
-                      และความเสี่ยงรายมาตรฐานเจาะลึกรายข้ออยู่ที่เมนู "ประเมินความสอดคล้อง" จุดเดียว */}
-                  <p className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                    คะแนนความเสี่ยง Inherent→Residual รายมาตรฐานแสดงบนการ์ดเลือกด้านบน · เจาะลึกรายข้อกำหนดพร้อมประวัติผลรันที่เมนู{' '}
-                    <span className="font-medium text-slate-700">ภาพรวม → ประเมินความสอดคล้อง</span> (จุดเดียวของระบบ) — ระดับความเสี่ยง: สูงมาก ≥15 · สูง ≥8 · ปานกลาง ≥4 · ต่ำ &lt;4 ตามเกณฑ์ใน{' '}
-                    <span className="font-mono">lib/regulation.ts</span>
-                  </p>
-
-                  {/* sub-tabs 2 มุมมอง: ชุดข้อมูล (default) / รายละเอียดข้อกำหนด */}
-                  <div role="tablist" aria-label="มุมมองของมาตรฐานที่เลือก" className="inline-flex max-w-full overflow-x-auto rounded-lg border bg-slate-50 p-0.5">
-                    <button
-                      type="button"
-                      role="tab"
-                      id="reg-tab-datasets"
-                      aria-selected={regTab === 'datasets'}
-                      aria-controls="reg-panel-datasets"
-                      onClick={() => setRegTab('datasets')}
-                      className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-                        regTab === 'datasets' ? 'bg-white text-emerald-900 shadow-sm ring-1 ring-emerald-200' : 'text-slate-600 hover:text-emerald-800'
-                      }`}
-                    >
-                      มุมมองชุดข้อมูล
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      id="reg-tab-clauses"
-                      aria-selected={regTab === 'clauses'}
-                      aria-controls="reg-panel-clauses"
-                      onClick={() => setRegTab('clauses')}
-                      className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-                        regTab === 'clauses' ? 'bg-white text-emerald-900 shadow-sm ring-1 ring-emerald-200' : 'text-slate-600 hover:text-emerald-800'
-                      }`}
-                    >
-                      รายละเอียดข้อกำหนด
-                    </button>
-                  </div>
-
-                  {regTab === 'datasets' && (
-                    <div role="tabpanel" id="reg-panel-datasets" aria-labelledby="reg-tab-datasets" className="space-y-2">
-                      {regFw.datasets.length === 0 ? (
-                        <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                          กรอบมาตรฐานนี้ยังไม่มีชุดข้อมูลที่ผูกกับกฎ DQ — เพิ่มกฎที่อ้างอิงชุดข้อมูลและรันตรวจเพื่อเริ่มวัดคะแนนรายมาตรฐาน
-                        </p>
-                      ) : (
-                        <div className="overflow-x-auto rounded-lg border">
-                          <table className="w-full min-w-[560px] text-left text-xs">
-                            <caption className="sr-only">
-                              ตารางคะแนนรายชุดข้อมูลของ {regFw.name} — คะแนนประเมินล่าสุดจากผลรันตรวจ พร้อมจำนวนกฎที่ครอบคลุมและเวลารันล่าสุด
-                            </caption>
-                            <thead className="bg-emerald-50/70 text-emerald-900">
-                              <tr>
-                                <th scope="col" className="px-3 py-2 font-medium">
-                                  ชุดข้อมูล
-                                </th>
-                                <th scope="col" className="px-3 py-2 text-center font-medium">
-                                  กฎครอบคลุม
-                                </th>
-                                <th scope="col" className="px-3 py-2 font-medium">
-                                  คะแนนประเมินล่าสุด
-                                </th>
-                                <th scope="col" className="px-3 py-2 font-medium">
-                                  รันล่าสุด
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {regFw.datasets.map((ds) => {
-                                const grade = ds.grade ?? gradeOfClient(ds.score)
-                                return (
-                                  <tr key={ds.datasetId} className="border-t">
-                                    <th scope="row" className="px-3 py-2 text-left font-medium text-slate-800">
-                                      {ds.name}
-                                    </th>
-                                    <td className="px-3 py-2 text-center tabular-nums">{ds.rulesCount}</td>
-                                    <td className="px-3 py-2">
-                                      {ds.score !== null ? (
-                                        <div className="flex items-center gap-2">
-                                          <ScoreBar score={ds.score} className="max-w-28" />
-                                          <span className={`w-10 shrink-0 text-right font-mono font-semibold ${scoreColor(ds.score)}`}>
-                                            {ds.score.toFixed(1)}
-                                          </span>
-                                          {grade && (
-                                            <Badge variant="outline" className={`shrink-0 text-[10px] ${grade.badgeClass}`}>
-                                              {grade.label}
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-500">
-                                          ยังไม่ได้รันตรวจ
-                                        </Badge>
-                                      )}
-                                    </td>
-                                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{fmtTime(ds.lastRunAt)}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        มุมชุดข้อมูลรายมาตรฐาน: คะแนนจากผลรันตรวจล่าสุดของแต่ละชุดข้อมูล — ชุดข้อมูลที่ยังไม่ได้รันตรวจจะแสดงสถานะ "รอการประเมิน"
-                      </p>
-                    </div>
-                  )}
-
-                  {regTab === 'clauses' && (
-                    <div role="tabpanel" id="reg-panel-clauses" aria-labelledby="reg-tab-clauses" className="space-y-3">
-                      {/* ขอบเขตชุดข้อมูล */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Label htmlFor="fw-dataset" className="text-xs text-muted-foreground">
-                          ขอบเขตชุดข้อมูล
-                        </Label>
-                        <Select value={fwDataset} onValueChange={setFwDataset}>
-                          <SelectTrigger id="fw-dataset" className="h-8 w-[240px] text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all" className="text-xs">
-                              ทุกชุดข้อมูล (รวมทั้งระบบ)
-                            </SelectItem>
-                            {regDatasetOptions.map((d) => (
-                              <SelectItem key={d.id} value={d.id} className="text-xs">
-                                {d.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* ข้อกำหนดที่วัดคะแนนได้ (มีเกณฑ์ตรวจ) */}
-                      <div className="max-h-[30rem] space-y-2 overflow-y-auto pr-1">
-                        {regMeasuredDomains.length === 0 && (
-                          <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                            กรอบนี้ยังไม่มีข้อกำหนดที่แมปกับมิติ DQ ที่ตรวจได้ในระบบ
-                          </p>
-                        )}
-                        {regMeasuredDomains.map((dom) => {
-                          const st = regDomainScore(dom, fwDataset)
-                          return (
-                            <div key={dom.id} className="rounded-lg border p-3">
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <h4 className="text-sm font-medium text-slate-800">
-                                    {dom.th} <span className="text-xs font-normal text-muted-foreground">({dom.en})</span>
-                                  </h4>
-                                  {dom.category && <p className="text-[10px] text-muted-foreground">{dom.category}</p>}
-                                </div>
-                                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                                  <Badge variant="outline" className="border-teal-200 bg-teal-50 text-[10px] text-teal-800">
-                                    น้ำหนัก ×{fmtWeight(dom.weight)}
-                                  </Badge>
-                                  <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-600">
-                                    กฎครอบคลุม {st.rulesCount} ข้อ
-                                  </Badge>
-                                </div>
-                              </div>
-                              <p className="mt-1 text-xs leading-relaxed text-slate-600">{dom.detail}</p>
-                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                {dom.dimensions.map((d) => (
-                                  <DimensionBadge key={d} dimension={d} />
-                                ))}
-                              </div>
-                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                                {st.score !== null ? (
-                                  <>
-                                    <span className="text-muted-foreground">
-                                      คะแนนประเมินล่าสุด{' '}
-                                      <span className={`font-mono font-bold ${scoreColor(st.score)}`}>{st.score.toFixed(1)}</span>
-                                      <span className="ml-0.5 text-[10px] text-slate-400">/100</span>
-                                    </span>
-                                    <ScoreBar score={st.score} className="max-w-36" />
-                                  </>
-                                ) : (
-                                  <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[10px] text-slate-500">
-                                    {fwDataset === 'all' ? 'ยังไม่ได้รันตรวจ' : 'ชุดข้อมูลนี้ยังไม่มีผลตรวจในข้อกำหนดนี้'}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      {/* ข้อกำหนดระดับกระบวนการ — ไม่มีเกณฑ์ตรวจ จึงไม่เข้าการคำนวณคะแนน */}
-                      {regProcessDomains.length > 0 && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
-                          <h4 className="text-xs font-semibold text-amber-900">ข้อกำหนดระดับกระบวนการ (ไม่เข้าการคำนวณคะแนน)</h4>
-                          <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800/90">
-                            เกณฑ์เชิงกระบวนการ/การกำกับดูแล — ระบบครอบคลุมผ่าน RBAC รายชุดข้อมูล · การปิดบัง PII ตามบทบาท · Audit Trail ทุกการดำเนินการ
-                          </p>
-                          <ul className="mt-2 space-y-1.5">
-                            {regProcessDomains.map((dom) => (
-                              <li key={dom.id} className="rounded-md border border-amber-200/70 bg-white/70 px-2.5 py-1.5">
-                                <p className="text-xs font-medium text-slate-800">
-                                  {dom.th} <span className="font-normal text-muted-foreground">({dom.en})</span>
-                                </p>
-                                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">{dom.detail}</p>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* ================================================================ */}
-          {/* ส่วนที่ 4 — Risk (ความเสี่ยงในมุม Data Quality Impact)               */}
+          {/* ส่วนที่ 3 — Risk (ความเสี่ยงในมุม Data Quality Impact)               */}
           {/* ================================================================ */}
           {section === 'risk' && (
             <div className="space-y-4">
@@ -1989,176 +1458,6 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
             </div>
           )}
 
-          {/* ================================================================ */}
-          {/* ส่วนที่ 6 — Data Classification (การจำแนกประเภทข้อมูล)               */}
-          {/* ================================================================ */}
-          {section === 'classification' && (
-            <div className="space-y-4">
-              {/* ผู้ดำเนินการ = ผู้ใช้ปัจจุบันของระบบ (v0.32.0 — ย้ายไปใช้ identity ศูนย์กลางที่ header) */}
-              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-xs text-slate-600">
-                <UserRound className="size-3.5 text-emerald-700" aria-hidden="true" />
-                ผู้ดำเนินการจำแนก: <span className="font-medium text-slate-800">{user ? `${user.name} (${user.roleTh})` : 'กำลังโหลด…'}</span>
-                <span className="text-muted-foreground">— ต้องมีสิทธิ์จัดการชุดข้อมูล (ตรวจสิทธิ์ที่ API เสมอ)</span>
-              </div>
-
-              {/* การ์ด 11 ประเภท */}
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="radiogroup" aria-label="เลือกประเภทข้อมูล">
-                {data.classification.categories.map((c) => {
-                  const active = c.id === selectedCls
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => setSelectedCls(c.id)}
-                      className={`rounded-lg border p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-                        active ? 'border-emerald-500 bg-emerald-50/80 ring-1 ring-emerald-500' : 'bg-white hover:border-emerald-300'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-mono text-[10px] text-muted-foreground">{c.no}</p>
-                          <p className={`truncate text-sm font-semibold ${active ? 'text-emerald-900' : 'text-slate-800'}`}>{c.th}</p>
-                          <p className="truncate text-[10.5px] text-muted-foreground" title={c.en}>
-                            {c.en}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 flex-col items-end gap-1">
-                          <Badge variant="outline" className="text-[10px]">
-                            {c.datasetCount} ชุด
-                          </Badge>
-                          {c.avgScore !== null && (
-                            <span className={`font-mono text-sm font-bold ${scoreColor(c.avgScore)}`}>{c.avgScore.toFixed(0)}</span>
-                          )}
-                        </div>
-                      </div>
-                      <p className="mt-1.5 truncate text-[10.5px] text-muted-foreground">{c.standards.length} มาตรฐานที่เกี่ยวข้อง</p>
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* รายละเอียดประเภทที่เลือก — mapping กับมาตรฐาน */}
-              {selectedCategory && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">
-                      {selectedCategory.no} {selectedCategory.th} ({selectedCategory.en})
-                    </CardTitle>
-                    <CardDescription>{selectedCategory.description}</CardDescription>
-                    {selectedCategory.impacts.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {selectedCategory.impacts.map((im) => (
-                          <Badge key={im} variant="outline" className="border-amber-200 bg-amber-50 text-[10px] font-normal text-amber-900">
-                            ผลกระทบ: {im}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Mapping มาตรฐาน */}
-                    <div>
-                      <p className="mb-2 text-xs font-semibold text-slate-700">มาตรฐานที่เกี่ยวข้อง — สถานะความครอบคลุมจากข้อมูลในระบบ</p>
-                      <div className="space-y-2">
-                        {selectedCategory.standards.map((s) => (
-                          <div key={s.name} className="rounded-lg border p-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="text-sm font-medium text-slate-800">{s.name}</p>
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <Badge variant="outline" className={`text-[10px] ${s.className}`}>
-                                  {s.label}
-                                </Badge>
-                                {s.score !== null && (
-                                  <span className={`font-mono text-sm font-bold ${scoreColor(s.score)}`}>{s.score.toFixed(0)}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                              {s.dimensions.map((d) => (
-                                <DimensionBadge key={d} dimension={d} />
-                              ))}
-                              <span className="text-[10.5px] text-muted-foreground">· มีกฎครอบคลุม {s.rulesCount} ข้อ</span>
-                            </div>
-                            {s.score !== null && <ScoreBar score={s.score} className="mt-2" />}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* ชุดข้อมูลในประเภทนี้ */}
-                    <div>
-                      <p className="mb-2 text-xs font-semibold text-slate-700">ชุดข้อมูลที่จำแนกในประเภทนี้</p>
-                      {selectedCategory.datasets.length === 0 ? (
-                        <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                          ยังไม่มีชุดข้อมูลในประเภทนี้ — จำแนกจากแถวด้านล่างของหน้านี้
-                        </p>
-                      ) : (
-                        <div className="space-y-2">
-                          {selectedCategory.datasets.map((d) => (
-                            <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
-                              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                <p className="truncate text-sm font-medium">{d.name}</p>
-                                {d.score !== null && (
-                                  <Badge variant="outline" className={`text-[10.5px] ${scoreColor(d.score)}`}>
-                                    คะแนน {d.score.toFixed(0)}
-                                  </Badge>
-                                )}
-                                {d.pendingSignals > 0 && (
-                                  <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10.5px] text-amber-900">
-                                    {d.pendingSignals} คำแนะนำ ML
-                                  </Badge>
-                                )}
-                                <span className="text-[11px] text-muted-foreground">{d.lastRunAt ? `รันล่าสุด ${fmtTime(d.lastRunAt)}` : 'ยังไม่เคยรัน'}</span>
-                              </div>
-                              <ClassificationEditor key={`${d.id}-${selectedCategory.id}`} datasetId={d.id} current={selectedCategory.id} busy={clsBusy} onSave={handleSetClassification} />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* ชุดข้อมูลที่ยังไม่จำแนก */}
-              {data.classification.unclassified.length > 0 && (
-                <Card className="border-amber-200">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">ชุดข้อมูลที่ยังไม่จำแนกประเภท</CardTitle>
-                    <CardDescription>กำหนดประเภทข้อมูลเพื่อแมปกับมาตรฐานที่เกี่ยวข้อง (บันทึกใน Audit Trail ทุกครั้ง)</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {data.classification.unclassified.map((d) => (
-                        <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-medium">{d.name}</p>
-                            <Badge variant="outline" className="text-[10px]">
-                              {d.sourceType}
-                            </Badge>
-                            {d.score !== null && (
-                              <Badge variant="outline" className={`text-[10.5px] ${scoreColor(d.score)}`}>
-                                คะแนน {d.score.toFixed(0)}
-                              </Badge>
-                            )}
-                          </div>
-                          <ClassificationEditor key={`${d.id}-${UNCLASSIFIED}`} datasetId={d.id} current={UNCLASSIFIED} busy={clsBusy} onSave={handleSetClassification} />
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <p className="rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                การจำแนกประเภท 11 ประเภท อ้างอิงจากกรอบที่องค์กรกำหนด (ธปท. · DAMA-DMBOK · DCAM · BCBS 239 · Thailand PDPA · PCI DSS ·
-                SWIFT CSCF · ปปง./FATF · TFRS/IFRS · กฎหมายข้อมูลเครดิต · ISO 22301 · ISO/IEC 27001 · NIST CSF · หลักเกณฑ์ Outsourcing/Cloud) —
-                สถานะความครอบคลุมคำนวณจากกฎที่เปิดใช้งานและผลรันตรวจล่าสุดของชุดข้อมูลในแต่ละประเภท
-              </p>
-            </div>
-          )}
         </>
       )}
     </div>
@@ -2179,13 +1478,4 @@ const SEVERITY_BADGE_SMALL: Record<string, string> = {
   HIGH: 'border-orange-200 bg-orange-50 text-orange-800',
   MEDIUM: 'border-amber-200 bg-amber-50 text-amber-900',
   LOW: 'border-slate-200 bg-slate-50 text-slate-600',
-}
-
-/** จัดเกรดฝั่ง client ตามเกณฑ์เดียวกันทั้งระบบ (lib/dama GRADE_DEFS) */
-function gradeOfClient(score: number | null): { band: string; label: string; badgeClass: string; textClass: string } | null {
-  if (score === null || Number.isNaN(score)) return null
-  if (score >= 95) return { band: 'EXCELLENT', label: 'ดีเยี่ยม', badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200', textClass: 'text-emerald-700' }
-  if (score >= 85) return { band: 'GOOD', label: 'ดี', badgeClass: 'bg-teal-50 text-teal-800 border-teal-200', textClass: 'text-teal-700' }
-  if (score >= 70) return { band: 'FAIR', label: 'ต้องปรับปรุง', badgeClass: 'bg-amber-50 text-amber-900 border-amber-200', textClass: 'text-amber-700' }
-  return { band: 'POOR', label: 'วิกฤต', badgeClass: 'bg-rose-50 text-rose-800 border-rose-200', textClass: 'text-rose-700' }
 }

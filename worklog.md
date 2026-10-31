@@ -2063,3 +2063,21 @@ Work Log:
 Stage Summary:
 - PAT รอบที่ 11 ใช้งานได้ครบ (อ่าน 200 + สิทธิ์ push/admin/maintain true + เขียนผ่าน blob probe + push worklog สำเร็จ)
 - v0.37.0 (Task 67 เอนจิน scikit-learn) สมบูรณ์ทั้ง local/remote/tag + รันไทม์ยืนยันซ้ำ E2E ผ่าน · working tree clean · ระบบรอคำสั่งถัดไปจากผู้ใช้
+
+---
+Task ID: 68
+Agent: Z.ai Code (main orchestrator)
+Task: v0.37.1 — ตัดเมนู Regulation และ Data Classification ออกจาก DQ แดชบอร์ดทั้ง 2 ส่วน ตามคำสั่งผู้ใช้ "ฉันต้องการตัดเมนู ภายใน DQ แดชบอร์ด > Regulation และ Data Classification ออกทั้ง 2 ส่วน"
+
+Work Log:
+- แดชบอร์ดเหลือ 3 ส่วน: dq-dashboard.tsx ลบส่วนที่ 3 Regulation (การ์ดเลือกกรอบ 5 กรอบ + แท็บ datasets/clauses) และส่วนที่ 5 Data Classification (การ์ด 11 ประเภท + mapping มาตรฐาน + แบบฟอร์มจำแนก) ออกทั้งบล็อก — 2192 → 1481 บรรทัด · DashboardSection เหลือ 'overview' | 'checks' | 'risk' · SECTIONS + tablist aria-label "3 ส่วน" + grid lg:grid-cols-3 · แบนเนอร์ Risk กลับเป็น "ส่วนที่ 3"
+- ลบของค้างจากสองส่วนให้สะอาด: interface Regulation* 5 ตัว + AnalyticsData.regulation + RiskInherentSummary.byFramework + fmtWeight + gradeOfClient + ClassificationEditor + state (fwId/fwDataset/regTab/selectedCls/clsBusy) + handleSetClassification + derived (regFws/regFw/regMeasuredDomains/regProcessDomains/regDomainScore/regDatasetOptions/fwRiskMap/selectedCategory/selectedClsDef) + import ที่หมดที่ใช้ (Tags, Network, DATA_CLASSIFICATIONS, FRAMEWORKS — เก็บ Scale เพราะส่วน Risk ยังใช้)
+- analytics route: ลบ key "regulation" (regulationFrameworks ~67 บรรทัด) + inherentByFramework + helpers เฉพาะงาน (dimensionScoresForDataset/gradeView/globalScoreByDimension) — เก็บ dimensionOfRule/avgOf (Inherent ยังใช้) · **เก็บ key "classification" ครบ** เพราะส่วน Risk ยังใช้ (แท็บมุมมอง "รายประเภทข้อมูล" + การ์ด "ผลกระทบธุรกิจรายประเภทข้อมูล" — ยืนยันตอน E2E)
+- ลบ PATCH /api/dq/classification ทั้ง route (ผู้เรียกเดียวในระบบคือส่วนที่ลบ) — ข้อมูล classification ของชุดข้อมูลยังอ่าน/แสดงผลปกติทุกจุด (badge ต่อชุดข้อมูล ภาพรวม + Risk)
+- ข้อความอ้างอิงปรับตาม: views.ts desc แดชบอร์ด "3 ส่วน: ภาพรวมคุณภาพข้อมูล · รายละเอียดการตรวจ · Risk (DQ Impact)" · core-features-console comment TAB 4 · APP_VERSION v0.37.1 — เมนู "ประเมินความสอดคล้อง" (FRAMEWORKS อยู่ที่นั่นจุดเดียวตั้งแต่ v0.34.0) ไม่กระทบ
+- ทดสอบ: lint ผ่าน · tsc — ไฟล์ที่แก้ 0 error (error ที่เหลือเป็นของเดิมในไฟล์ที่ไม่เกี่ยว: domain-run/scorecard/dq.ts/mappings-server/examples/mini-services) · E2E ผ่าน Agent Browser (somchai.owner): แดชบอร์ดเหลือ 3 แท็บจริง — Regulation/Data Classification หายไป · ภาพรวม 93.3/100 เกรด ดี + KPI ครบ · รายละเอียดการตรวจปกติ · Risk ครบทั้ง Hero Inherent→Residual + แท็บมุมมอง รายมิติ/รายประเภท + การ์ดผลกระทบธุรกิจ (5.1 การกำกับดูแลข้อมูลองค์กร) · ประเมินความสอดคล้องยังใช้ได้ปกติ · v0.37.1 บน header+sidebar · mobile 375 ไม่มี h-scroll (footer ถูกเนื้อหาผลักลง 2380 > 812) · 0 page error · dev.log สะอาด
+
+Stage Summary:
+- DQ แดชบอร์ดเหลือ 3 ส่วนตามคำสั่ง (ภาพรวม / รายละเอียดการตรวจ / Risk) — Regulation อยู่ที่เมนู "ประเมินความสอดคล้อง" จุดเดียวตามที่ยุบไว้แต่ v0.34.0 · ข้อมูลจำแนกประเภทยังแสดงใน Risk/ภาพรวมเหมือนเดิม แต่ไม่มีหน้าจัดการในแดชบอร์ดแล้ว
+- ระบบรับข้อมูลจาก /api/dq/analytics คงเดิมยกเว้นตัด key ที่ไม่มีผู้ใช้ (regulation, inherent.byFramework) · RBAC คง 12 สิทธิ์ไม่เปลี่ยน
+- tag v0.37.1 · รอ push + ยืนยัน GitHub API

@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.37.0'
+export const APP_VERSION = 'v0.37.1'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -69,7 +69,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'dashboard',
     th: 'DQ แดชบอร์ด',
     en: 'DQ Dashboard',
-    desc: '5 ส่วน: ภาพรวมคุณภาพข้อมูล · รายละเอียดการตรวจ · Regulation · Risk · Data Classification',
+    desc: '3 ส่วน: ภาพรวมคุณภาพข้อมูล · รายละเอียดการตรวจ · Risk (DQ Impact)',
     icon: LayoutDashboard,
   },
   'exec-dashboard': {
