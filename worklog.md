@@ -2149,3 +2149,21 @@ Stage Summary:
 - กู้คืนจาก sandbox rollback สำเร็จทั้งโค้ด (reset จาก remote = 127b883) และข้อมูลสาธิต (db:push + seed-demo) — ไม่มีงาน/ข้อมูลถาวรใดหายเพราะ remote เป็น source of truth · v0.38.0 สมบูรณ์ local = remote + E2E ผ่าน · ระบบรอคำสั่งถัดไปจากผู้ใช้
 
 ---
+Task ID: 70
+Agent: Z.ai Code (main orchestrator)
+Task: v0.38.1 — ขั้นที่ 1/7 ของแผนปรับปรุงหน้า "คลังข้อมูล" (Data Inventory) ตามมาตรฐาน Data Catalog — ตัดปุ่ม "จัดการ Data Domain" + ตัดคำนำหน้า "โดเมน:" (ผู้ใช้สั่งทำทีละขั้น ล็อกขอบเขตหน้าเดียว)
+
+Work Log:
+- บริบท: ผู้ใช้ให้ศึกษา Data Governance/Data Quality ก่อนพัฒนา (ศึกษาแล้ว: DAMA-DMBOK2 11 knowledge areas · DCAM/EDM Council · ISO 8000-61/150 · Business Glossary vs Data Catalog · บทบาท Owner/Steward/Custodian ผ่าน web search) แล้วเสนอแผน 7 ขั้น — ผู้ใช้ยืนยัน "ดำเนินการเฉพาะในเมนูคลังข้อมูลเท่านั้น" + "ทีละขั้นตอน" + "ถ้าพร้อมแล้วเริ่มได้เลย" → เริ่มขั้น 1
+- (1) ตัดปุ่ม "จัดการ Data Domain" ออกจากหัวหน้า (asset-inventory.tsx) — ซ้ำซ้อนกับหน้า "Data Domain · Element · Meta" ที่มีใน sidebar อยู่แล้ว ตามหลัก Data Catalog: หน้า inventory ทำหน้าที่ค้นหา/เข้าใจ asset เท่านั้น (separation of concerns) · ลบ prop onGoDomains ทั้ง component และจุดเรียกเดียวใน page.tsx (ตรวจด้วย rg = จุดเดียวในระบบ) — ความสามารถจัดการโครงสร้างไม่หายเพราะหน้าปลายทางยังอยู่ครบ
+- (2) ตัดคำนำหน้า "โดเมน:" ออกจากแถวชิปกรอง — ชิปมีจุดสี+ชื่อ+จำนวนเข้าใจได้เอง · คง role="group" aria-label="กรองรายการตามโดเมนข้อมูล" ครบสำหรับ screen reader · การ์ดสรุป "โดเมนข้อมูล" (label สถิติในการ์ดสรุป) คงไว้ — ผู้ใช้สั่งตัดเฉพาะคำนำหน้า "โดเมน:"
+- (3) บั๊กเก่าของหน้าที่พบระหว่าง E2E (ไม่เกิดจากการตัด แต่อยู่หน้าเดียวกัน — แก้ให้เกินตามมาตรฐาน mobile): การ์ด asset ล้นจอ mobile 375 (sw=385 > cw=375) เพราะ grid ไม่ระบุ grid-cols-1 บน mobile → track auto ขยายตาม max-content ของข้อความ (truncate/line-clamp ไม่ช่วยใน auto track — หาตัวการด้วย eval หา element right>375 เจอ button.bg-card 2 ใบ) → เพิ่ม grid-cols-1 (Tailwind = minmax(0,1fr)) → sw=375 ไม่มี h-scroll
+- APP_VERSION v0.38.0 → v0.38.1
+- ทดสอบ: lint ผ่าน · E2E ผ่าน Agent Browser (session somchai.owner): header v0.38.1 · a11y snapshot ยืนยันไม่มีปุ่ม "จัดการ Data Domain" และไม่มี label "โดเมน:" · ชิปกรองยังทำงานจริง (คลิก "ข้อมูลลูกค้า" → เหลือ ทะเบียนลูกค้าองค์กร 1 asset · รีเซ็ต "ทั้งหมด" → 2 asset) · เปิด dialog รายละเอียด "ทะเบียนลูกค้าองค์กร" ครบทุกปุ่ม/แท็บ (เปลี่ยนชื่อ / PII ปิดบัง: เปิด / โครงสร้างคอลัมน์ 6 / รายละเอียดแหล่งข้อมูล) · desktop 1280 ปกติ · mobile 375 sw=375 ไม่มี h-scroll (หลังแก้ grid-cols-1) · 0 page error (มี recharts width warning เดิม ไม่มีผล) · dev.log API 200 ทั้งหมด · ภาพหลักฐาน tool-results/t70-step1-*.png
+- หมายเหตุ: จุดอื่นที่มีคำ "โดเมน:" ในหน้าอื่นของกลุ่มเมนูเดียวกัน (หน้าการแมปข้อมูล "โดเมน: ทั้งหมด") ยังไม่แตะ — ล็อกขอบเขตหน้าเดียวตามสั่ง รอคำสั่งขั้นถัดไป
+
+Stage Summary:
+- ขั้น 1/7 เสร็จ: หน้าคลังข้อมูลสะอาดตามหลัก Data Catalog (ไม่มีปุ่มจัดการโครงสร้าง / ไม่มี label ซ้ำซ้อน) + แก้บั๊กล้นจอ mobile ที่พบ · ขั้น 2-7 (ค้นหา asset / สถานะ lifecycle / % metadata / มุมมองตาราง / Owner-Steward / เชื่อมโยง Governance) รอผู้ใช้สั่งทีละขั้น
+- tag v0.38.1 · push ด้วย PAT รอบที่ 14 (ตรวจแล้วในรอบนี้: read 200 + push/admin/maintain true + blob probe d72b95f0 200) · ยืนยันผ่าน GitHub API หลัง push
+
+---
