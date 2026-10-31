@@ -248,7 +248,7 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
       setRanAt(new Date().toISOString())
       toast({
         title: 'รันตรวจระดับโดเมนสำเร็จ',
-        description: `โดเมน ${data.domain.name} — ${data.runsCount} ผลรัน ครอบ ${data.byElement.length} element · สัญญาณใหม่ ${data.newSignals} รายการ`,
+        description: `โดเมน ${data.domain.name} — ${data.runsCount} ผลรัน ครอบ ${data.byElement.length} element · คำแนะนำใหม่ ${data.newSignals} รายการ`,
       })
     } catch {
       toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
@@ -403,7 +403,7 @@ export default function DomainRunPanel({ runOperator }: { runOperator: string })
             </CardTitle>
             <CardDescription>
               {result.runsCount} ผลรัน · {result.batches.length} ชุดข้อมูล ({result.batches.map((b) => b.datasetName).join(', ')})
-              {result.skipped ? ` · ข้าม ${result.skipped}` : ''} · สัญญาณใหม่ {result.newSignals} รายการ (รอมนุษย์ทบทวน)
+              {result.skipped ? ` · ข้าม ${result.skipped}` : ''} · คำแนะนำใหม่ {result.newSignals} รายการ
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

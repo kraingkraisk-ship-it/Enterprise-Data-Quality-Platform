@@ -80,10 +80,10 @@ const FEATURES = [
   },
   {
     icon: BrainCircuit,
-    title: 'ศูนย์ ML — AI อย่างรับผิดชอบ',
-    en: 'ML Center · Responsible AI',
+    title: 'ML Studio — ML อย่างรับผิดชอบ',
+    en: 'ML Studio · Responsible ML',
     desc:
-      '4 โมเดลช่วยตัดสินใจ: ความผิดปกติข้ามรอบ · สาเหตุร่วม · พยากรณ์แนวโน้ม · แผนสุ่มตรวจ พร้อมปรับเกณฑ์ค่าคงที่จากการใช้งานจริง — เป็นเพียง “สัญญาณ” ที่ต้องมีมนุษย์ทบทวนเสมอ',
+      'โมเดลบนหลัก Train/Test แยกโดเมน · ผู้ติดป้าย = กฎ DQ ทุกข้อ · วัดความแม่นยำจริงบนชุดทดสอบ — เป็นเพียง “คำแนะนำ” ระบบไม่แก้ไขข้อมูลอัตโนมัติ · มนุษย์สอนโมเดลผ่าน label/สุ่มตรวจ',
   },
   {
     icon: ClipboardCheck,
@@ -143,9 +143,9 @@ const WORKFLOW = [
   },
   {
     step: 5,
-    title: 'ทบทวนสัญญาณ AI และจัดการผล',
+    title: 'ดูคำแนะนำ ML และจัดการผล',
     en: 'Review & Handle Results',
-    desc: 'ทีมวิเคราะห์ทบทวนสัญญาณจาก ML Studio ดูรายแถวที่ไม่ผ่าน (PII ถูกปิดบังตามบทบาท) และบริหารปัญหา/ข้อยกเว้นตามสิทธิ์บทบาท',
+    desc: 'ทีมวิเคราะห์ดูคำแนะนำจาก ML Studio ดูรายแถวที่ไม่ผ่าน (PII ถูกปิดบังตามบทบาท) และบริหารปัญหา/ข้อยกเว้นตามสิทธิ์บทบาท',
   },
   {
     step: 6,
@@ -423,8 +423,8 @@ export function PlatformOverview({ onNavigate }: PlatformOverviewProps) {
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="note">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
           <p>
-            <strong>ข้อควรทราบ:</strong> ผลการตรวจจับของ AI/ML เป็นเพียง &ldquo;สัญญาณ&rdquo; ที่ต้องผ่านการทบทวนโดยมนุษย์เสมอ
-            และระบบจะไม่แก้ไขข้อมูลต้นทางโดยอัตโนมัติ — ทุกการดำเนินการทำโดยมนุษย์ตามบทบาทและบันทึก Audit Trail
+            <strong>ข้อควรทราบ:</strong> ผลการตรวจจับของ ML เป็นเพียง &ldquo;คำแนะนำ&rdquo; — ระบบจะไม่แก้ไขข้อมูลต้นทางโดยอัตโนมัติ
+            การสอนโมเดล (label/สุ่มตรวจ) ทำที่ ML Studio และทุกการดำเนินการทำโดยมนุษย์ตามบทบาทพร้อมบันทึก Audit Trail
           </p>
         </div>
       </section>

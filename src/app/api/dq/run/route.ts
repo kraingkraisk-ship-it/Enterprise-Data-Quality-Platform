@@ -316,7 +316,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // ---------- สัญญาณจากกฎที่ล้มเหลว (ต้องมนุษย์ทบทวน) ----------
+    // ---------- คำแนะนำจากกฎที่ล้มเหลว ----------
     const pendingTitles = new Set(
       (
         await db.dqSignal.findMany({
@@ -346,7 +346,7 @@ export async function POST(req: NextRequest) {
       newSignals++
     }
 
-    // ---------- สัญญาณ ML (outlier / near-duplicate / schema / volume) ----------
+    // ---------- คำแนะนำจาก ML (outlier / near-duplicate / schema / volume) ----------
     for (const draft of generateMlSignals(rows)) {
       if (pendingTitles.has(`ML_ANOMALY|${draft.title}`)) continue
       await db.dqSignal.create({
@@ -423,7 +423,7 @@ export async function POST(req: NextRequest) {
         action: 'RUN_VALIDATION',
         actor: op.ctx.email,
         target: dataset.name,
-        detail: `รันตรวจสอบ ${rulesForDataset.length} กฎ บน ${rows.length} แถว (sandbox) — ผ่าน ${passedCount}, ล้มเหลว ${failedCount}${noDataCount > 0 ? `, ไม่มีข้อมูลให้ตรวจ ${noDataCount}` : ''}, สัญญาณใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
+        detail: `รันตรวจสอบ ${rulesForDataset.length} กฎ บน ${rows.length} แถว (sandbox) — ผ่าน ${passedCount}, ล้มเหลว ${failedCount}${noDataCount > 0 ? `, ไม่มีข้อมูลให้ตรวจ ${noDataCount}` : ''}, คำแนะนำใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 

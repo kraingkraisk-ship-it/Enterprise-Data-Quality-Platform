@@ -1996,3 +1996,20 @@ Work Log:
 Stage Summary:
 - PAT รอบที่ 9 ใช้งานได้ครบ (อ่าน 200 + สิทธิ์ push/admin/maintain true + เขียน 201 + push worklog สำเร็จ — ยืนยันผ่าน GitHub API หลัง commit นี้)
 - v0.36.0 (Task 65 ลบ workflow อนุมัติ) สมบูรณ์ทั้ง local/remote/tag · working tree clean · ระบบรอคำสั่งถัดไปจากผู้ใช้
+
+---
+Task ID: 66
+Agent: Z.ai Code (main orchestrator)
+Task: v0.36.1 — ยืนยัน "สัญญาณ AI รอทบทวน" ในเมนูผลการตรวจสอบ = คำแนะนำจาก ML → เปลี่ยนชื่อทั้งระบบเป็น ML terminology (ผู้ใช้ชี้ว่าใช้ ML ในการ recommend ไม่ใช่ AI กำกวม) + ยกเลิกการสอนโดยคนในเมนูนี้ (การสอน label/สุ่มตรวจ อยู่ที่ ML Studio จุดเดียวตาม v0.35.0)
+
+Work Log:
+- ยืนยันโครงสร้างก่อนแก้: การ์ด "สัญญาณ AI รอทบทวน" ใน core-features-console (ผลการตรวจสอบ) แสดง DqSignal 2 ชนิด — ML_ANOMALY (4 ตัวตรวจจับ: outlier/near-duplicate/schema/volume) + กฎล้มเหลว (RULE_VIOLATION) พร้อมปุ่ม CONFIRM/DISMISS = การตัดสินโดยคน (CONFIRM เปิด DQ Issue อัตโนมัติ)
+- รื้อการ์ดเป็น "คำแนะนำจาก ML (n)" อ่านอย่างเดียว: ลบปุ่มยืนยัน/ปลด + ลบชิปผู้ทบทวน (REVIEW_SIGNALS) + ลบประวัติการทบทวน + ลบ handleReviewSignal/state signalStats/decidedSignals · เพิ่มปุ่ม "สอนโมเดลที่ ML Studio" (onViewChange ml-studio) + โน้ตใหม่ "คำแนะนำจาก ML เป็นเพียงข้อแนะนำเบื้องต้น — การสอนโมเดล (label/สุ่มตรวจ) ทำที่ ML Studio"
+- ลบ API PATCH /api/dq/signals/[id] ทั้งไฟล์ (ไม่มีผู้เรียกเหลือ — ตรวจ rg) · เก็บ GET /api/dq/signals ไว้ (console + sidebar badge) · เก็บสิทธิ์ REVIEW_SIGNALS (ยังใช้: ml GET 5 เส้น + failures PATCH + ML Studio ดูผล) — เปลี่ยน label เป็น "ทบทวนผล ML / Review ML Results"
+- เปลี่ยนชื่อ สัญญาณ AI → คำแนะนำ ML ครบ 16 ไฟล์: views.ts 2 desc + APP_VERSION v0.36.1 · dq-dashboard (KPI "คำแนะนำ ML ที่เปิดอยู่" + badge ราย dataset 2 จุด) · platform-overview 3 จุด (รวมแก้การ์ดค้าง "ศูนย์ ML — 4 โมเดล" ที่ Task 64 ลบไปแล้ว → อธิบาย ML Studio จริง) · rbac.ts (label + desc 3 บทบาท) · dq.ts (4 detail strings + comment 2) · issues.tsx/issue source label · domain-run toast 2 · ml-studio no-permission text · regulation.ts ISO 8000-61 · audit-actions (group "ML Studio" + CONFIRM/DISMISS_SIGNAL เติม "(เลิกใช้แล้ว)" สำหรับแถวเก่า) · run/run-domain routes (audit detail "คำแนะนำใหม่" + comments)
+- Migrate ข้อความค้างใน DB: DqSignal.detail "(สัญญาณ AI — รอมนุษย์ทบทวน)/(สัญญาณ AI ไม่ได้แก้ไขข้อมูล)/(สัญญาณ AI)" → "(คำแนะนำจาก ML...)" — แก้ 1 แถว เหลือ 0 (bun script ชั่วคราว + ลบทิ้งแล้ว) · คำ "โปรดทบทวนและดำเนินการโดยมนุษย์" ของกฎล้มเหลวคงไว้ (ถูกหลัก: มนุษย์จัดการแถว fail ที่ข้อมูลที่ไม่ผ่าน — ไม่ใช่การสอน ML)
+- ทดสอบ: lint ผ่าน · E2E login สมชาย → v0.36.1 → ผลการตรวจสอบ: การ์ด "คำแนะนำจาก ML (5)" + ปุ่ม ML Studio + รายการ 5 คำแนะนำแสดงครบ ไม่มีปุ่มยืนยัน/ปลด/ผู้ทบทวน/ประวัติ · แถว DB เดิมแสดง "(คำแนะนำจาก ML)" แล้ว · dashboard KPI "คำแนะนำ ML ที่เปิดอยู่" · RBAC matrix "ทบทวนผล ML ×10" · mobile 375: ไม่มี h-scroll + การ์ด/ปุ่ม render ถูก · 0 page error · scan "สัญญาณ AI|รอมนุษย์ทบทวน|ทบทวนสัญญาณ|รอทบทวน" ใน src/ = 0 จุด
+
+Stage Summary:
+- หน้าผลการตรวจสอบไม่มี "การตัดสินโดยคน" แล้ว — ML แนะนำ (read-only) มนุษย์สอนโมเดลที่ ML Studio จุดเดียว (คลัง label + สุ่มตรวจ = ground truth สำหรับ retrain)
+- ภาษาทั้งระบบใช้ "คำแนะนำจาก ML" ตรงเทคโนโลยีจริง (สถิติโปร่งใส Train/Test ไม่ใช่ AI กล่องดำ) · สิทธิ์คง 12 รายการ (REVIEW_SIGNALS อยู่ครบในบทบาทเดิม) · tag v0.36.1

@@ -480,7 +480,7 @@ export default function MlStudio({ active }: { active: boolean }) {
             <CardDescription>ผู้ช่วย ML บนหลัก Train/Test — เทรนจากข้อมูลจริง + กฎ DQ + คนสอน</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-slate-600">บทบาทของคุณยังไม่มีสิทธิ์เข้าถึง ML Studio — ผู้ที่เห็นได้: เจ้าของข้อมูล · ผู้ดูแลข้อมูล · ผู้ดูแลระบบ (เทรน/label) และบทบาทที่มีสิทธิ์ทบทวนสัญญาณ (ดูผล)</p>
+            <p className="text-sm text-slate-600">บทบาทของคุณยังไม่มีสิทธิ์เข้าถึง ML Studio — ผู้ที่เห็นได้: เจ้าของข้อมูล · ผู้ดูแลข้อมูล · ผู้ดูแลระบบ (เทรน/label) และบทบาทที่มีสิทธิ์ทบทวนผล ML (ดูผล)</p>
           </CardContent>
         </Card>
       </div>

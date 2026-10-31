@@ -7,7 +7,7 @@ import type { PrismaClient } from '@prisma/client'
 
 export const ISSUE_SOURCE_LABELS: Record<string, { th: string; en: string; cls: string }> = {
   MANUAL: { th: 'รายงานเอง', en: 'Manual', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
-  SIGNAL: { th: 'จากสัญญาณ AI', en: 'From ML Signal', cls: 'bg-violet-50 text-violet-800 border-violet-200' },
+  SIGNAL: { th: 'จากคำแนะนำ ML', en: 'From ML Recommendation', cls: 'bg-violet-50 text-violet-800 border-violet-200' },
   FAILURE: { th: 'จากข้อมูลที่ไม่ผ่าน', en: 'From Failed Record', cls: 'bg-rose-50 text-rose-800 border-rose-200' },
   EXCEPTION: { th: 'จากคำขอยกเว้น', en: 'From Exception', cls: 'bg-amber-50 text-amber-900 border-amber-200' },
 }

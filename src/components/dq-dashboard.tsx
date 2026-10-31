@@ -712,7 +712,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
               {/* KPI */}
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 {[
-                  { label: 'สัญญาณรอทบทวน', value: data.overall.totals.pendingSignals, accent: 'text-amber-700' },
+                  { label: 'คำแนะนำ ML ที่เปิดอยู่', value: data.overall.totals.pendingSignals, accent: 'text-amber-700' },
                   { label: 'ข้อยกเว้นใช้งานอยู่', value: data.overall.totals.activeExceptions, accent: 'text-emerald-700' },
                   { label: 'กฎที่เปิดใช้งาน', value: data.overall.totals.rulesEnabled, accent: 'text-slate-900' },
                   {
@@ -786,7 +786,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                                 </Badge>
                                 {d.pendingSignals > 0 && (
                                   <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10.5px] text-amber-900">
-                                    {d.pendingSignals} สัญญาณ
+                                    {d.pendingSignals} คำแนะนำ
                                   </Badge>
                                 )}
                               </div>
@@ -2107,7 +2107,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                                 )}
                                 {d.pendingSignals > 0 && (
                                   <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10.5px] text-amber-900">
-                                    {d.pendingSignals} สัญญาณรอทบทวน
+                                    {d.pendingSignals} คำแนะนำ ML
                                   </Badge>
                                 )}
                                 <span className="text-[11px] text-muted-foreground">{d.lastRunAt ? `รันล่าสุด ${fmtTime(d.lastRunAt)}` : 'ยังไม่เคยรัน'}</span>

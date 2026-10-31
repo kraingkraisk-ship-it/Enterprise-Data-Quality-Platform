@@ -14,7 +14,6 @@ import {
   Power,
   RefreshCw,
   ShieldAlert,
-  EyeOff,
   Sparkles,
   Library,
   Table2,
@@ -312,7 +311,6 @@ const RB_STEPS = [
 const PERMISSIONS_BY_ACTION: Record<string, PermissionKey> = {
   MANAGE_RULES: 'MANAGE_RULES',
   RUN_VALIDATION: 'RUN_VALIDATION',
-  REVIEW_SIGNALS: 'REVIEW_SIGNALS',
 }
 
 /** ชิปแสดงผู้ดำเนินการปัจจุบัน (v0.32.0) — แทนตัวเลือก "ผู้ดำเนินการ" ที่เคยกระจายทุกแท็บ
@@ -359,7 +357,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rules, setRules] = useState<ApiRule[] | null>(null)
   const [conditions, setConditions] = useState<ApiCondition[]>([])
   const [signals, setSignals] = useState<ApiSignal[]>([])
-  const [signalStats, setSignalStats] = useState({ pending: 0, confirmed: 0, dismissed: 0 })
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [reloadTick, setReloadTick] = useState(0)
@@ -488,7 +485,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
         setRules(r.rules ?? [])
         setConditions(c.conditions ?? [])
         setSignals(s.signals ?? [])
-        setSignalStats(s.stats ?? { pending: 0, confirmed: 0, dismissed: 0 })
         setDashboard(dash.error ? null : dash)
       } catch {
         if (!alive) return
@@ -669,7 +665,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   )
 
   const pendingSignals = useMemo(() => signals.filter((s) => s.status === 'PENDING_REVIEW'), [signals])
-  const decidedSignals = useMemo(() => signals.filter((s) => s.status !== 'PENDING_REVIEW'), [signals])
 
   // ความครอบคลุมมิติของคลังเงื่อนไข (เฉพาะที่เปิดใช้งาน) — แสดง "ครอบคลุม X/9 มิติ"
   const coveredDimensions = useMemo(() => new Set(conditions.filter((c) => c.enabled && c.dimension).map((c) => c.dimension)), [conditions])
@@ -863,7 +858,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       setRunResult(data as RunResponse)
       toast({
         title: 'รันตรวจสอบสำเร็จ',
-        description: `ตรวจ ${data.rulesCount} กฎ บน ${data.rowsCount} แถว — สัญญาณใหม่ ${data.newSignals} รายการ (รอมนุษย์ทบทวน)`,
+        description: `ตรวจ ${data.rulesCount} กฎ บน ${data.rowsCount} แถว — คำแนะนำใหม่ ${data.newSignals} รายการ`,
       })
       refetch()
     } catch {
@@ -946,16 +941,6 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
       alive = false
     }
   }, [rbStep, rbColumn, rbPreviewDataset, rbDatasets])
-
-  async function handleReviewSignal(id: string, action: 'CONFIRM' | 'DISMISS') {
-    const ok = await patchJson(
-      `/api/dq/signals/${id}`,
-      { action, reviewerEmail: actorEmail },
-      `signal-${id}`,
-      action === 'CONFIRM' ? 'ยืนยันสัญญาณแล้ว (บันทึกผู้ทบทวน)' : 'ปลดสัญญาณแล้ว (บันทึกผู้ทบทวน)',
-    )
-    if (ok) refetch()
-  }
 
   /* ------------------------- dataset multi select -------------------------- */
 
@@ -2287,7 +2272,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                 </CardTitle>
                 <CardDescription>
                   {runResult.rowsCount} แถว · {runResult.rulesCount} กฎ
-                  {runResult.skipped ? ` · ข้าม ${runResult.skipped} กฎ (เงื่อนไขไม่พบในคลัง)` : ''} · สัญญาณใหม่ {runResult.newSignals} รายการ (รอมนุษย์ทบทวน)
+                  {runResult.skipped ? ` · ข้าม ${runResult.skipped} กฎ (เงื่อนไขไม่พบในคลัง)` : ''} · คำแนะนำใหม่ {runResult.newSignals} รายการ
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -2502,38 +2487,37 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
           {/* รอบการตรวจ (batch) — ประวัติย้อนหลัง + drill-down รายรอบ */}
           <BatchHistory reloadKey={reloadTick} datasets={datasets} onGoFailedRecords={() => onViewChange('failed-records')} />
 
-          {/* ML signals */}
+          {/* คำแนะนำจาก ML (v0.36.1 — อ่านอย่างเดียว · การสอนโมเดล label/สุ่มตรวจ ทำที่ ML Studio จุดเดียว) */}
           <Card>
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <BrainCircuit className="size-4 text-emerald-700" aria-hidden="true" />
-                    สัญญาณ AI รอทบทวน ({signalStats.pending})
+                    คำแนะนำจาก ML ({pendingSignals.length})
                   </CardTitle>
                   <CardDescription>
-                    ทบทวนแล้ว: ยืนยัน {signalStats.confirmed} · ปลด {signalStats.dismissed}
+                    ผลการตรวจจับจากโมเดล ML และกฎตรวจสอบ — อ่านเพื่อพิจารณา ระบบไม่แก้ไขข้อมูลต้นทางอัตโนมัติ
                   </CardDescription>
                 </div>
-                <div className="w-full sm:w-72">
-                  <Label htmlFor="reviewer" className="mb-1 block text-xs">
-                    ผู้ทบทวน (ต้องมีสิทธิ์ REVIEW_SIGNALS)
-                  </Label>
-                  <ActorChip id="reviewer" permission={PERMISSIONS_BY_ACTION.REVIEW_SIGNALS} />
-                </div>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onViewChange('ml-studio')}>
+                  <Sparkles className="size-3.5" aria-hidden="true" />
+                  สอนโมเดลที่ ML Studio
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900" role="note">
                 <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
                 <p>
-                  <strong>ข้อควรทราบ:</strong> สัญญาณ AI/ML เป็นเพียงข้อแนะนำ — ต้องมีมนุษย์ทบทวนเสมอ และระบบจะไม่แก้ไขข้อมูลต้นทางโดยอัตโนมัติ
+                  <strong>ข้อควรทราบ:</strong> คำแนะนำจาก ML เป็นเพียงข้อแนะนำเบื้องต้น — ระบบจะไม่แก้ไขข้อมูลต้นทางโดยอัตโนมัติ
+                  การสอนโมเดลให้แม่นขึ้น (label / สุ่มตรวจ) ทำที่ ML Studio
                 </p>
               </div>
 
               <div className="max-h-96 space-y-2.5 overflow-y-auto pr-1">
                 {pendingSignals.length === 0 && (
-                  <p className="py-6 text-center text-sm text-muted-foreground">ไม่มีสัญญาณรอทบทวน — ลองรันการตรวจสอบด้านบน</p>
+                  <p className="py-6 text-center text-sm text-muted-foreground">ไม่มีคำแนะนำ — ลองรันการตรวจสอบด้านบน</p>
                 )}
                 {pendingSignals.map((s) => (
                   <div key={s.id} className="rounded-lg border p-3">
@@ -2548,47 +2532,15 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                           s.kind === 'ML_ANOMALY' ? 'bg-violet-50 text-violet-800 border-violet-200' : 'bg-sky-50 text-sky-800 border-sky-200'
                         }`}
                       >
-                        {s.kind === 'ML_ANOMALY' ? 'สัญญาณ ML' : 'กฎล้มเหลว'}
+                        {s.kind === 'ML_ANOMALY' ? 'คำแนะนำ ML' : 'กฎล้มเหลว'}
                       </Badge>
                       <span className="text-[11px] text-muted-foreground">{s.datasetName} · {fmtTime(s.createdAt)}</span>
                     </div>
                     <p className="text-sm font-medium">{s.title}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{s.detail}</p>
-                    <div className="mt-2 flex gap-2">
-                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => handleReviewSignal(s.id, 'CONFIRM')} disabled={busy !== null}>
-                        <CheckCircle2 className="size-3.5" aria-hidden="true" />
-                        ยืนยันสัญญาณ
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="gap-1.5 text-slate-600 hover:bg-slate-50"
-                        onClick={() => handleReviewSignal(s.id, 'DISMISS')}
-                        disabled={busy !== null}
-                      >
-                        <EyeOff className="size-3.5" aria-hidden="true" />
-                        ปลดสัญญาณ
-                      </Button>
-                    </div>
                   </div>
                 ))}
               </div>
-
-              {decidedSignals.length > 0 && (
-                <details className="rounded-lg border bg-slate-50/60 p-3">
-                  <summary className="cursor-pointer text-xs font-medium text-slate-700">
-                    ประวัติการทบทวน ({decidedSignals.length} รายการ)
-                  </summary>
-                  <ul className="mt-2 space-y-1 text-[11.5px] text-muted-foreground">
-                    {decidedSignals.slice(0, 12).map((s) => (
-                      <li key={s.id}>
-                        {s.status === 'CONFIRMED' ? '✅' : '🚫'} {s.title} — {s.status === 'CONFIRMED' ? 'ยืนยัน' : 'ปลด'}โดย{' '}
-                        {s.reviewedBy} · {fmtTime(s.reviewedAt)}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
             </CardContent>
           </Card>
         </div>

@@ -3,7 +3,7 @@
  * - นิยามเงื่อนไข (conditions) ของ Rule Builder + มิติคุณภาพข้อมูลที่เกี่ยวข้อง
  * - ประกอบประโยคกฎมาตรฐาน 5 ส่วน (For / must / using / when / otherwise)
  * - ประเมินกฎกับข้อมูลตัวอย่าง (sandbox rows) — ไม่แตะข้อมูลต้นทางจริงเสมอ
- * - สร้าง "สัญญาณ ML" แบบ deterministic — เป็นเพียงข้อแนะนำ ต้องมีมนุษย์ทบทวนเสมอ
+ * - สร้าง "คำแนะนำจาก ML" แบบ deterministic — เป็นเพียงข้อแนะนำ ระบบไม่แก้ไขข้อมูลอัตโนมัติ
  * - ปิดบัง PII ตามบทบาท (masking by default ตามหลัก PDPA)
  * ใช้ร่วมกันทั้ง Backend (API) และ Frontend (Core Features Console)
  */
@@ -658,7 +658,7 @@ function detectFuzzyDuplicates(column: string, rows: Row[]): Array<{ value: stri
 }
 
 /**
- * สร้างสัญญาณ ML จากข้อมูล — ทุกสัญญาณเป็นข้อแนะนำเท่านั้น (PENDING_REVIEW)
+ * สร้างคำแนะนำจาก ML — ทุกรายการเป็นข้อแนะนำเท่านั้น (PENDING_REVIEW)
  * ระบบไม่แก้ไขข้อมูลต้นทางโดยอัตโนมัติ
  */
 export function generateMlSignals(rows: Row[]): MlSignalDraft[] {
@@ -675,7 +675,7 @@ export function generateMlSignals(rows: Row[]): MlSignalDraft[] {
         kind: 'ML_ANOMALY',
         dimension: 'CONSISTENCY',
         title: `โครงสร้างคอลัมน์ ${col} ไม่คงที่`,
-        detail: `พบ ${missing}/${rows.length} แถวที่ไม่มีคอลัมน์ ${col} — อาจเกิด schema drift จากแหล่งข้อมูล (สัญญาณ AI — รอมนุษย์ทบทวน)`,
+        detail: `พบ ${missing}/${rows.length} แถวที่ไม่มีคอลัมน์ ${col} — อาจเกิด schema drift จากแหล่งข้อมูล (คำแนะนำจาก ML)`,
         severity: 'HIGH',
       })
       break
@@ -691,7 +691,7 @@ export function generateMlSignals(rows: Row[]): MlSignalDraft[] {
         kind: 'ML_ANOMALY',
         dimension: 'REASONABLENESS',
         title: `ค่าผิดปกติ (outlier) ในคอลัมน์ ${col}`,
-        detail: `โมเดลตรวจพบค่าห่างจากกรอบ IQR ${outliers.length} แถว (${sample}) — โปรดทบทวนก่อนดำเนินการ (สัญญาณ AI ไม่ได้แก้ไขข้อมูล)`,
+        detail: `โมเดลตรวจพบค่าห่างจากกรอบ IQR ${outliers.length} แถว (${sample}) — โปรดพิจารณาก่อนดำเนินการ (คำแนะนำจาก ML — ระบบไม่แก้ไขข้อมูล)`,
         severity: 'MEDIUM',
       })
       break
@@ -708,7 +708,7 @@ export function generateMlSignals(rows: Row[]): MlSignalDraft[] {
         kind: 'ML_ANOMALY',
         dimension: 'UNIQUENESS',
         title: `ระเบียนคล้ายกันมากในคอลัมน์ ${col}`,
-        detail: `พบค่า “${d.value}” ซ้ำกัน ${d.indexes.length} แถว (แถว #${d.indexes.map((i) => i + 1).join(', #')}) — อาจเป็นระเบียนซ้ำ โปรดทบทวน (สัญญาณ AI)`,
+        detail: `พบค่า “${d.value}” ซ้ำกัน ${d.indexes.length} แถว (แถว #${d.indexes.map((i) => i + 1).join(', #')}) — อาจเป็นระเบียนซ้ำ โปรดพิจารณา (คำแนะนำจาก ML)`,
         severity: 'MEDIUM',
       })
       break
@@ -721,7 +721,7 @@ export function generateMlSignals(rows: Row[]): MlSignalDraft[] {
       kind: 'ML_ANOMALY',
       dimension: 'COMPLETENESS',
       title: 'ปริมาณข้อมูลต่ำกว่าที่คาดหวัง',
-      detail: `ชุดข้อมูลมีเพียง ${rows.length} แถว (${columns.length} คอลัมน์) — อาจมีข้อมูลหายระหว่างนำเข้า (สัญญาณ AI — รอมนุษย์ทบทวน)`,
+      detail: `ชุดข้อมูลมีเพียง ${rows.length} แถว (${columns.length} คอลัมน์) — อาจมีข้อมูลหายระหว่างนำเข้า (คำแนะนำจาก ML)`,
       severity: 'LOW',
     })
   }

@@ -41,7 +41,7 @@ function asDimensionKey(v: string): DimensionKey | null {
   return (DIMENSION_KEYS as string[]).includes(v) ? (v as DimensionKey) : null
 }
 
-/** ป้ายมิติแบบมีสี + ไอคอน (มี tooltip คำอธิบาย) — ใช้ในรายการเงื่อนไข/ผลรัน/สัญญาณ AI */
+/** ป้ายมิติแบบมีสี + ไอคอน (มี tooltip คำอธิบาย) — ใช้ในรายการเงื่อนไข/ผลรัน/คำแนะนำ ML */
 export function DimensionBadge({ dimension, className }: { dimension: string; className?: string }) {
   const key = asDimensionKey(dimension)
   if (!key) {

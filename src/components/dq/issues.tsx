@@ -494,7 +494,7 @@ export default function DqIssues({ active }: { active: boolean }) {
               )}
               {items !== null && items.length === 0 && (
                 <p className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
-                  ไม่มีปัญหาตามเงื่อนไขที่เลือก — เปิดปัญหาใหม่ได้จากปุ่ม &quot;เปิดปัญหาใหม่&quot; หรือจากข้อมูลที่ไม่ผ่าน/สัญญาณ AI
+                  ไม่มีปัญหาตามเงื่อนไขที่เลือก — เปิดปัญหาใหม่ได้จากปุ่ม &quot;เปิดปัญหาใหม่&quot; หรือจากข้อมูลที่ไม่ผ่าน
                 </p>
               )}
               {items !== null && items.length > 0 && (

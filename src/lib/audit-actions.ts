@@ -50,8 +50,8 @@ export const AUDIT_GROUPS: Record<AuditGroupKey, AuditGroupDef> = {
   },
   ml: {
     key: 'ml',
-    th: 'ML · สัญญาณอัจฉริยะ',
-    en: 'ML Signals',
+    th: 'ML Studio',
+    en: 'ML Studio',
     badgeClass: 'bg-orange-50 text-orange-900 border-orange-200',
     chipActiveClass: 'bg-orange-100 text-orange-900 border-orange-400',
   },
@@ -164,10 +164,10 @@ export const AUDIT_ACTIONS: Record<string, { th: string; group: AuditGroupKey }>
   REOPEN_ISSUE: { th: 'เปิดปัญหาซ้ำ', group: DQ },
   REQUEST_EXCEPTION: { th: 'ขอใช้ข้อยกเว้น', group: DQ },
   REVOKE_EXCEPTION: { th: 'ยกเลิกข้อยกเว้น', group: DQ },
-  CONFIRM_SIGNAL: { th: 'ยืนยันสัญญาณ AI', group: DQ },
-  DISMISS_SIGNAL: { th: 'ปัดสัญญาณ AI', group: DQ },
+  CONFIRM_SIGNAL: { th: 'ยืนยันคำแนะนำ ML (เลิกใช้แล้ว)', group: DQ },
+  DISMISS_SIGNAL: { th: 'ปัดคำแนะนำ ML (เลิกใช้แล้ว)', group: DQ },
 
-  /* ------------------------------ ML · สัญญาณอัจฉริยะ ------------------------------ */
+  /* ------------------------------ ML Studio ------------------------------ */
   UPDATE_ML_SETTINGS: { th: 'ปรับเกณฑ์ค่าคงที่ ML', group: ML },
   CREATE_SAMPLE_PLAN: { th: 'สร้างแผนสุ่มตรวจ', group: ML },
   ML_TRAIN: { th: 'เทรนโมเดล ML', group: ML },

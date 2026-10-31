@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.36.0'
+export const APP_VERSION = 'v0.36.1'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -118,7 +118,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'validation-results',
     th: 'ผลการตรวจสอบ',
     en: 'Validation Results',
-    desc: 'รันตรวจสอบและเจาะดูผลรายรอบ (batch) คำตัดสินตามมาตรา 1–9 และทบทวนสัญญาณ AI',
+    desc: 'รันตรวจสอบและเจาะดูผลรายรอบ (batch) คำตัดสินตามมาตรา 1–9 พร้อมคำแนะนำจากโมเดล ML',
     icon: ClipboardList,
   },
   'failed-records': {
@@ -160,7 +160,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'run',
     th: 'ผลการตรวจสอบ',
     en: 'Validation Results',
-    desc: 'รันการตรวจสอบคุณภาพข้อมูล และทบทวนสัญญาณความผิดปกติจาก AI (ต้องมีมนุษย์ทบทวนเสมอ)',
+    desc: 'รันการตรวจสอบคุณภาพข้อมูล พร้อมคำแนะนำจุดผิดปกติจากโมเดล ML (อ่านเพื่อพิจารณา — สอนโมเดลที่ ML Studio)',
     icon: Play,
   },
   'asset-import': {

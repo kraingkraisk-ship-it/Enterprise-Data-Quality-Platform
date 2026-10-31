@@ -468,7 +468,7 @@ export async function POST(req: NextRequest) {
               reason: reasonBase,
             })),
           })
-          // สัญญาณรอทบทวน (มนุษย์ตัดสินใจเสมอ — กันซ้ำด้วยชื่อเดิม)
+          // คำแนะนำที่เปิดอยู่ (อ่านเพื่อพิจารณา — กันซ้ำด้วยชื่อเดิม)
           const title = `กฎล้มเหลว: ${rule.column} — ${template?.name ?? rule.condition}`
           if (!pendingTitles.has(`RULE_VIOLATION|${title}`)) {
             const failedSample = evaluation.failedIndexes.slice(0, 3).map((idx) => {
@@ -567,7 +567,7 @@ export async function POST(req: NextRequest) {
         action: 'RUN_DOMAIN_VALIDATION',
         actor: op.ctx.email,
         target: domain.name,
-        detail: `รันตรวจระดับโดเมน "${domain.name}" — ${rules.length} กฎ ครอบ ${elements.length} Data Element บน ${datasetIds.length} ชุดข้อมูล — คะแนนรวม ${rollup.domainScore !== null ? rollup.domainScore.toFixed(1) : '—'} · สัญญาณใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
+        detail: `รันตรวจระดับโดเมน "${domain.name}" — ${rules.length} กฎ ครอบ ${elements.length} Data Element บน ${datasetIds.length} ชุดข้อมูล — คะแนนรวม ${rollup.domainScore !== null ? rollup.domainScore.toFixed(1) : '—'} · คำแนะนำใหม่ ${newSignals} (บทบาท ${op.ctx.roleTh})`,
       },
     })
 
