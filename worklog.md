@@ -2048,3 +2048,18 @@ Stage Summary:
 - เอนจิน ML ของแพลตฟอร์มคือ scikit-learn (LogisticRegression) บนบริการแยก ml-engine พอร์ต 3020 — หลักการ train/test จาก Data Asset + DQ Rule + ข้อมูลสอนมนุษย์ คงเดิม 100% · โปร่งใสเหมือนเดิม (สัมประสิทธิ์รายหลักฐานอ่านเหตุผลได้ + metrics มาตรฐาน 5 ตัว รวม ROC-AUC)
 - เอนจินสถิติเขียนเองถูกลบทิ้งตามคำสั่ง (TS ฝั่งเรียนรู้/ให้คะแนน 0 บรรทัดคงเหลือ) · บริการ ml-engine ต้องรันก่อนเทรน/พยากรณ์ (nohup bun run dev ใน mini-services/ml-engine · log: dev.log ของบริการ · models/ ถูก gitignore)
 - tag v0.37.0 · รอ push + ยืนยัน GitHub API
+
+---
+Task ID: 67-b
+Agent: Z.ai Code (main orchestrator)
+Task: รับ PAT ใหม่ (rotate ครั้งที่ 11) — ตรวจความถูกต้อง + ยืนยันสถานะส่งมอบ v0.37.0 (scikit-learn) + บันทึก worklog + push ด้วย PAT รอบนี้
+
+Work Log:
+- ผู้ใช้ส่ง PAT รอบที่ 11 — ตรวจ read: GET repo ได้ 200 · ตรวจสิทธิ์: permissions = push/admin/maintain/triage/pull ครบ true · ตรวจ write: POST /git/blobs สร้าง blob สำเร็จ (SHA a63cf81 — DELETE blob 404 ตามเดิมเพราะ GitHub API ไม่รองรับการลบ blob ไม่ใช่ปัญหาสิทธิ์) · ไม่บันทึกลง git config หรือไฟล์ใดๆ — ใช้ inline เท่านั้น
+- ยืนยันสถานะ Task 67 (v0.37.0 เอนจิน ML เป็น scikit-learn) ส่งมอบครบแล้วบน remote: commit 14eb18c = remote main = tag v0.37.0 (ตรวจผ่าน git ls-remote + GitHub API commits) · local = remote in sync · working tree clean · worklog Task 67 อยู่ใน commit 14eb18c แล้ว
+- ตรวจรันไทม์ซ้ำ (Agent Browser E2E): ml-engine พอร์ต 3020 /health = ok (scikit-learn 1.5.2 / LogisticRegression / python /home/z/.venv) · เว็บ 3000 = 200 · ML Studio badge "v0.37.0 · scikit-learn" + โมเดล ACTIVE v8 · แท็บสุ่มตรวจ "คำแนะนำ ML" จากสัมประสิทธิ์จริง (segment +1.43 / as_of_date −1.77 / currency −0.58) — พิสูจน์สาย 3000 → sklearn.ts → 3020 → joblib → predict_proba ใช้งานได้จริง · 0 page error · mobile 375 ไม่มี h-scroll (footer ถูกเนื้อหาผลักลงตามธรรมชาติ docH 1396 > 812)
+- commit worklog นี้คือการพิสูจน์ push ด้วย PAT รอบที่ 11 (ยืนยันซ้ำผ่าน GitHub API หลัง push)
+
+Stage Summary:
+- PAT รอบที่ 11 ใช้งานได้ครบ (อ่าน 200 + สิทธิ์ push/admin/maintain true + เขียนผ่าน blob probe + push worklog สำเร็จ)
+- v0.37.0 (Task 67 เอนจิน scikit-learn) สมบูรณ์ทั้ง local/remote/tag + รันไทม์ยืนยันซ้ำ E2E ผ่าน · working tree clean · ระบบรอคำสั่งถัดไปจากผู้ใช้
