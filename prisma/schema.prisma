@@ -615,11 +615,12 @@ model MlModelVersion {
   domainId    String    @default("") // DataDomain.id — "" = รวมทุกโดเมน (ทั่วทั้งระบบ)
   status      String    @default("TRAINED") // TRAINED | ACTIVE | ARCHIVED — ACTIVE ได้ 1 เวอร์ชันต่อโดเมน
   trainPct    Int       // % แบ่งชุดฝึก ณ ตอนเทรน (70 = ฝึก 70% / ทดสอบ 30%)
-  // คุณภาพที่วัดจากชุดทดสอบ (test split) — ตัวเลขจริง ไม่ประมาณ
+  // คุณภาพที่วัดจากชุดทดสอบ (test split) — ตัวเลขจริงจากเอนจิน scikit-learn ไม่ประมาณ
   accuracy    Float? // (TP+TN) / ทั้งหมด
   precision   Float? // TP / (TP+FP) — ตัดสิน "ไม่ถูกต้อง" แม่นแค่ไหน
   recall      Float? // TP / (TP+FN) — จับ "ไม่ถูกต้อง" ได้ครบแค่ไหน
   f1          Float?
+  rocAuc      Float? // ความสามารถจำแนกถูก/ไม่ถูกต้อง (0.5 = สุ่ม, 1.0 = แยกสมบูรณ์) — จาก scikit-learn
   // ขนาดข้อมูลที่ใช้เทรนจริง
   trainRows   Int       @default(0)
   testRows    Int       @default(0)

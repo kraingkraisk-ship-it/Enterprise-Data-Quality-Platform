@@ -1,5 +1,5 @@
 /**
- * API /api/ml/audit-samples/[id] (v0.35.0) — บันทึกคำตัดสินของมนุษย์รายแถวสุ่มตรวจ
+ * API /api/ml/audit-samples/[id] (v0.37.0) — บันทึกคำตัดสินของมนุษย์รายแถวสุ่มตรวจ
  * PATCH {humanVerdict: 'CORRECT' | 'INCORRECT', reason?, dimension?, operatorEmail?} — สิทธิ์: LABEL_ML_DATA
  * คำตัดสินของมนุษย์ = ความจริง (ground truth) → เข้าชุดฝึกในการเทรนถัดไป
  */

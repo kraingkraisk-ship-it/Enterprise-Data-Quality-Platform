@@ -1,5 +1,5 @@
 /**
- * API /api/ml/recommend-rules (v0.35.0) — B1 แนะนำกฎสำหรับคอลัมน์ (ใช้ใน Rule Builder และ ML Studio)
+ * API /api/ml/recommend-rules (v0.37.0) — B1 แนะนำกฎสำหรับคอลัมน์ (ใช้ใน Rule Builder และ ML Studio)
  * GET ?assetId=&column= หรือ ?datasetId=&column= — สิทธิ์: REVIEW_SIGNALS
  * แนะนำจาก: ชนิดข้อมูลจริงของคอลัมน์ + โปรไฟล์ที่โมเดล ACTIVE เรียนรู้ + ประวัติสาเหตุจากการเทรน
  */

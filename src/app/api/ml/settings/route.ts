@@ -1,5 +1,5 @@
 /**
- * API /api/ml/settings (v0.35.0) — เกณฑ์ของ ML Studio (singleton)
+ * API /api/ml/settings (v0.37.0) — เกณฑ์ของ ML Studio (singleton)
  * GET — สิทธิ์: REVIEW_SIGNALS (ดูได้ทุกคนที่เห็นผล ML)
  * PUT {trainPct?, minTrainRows?, minTestRows?, confidenceHigh?, confidenceMedium?, auditSampleSize?, operatorEmail?}
  *   — สิทธิ์: TRAIN_ML_MODEL · บันทึก AuditLog (SET_ML_SETTINGS)

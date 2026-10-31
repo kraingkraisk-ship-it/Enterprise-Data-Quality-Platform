@@ -1,5 +1,5 @@
 /**
- * API /api/ml/train (v0.35.0) — เทรนโมเดล ML Studio
+ * API /api/ml/train (v0.37.0) — เทรนโมเดล ML Studio
  * POST {domainId?, trainPct?, note?, operatorEmail?} — สิทธิ์: TRAIN_ML_MODEL
  * ชุดฝึก = Data Asset ตามโดเมน · ผู้ติดป้าย = กฎ DQ ทุกข้อ · วัดคุณภาพบนชุดทดสอบ (% แบ่งรายแถว)
  */

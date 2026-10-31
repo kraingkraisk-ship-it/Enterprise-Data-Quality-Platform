@@ -1,5 +1,5 @@
 /**
- * API /api/ml/versions/[id] (v0.35.0) — จัดการเวอร์ชันโมเดลรายเวอร์ชัน
+ * API /api/ml/versions/[id] (v0.37.0) — จัดการเวอร์ชันโมเดลรายเวอร์ชัน
  * PATCH {action: 'ACTIVATE' | 'ARCHIVE', operatorEmail?} — สิทธิ์: TRAIN_ML_MODEL
  *   ACTIVATE = ตั้งเป็นโมเดลที่ใช้งานของโดเมนนั้น (ACTIVE ได้ 1 ต่อโดเมน — ตัวอื่นเปลี่ยนเป็น ARCHIVED)
  * DELETE — ลบเวอร์ชัน (สิทธิ์: TRAIN_ML_MODEL) — ข้อมูลสอน (คลัง label/สุ่มตรวจ) ไม่ถูกลบตาม

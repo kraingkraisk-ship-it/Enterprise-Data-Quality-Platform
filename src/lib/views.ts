@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.36.1'
+export const APP_VERSION = 'v0.37.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -139,7 +139,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'ml-studio',
     th: 'ML Studio',
     en: 'ML Studio',
-    desc: 'ผู้ช่วย ML บนหลัก Train/Test (v0.35.0): ชุดฝึก = Data Asset แยกโดเมน · ผู้ติดป้าย = กฎ DQ ทุกข้อ (บอกว่าไม่ถูกต้องเพราะอะไร) · % แบ่ง train/test รายแถว วัดความแม่นยำจริง · 4 แท็บ: เทรนโมเดล / ผลลัพธ์ ML / คลัง label / สุ่มตรวจ — มนุษย์สอนโมเดลให้แม่นขึ้น (ML เป็นผู้ช่วย ไม่ตัดสินแทน)',
+    desc: 'ผู้ช่วย ML ด้วย scikit-learn (LogisticRegression) บนหลัก Train/Test (v0.37.0): ชุดฝึก = Data Asset แยกโดเมน · ผู้ติดป้าย = กฎ DQ ทุกข้อ (บอกว่าไม่ถูกต้องเพราะอะไร) · % แบ่ง train/test รายแถว วัดความแม่นยำจริง (รวม ROC-AUC) · 4 แท็บ: เทรนโมเดล / ผลลัพธ์ ML / คลัง label / สุ่มตรวจ — มนุษย์สอนโมเดลให้แม่นขึ้น (ML เป็นผู้ช่วย ไม่ตัดสินแทน)',
     icon: Sparkles,
   },
   rules: {

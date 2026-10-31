@@ -1,5 +1,5 @@
 /**
- * API /api/ml/run-summary (v0.35.0) — B2 สรุปหลังตรวจ + ขั้นตอนถัดไปที่แนะนำ
+ * API /api/ml/run-summary (v0.37.0) — B2 สรุปหลังตรวจ + ขั้นตอนถัดไปที่แนะนำ
  * GET ?batchId= (ไม่ระบุ = รอบล่าสุด) — สิทธิ์: REVIEW_SIGNALS
  */
 import { NextRequest, NextResponse } from 'next/server'

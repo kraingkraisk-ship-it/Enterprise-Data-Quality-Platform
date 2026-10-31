@@ -1,5 +1,5 @@
 /**
- * API /api/ml/labels (v0.35.0) — คลัง label (human-in-the-loop)
+ * API /api/ml/labels (v0.37.0) — คลัง label (human-in-the-loop)
  * GET ?verdict=INCORRECT|CORRECT|SUSPECT&flag=unflagged|CONFIRMED|OVERRIDDEN&take= — สิทธิ์: LABEL_ML_DATA
  * แถวข้อมูลแสดงพร้อมปิดบัง PII ตามบทบาทผู้อ่าน (เช่นเดียวกับ DqFailureRecord)
  */

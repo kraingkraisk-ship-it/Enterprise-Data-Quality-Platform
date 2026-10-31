@@ -1,5 +1,5 @@
 /**
- * API /api/ml/export (v0.35.0) — ส่งออกโมเดลเป็นไฟล์ .dqmmodel (สำรอง/ย้ายระบบ)
+ * API /api/ml/export (v0.37.0) — ส่งออกโมเดลเป็นไฟล์ .dqmmodel (สำรอง/ย้ายระบบ)
  * GET ?versionId= — สิทธิ์: TRAIN_ML_MODEL
  * ความปลอดภัย: ไฟล์มีเฉพาะ "พารามิเตอร์โมเดล + สถิติรวม" (เกณฑ์/สัดส่วน/histogram ระดับรวม)
  * — ไม่มีข้อมูลดิบรายแถว ไม่มี PII โดยเด็ดขาด + checksum ป้องกันการแก้ไขไฟล์
@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
       precision: version.precision,
       recall: version.recall,
       f1: version.f1,
+      rocAuc: version.rocAuc,
       trainRows: version.trainRows,
       testRows: version.testRows,
       assetCount: version.assetCount,

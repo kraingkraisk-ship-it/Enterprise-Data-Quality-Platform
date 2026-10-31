@@ -1,9 +1,9 @@
 /**
- * ML Studio — เอนจินหลัก (v0.35.0)
- * หลักการ: ML เป็น "ผู้ช่วย (Assistant)" — สถิติโปร่งใสทุกตัวเลข ตรวจย้อนได้ ไม่มีกล่องดำ
+ * ML Studio — ตัวเตรียมข้อมูล/คุณลักษณะ (v0.37.0 — เอนจินเรียนรู้คือ scikit-learn)
+ * หลักการ: ML เป็น "ผู้ช่วย (Assistant)" — โปร่งใสทุกตัวเลข ตรวจย้อนได้ ไม่มีกล่องดำ
  * ชุดฝึก (Train set) = ข้อมูลจริงจาก Data Asset · ผู้ติดป้าย (Labeler) = กฎ DQ ทุกข้อ
- * โมเดลเรียนรู้ "น้ำหนักหลักฐาน" (log-likelihood ratio) ของลักษณะที่พบในแถวที่ "ไม่ถูกต้อง"
- * จากชุดฝึกเท่านั้น แล้ววัดความแม่นยำบนชุดทดสอบ (test split) — แยกข้อมูลสอนจากมนุษย์เข้าชุดฝึกเสมอ
+ * ไฟล์นี้ทำหน้าที่: ติดป้ายด้วยกฎ → สร้างโปรไฟล์/คุณลักษณะ (เวกเตอร์) → ส่งให้เอนจิน scikit-learn
+ * (LogisticRegression บนบริการ ml-engine พอร์ต 3020) เรียนรู้ + วัดบนชุดทดสอบ — แยกข้อมูลสอนจากมนุษย์เข้าชุดฝึกเสมอ
  */
 
 import { evaluateRule, type DimensionKey, type Row } from '@/lib/dq'
@@ -237,182 +237,54 @@ export function featuresOf(row: LabeledRow, profiles: ColumnProfile[], valueCoun
   return f
 }
 
-/* ------------------------ การเรียนรู้จากชุดฝึก ----------------------------- */
+/* ------------------ เวกเตอร์คุณลักษณะสำหรับ scikit-learn ------------------ */
 
-export interface ColumnWeights {
-  nullW: number
-  duplicateW: number
-  shapeW: number
-  rangeW: number
-}
-
-export interface ModelParams {
-  /** น้ำหนักพื้นฐาน = ln(P(INC)/P(COR)) ของชุดฝึก */
-  bias: number
-  /** เกณฑ์ตัดสินที่เลือกจากชุดฝึก (max accuracy) */
-  threshold: number
-  columns: Record<string, ColumnWeights>
-  /** คำอธิบายน้ำหนักสำคัญ (ภาษาคน — โชว์บนหน้าจอได้) */
-  notes: string[]
-}
-
-const W_CAP = 2.5 // จำกัดน้ำหนักต่อหลักฐาน (กันคอลัมน์เดียวครอบทั้งคะแนน)
-
-/** เรียนรู้น้ำหนักหลักฐาน (log-likelihood ratio + Laplace smoothing) จากชุดฝึก */
-export function learnParams(train: LabeledRow[]): { params: ModelParams; profiles: ColumnProfile[] } {
-  const profiles = profileColumns(train)
-  const inc = train.filter((r) => r.truth === 'INCORRECT')
-  const cor = train.filter((r) => r.truth === 'CORRECT')
-  const nInc = Math.max(1, inc.length)
-  const nCor = Math.max(1, cor.length)
-  const bias = Math.log(nInc / nCor)
-
-  // นับค่าซ้ำทั้งชุดฝึก (duplicate feature คิดจาก asset เดียวกัน)
-  const valueCounts = valueCountsOf(train)
-
-  // นับความถี่หลักฐานในกลุ่ม INC และ COR
-  const feat = { inc: {}, cor: {} } as { inc: Record<string, number>; cor: Record<string, number> }
-  const bump = (bucket: Record<string, number>, key: string) => {
-    bucket[key] = (bucket[key] ?? 0) + 1
-  }
-  for (const r of train) {
-    const f = featuresOf(r, profiles, valueCounts)
-    for (const c of f.nulls) bump(r.truth === 'INCORRECT' ? feat.inc : feat.cor, `null:${c}`)
-    for (const c of f.duplicates) bump(r.truth === 'INCORRECT' ? feat.inc : feat.cor, `dup:${c}`)
-    for (const c of f.shapeMismatches) bump(r.truth === 'INCORRECT' ? feat.inc : feat.cor, `shape:${c}`)
-    for (const c of f.rangeOutliers) bump(r.truth === 'INCORRECT' ? feat.inc : feat.cor, `range:${c}`)
-  }
-
-  const columns: Record<string, ColumnWeights> = {}
-  const notes: string[] = []
-  for (const p of profiles) {
-    const llr = (prefix: string) => {
-      const a = (feat.inc[`${prefix}:${p.column}`] ?? 0) + 1
-      const b = (feat.cor[`${prefix}:${p.column}`] ?? 0) + 1
-      return Math.max(-W_CAP, Math.min(W_CAP, Math.log(a / nInc) - Math.log(b / nCor)))
-    }
-    const w: ColumnWeights = {
-      nullW: llr('null'),
-      duplicateW: llr('dup'),
-      shapeW: llr('shape'),
-      rangeW: llr('range'),
-    }
-    columns[p.column] = w
-    if (w.nullW > 1.2) notes.push(`ค่าว่างใน "${p.column}" พบในแถวไม่ถูกต้องมากกว่าแถวถูกต้องหลายเท่า (น้ำหนัก ${w.nullW.toFixed(2)})`)
-    if (w.rangeW > 1.2) notes.push(`ค่านอกช่วง P5–P95 ของ "${p.column}" เป็นหลักฐานเชิงลบที่ชัดเจน (น้ำหนัก ${w.rangeW.toFixed(2)})`)
-    if (w.shapeW > 1.2) notes.push(`รูปแบบค่าผิดปกติใน "${p.column}" (ไม่ตรงหน้าตาปกติ ${p.majorityShape}) สัมพันธ์กับข้อผิดพลาด`)
-  }
-
-  // เลือกเกณฑ์ที่ accuracy สูงสุดบนชุดฝึก (grid search — โปร่งใสตรวจย้อนได้)
-  const trialParams: ModelParams = { bias, threshold: bias, columns, notes }
-  let bestT = bias
-  let bestAcc = -1
-  for (let t = bias - 2; t <= bias + 4; t += 0.1) {
-    trialParams.threshold = t
-    let ok = 0
-    for (const r of train) {
-      const s = scoreRow(r, profiles, valueCounts, trialParams)
-      const pred = s >= t ? 'INCORRECT' : 'CORRECT'
-      if (pred === r.truth) ok++
-    }
-    const acc = ok / train.length
-    if (acc > bestAcc) {
-      bestAcc = acc
-      bestT = t
-    }
-  }
-
-  return { params: { bias, threshold: bestT, columns, notes }, profiles }
-}
-
-/* --------------------------- การให้คะแนนแถว ------------------------------- */
-
-export interface RowScore {
-  score: number
-  verdict: 'INCORRECT' | 'CORRECT' | 'SUSPECT'
-  confidence: number // 0–1 ทิศทาง "ไม่ถูกต้อง"
-  reasons: string[] // หลักฐานหลัก (ภาษาคน)
-}
-
-/** ให้คะแนนแถวจากพารามิเตอร์โมเดล (บวก = หลักฐานเอียงไป "ไม่ถูกต้อง") */
-export function scoreRow(row: LabeledRow, profiles: ColumnProfile[], valueCounts: Map<string, Map<string, Map<string, number>>>, params: ModelParams): number {
+/**
+ * แปลงหลักฐานของแถวเป็นเวกเตอร์ sparse — ชื่อคุณลักษณะ = ชนิดหลักฐาน:คอลัมน์
+ * (เช่น null:email = ค่าว่างในคอลัมน์ email) — สัมประสิทธิ์ของ LogisticRegression อ่านเหตุผลย้อนได้
+ */
+export function featuresVectorOf(row: LabeledRow, profiles: ColumnProfile[], valueCounts: Map<string, Map<string, Map<string, number>>>): Record<string, number> {
   const f = featuresOf(row, profiles, valueCounts)
-  let s = params.bias
-  for (const c of f.nulls) s += params.columns[c]?.nullW ?? 0
-  for (const c of f.duplicates) s += params.columns[c]?.duplicateW ?? 0
-  for (const c of f.shapeMismatches) s += params.columns[c]?.shapeW ?? 0
-  for (const c of f.rangeOutliers) s += params.columns[c]?.rangeW ?? 0
-  return s
+  const vec: Record<string, number> = {}
+  for (const c of f.nulls) vec[`null:${c}`] = 1
+  for (const c of f.duplicates) vec[`dup:${c}`] = 1
+  for (const c of f.shapeMismatches) vec[`shape:${c}`] = 1
+  for (const c of f.rangeOutliers) vec[`range:${c}`] = 1
+  return vec
 }
 
-const GRAY_BAND = 0.25 // ช่วง "ยังไม่แน่ใจ" รอบเกณฑ์ — รายงานเป็น SUSPECT ให้คนช่วยตัดสิน
+/* ----------------------- คำตัดสินจากความน่าจะเป็น -------------------------- */
 
-/** ตัดสินแถว 1 แถว + อธิบายหลักฐาน */
-export function verdictOf(row: LabeledRow, profiles: ColumnProfile[], valueCounts: Map<string, Map<string, Map<string, number>>>, params: ModelParams): RowScore {
-  const score = scoreRow(row, profiles, valueCounts, params)
-  const t = params.threshold
-  const verdict: RowScore['verdict'] = score >= t + GRAY_BAND ? 'INCORRECT' : score > t - GRAY_BAND ? 'SUSPECT' : 'CORRECT'
-  const confidence = 1 / (1 + Math.exp(-(score - t)))
+const SUSPECT_BAND = 0.25 // ช่วง "ยังไม่แน่ใจ" รอบเกณฑ์ 0.5 — รายงานเป็น SUSPECT ให้คนช่วยตัดสิน
 
+export type SkVerdict = 'INCORRECT' | 'CORRECT' | 'SUSPECT'
+
+/** ตัดสินจากความน่าจะเป็น "ไม่ถูกต้อง" ของโมเดล scikit-learn (เกณฑ์ 0.5 ± 0.25 = ยังไม่แน่ใจ) */
+export function verdictFromProbability(p: number): SkVerdict {
+  if (!Number.isFinite(p)) return 'SUSPECT'
+  if (p >= 0.5 + SUSPECT_BAND) return 'INCORRECT'
+  if (p > 0.5 - SUSPECT_BAND) return 'SUSPECT'
+  return 'CORRECT'
+}
+
+/**
+ * อธิบายหลักฐานเป็นภาษาคน — ใช้สัมประสิทธิ์ของโมเดลถ้าส่งมา (เช่น "email: ไม่มีข้อมูล — สัมประสิทธิ์ +1.23")
+ * coefficients: map ชื่อคุณลักษณะ → น้ำหนัก จาก LogisticRegression (paramsJson ของเวอร์ชัน ACTIVE)
+ */
+export function reasonsFromFeatures(row: LabeledRow, profiles: ColumnProfile[], valueCounts: Map<string, Map<string, Map<string, number>>>, coefficients?: Map<string, number>): string[] {
   const f = featuresOf(row, profiles, valueCounts)
+  const withWeight = (text: string, key: string): string => {
+    if (!coefficients) return text
+    const w = coefficients.get(key)
+    return w === undefined ? text : `${text} — สัมประสิทธิ์ ${w > 0 ? '+' : ''}${w.toFixed(2)}`
+  }
   const reasons: string[] = []
-  for (const c of f.nulls) {
-    const w = params.columns[c]?.nullW ?? 0
-    if (w > 0.3) reasons.push(`${c}: ไม่มีข้อมูล (ค่าว่าง) — น้ำหนักหลักฐาน ${w.toFixed(2)}`)
-  }
-  for (const c of f.rangeOutliers) {
-    const w = params.columns[c]?.rangeW ?? 0
-    if (w > 0.3) reasons.push(`${c}: ค่าอยู่นอกช่วงที่เรียนรู้จากชุดฝึก — น้ำหนักหลักฐาน ${w.toFixed(2)}`)
-  }
-  for (const c of f.shapeMismatches) {
-    const w = params.columns[c]?.shapeW ?? 0
-    if (w > 0.5) reasons.push(`${c}: รูปแบบค่าไม่ตรงหน้าตาปกติของคอลัมน์ — น้ำหนักหลักฐาน ${w.toFixed(2)}`)
-  }
-  for (const c of f.duplicates) {
-    const w = params.columns[c]?.duplicateW ?? 0
-    if (w > 0.6) reasons.push(`${c}: พบค่าซ้ำในชุดข้อมูล — น้ำหนักหลักฐาน ${w.toFixed(2)}`)
-  }
+  for (const c of f.nulls) reasons.push(withWeight(`${c}: ไม่มีข้อมูล (ค่าว่าง)`, `null:${c}`))
+  for (const c of f.rangeOutliers) reasons.push(withWeight(`${c}: ค่าอยู่นอกช่วงที่เรียนรู้จากชุดฝึก`, `range:${c}`))
+  for (const c of f.shapeMismatches) reasons.push(withWeight(`${c}: รูปแบบค่าไม่ตรงหน้าตาปกติของคอลัมน์`, `shape:${c}`))
+  for (const c of f.duplicates) reasons.push(withWeight(`${c}: พบค่าซ้ำในชุดข้อมูล`, `dup:${c}`))
   if (reasons.length === 0) reasons.push('ไม่พบหลักฐานเชิงลบที่ชัดเจนจากสิ่งที่โมเดลเรียนรู้')
-  return { score, verdict, confidence, reasons: reasons.slice(0, 4) }
-}
-
-/* ------------------------- การวัดผลบนชุดทดสอบ ----------------------------- */
-
-export interface Metrics {
-  accuracy: number | null
-  precision: number | null
-  recall: number | null
-  f1: number | null
-  tp: number
-  fp: number
-  tn: number
-  fn: number
-}
-
-/** วัด confusion matrix บนชุดทดสอบ — พยากรณ์เชิงบวก = score ≥ threshold (INC/SUSPECT รวมกัน) */
-export function measureOnTest(test: LabeledRow[], profiles: ColumnProfile[], valueCounts: Map<string, Map<string, Map<string, number>>>, params: ModelParams): Metrics {
-  let tp = 0
-  let fp = 0
-  let tn = 0
-  let fn = 0
-  for (const r of test) {
-    const s = scoreRow(r, profiles, valueCounts, params)
-    const predPos = s >= params.threshold
-    if (r.truth === 'INCORRECT') {
-      if (predPos) tp++
-      else fn++
-    } else if (predPos) {
-      fp++
-    } else {
-      tn++
-    }
-  }
-  const total = tp + fp + tn + fn
-  const precision = tp + fp > 0 ? tp / (tp + fp) : null
-  const recall = tp + fn > 0 ? tp / (tp + fn) : null
-  const accuracy = total > 0 ? (tp + tn) / total : null
-  const f1 = precision !== null && recall !== null && precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : null
-  return { accuracy, precision, recall, f1, tp, fp, tn, fn }
+  return reasons.slice(0, 4)
 }
 
 /** สร้าง valueCounts ราย asset (feature "ค่าซ้ำ" เทียบเฉพาะข้ามใน asset เดียวกัน — กัน schema ข้าม asset) */

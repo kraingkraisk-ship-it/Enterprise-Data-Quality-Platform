@@ -1,9 +1,10 @@
 'use client'
 
 /**
- * ML Studio (v0.35.0) — ผู้ช่วย ML บนหลัก Train/Test แทน "ศูนย์ ML" เดิม
+ * ML Studio (v0.37.0) — ผู้ช่วย ML ด้วย scikit-learn บนหลัก Train/Test
  * หลักการบนหน้าจอ: ML เป็นผู้ช่วย (Assistant) — ความถูกต้องขึ้นกับ 1) ข้อมูล (Data Asset)
  * 2) DQ Rule (ผู้ติดป้าย) 3) คนสอน (human-in-the-loop)
+ * เอนจินเรียนรู้: LogisticRegression (scikit-learn) บนบริการ ml-engine แยกต่างหาก
  * 4 แท็บ: เทรนโมเดล (TRAIN_ML_MODEL) · ผลลัพธ์ ML (REVIEW_SIGNALS) · คลัง label (LABEL_ML_DATA) · สุ่มตรวจ (LABEL_ML_DATA)
  */
 
@@ -55,7 +56,8 @@ interface TrainResultView {
   assetCount: number
   ruleCount: number
   humanTeachCount: number
-  metrics: { accuracy: number | null; precision: number | null; recall: number | null; f1: number | null }
+  metrics: { accuracy: number | null; precision: number | null; recall: number | null; f1: number | null; rocAuc: number | null }
+  engine: { name: string; estimator: string; version: string; featureCount: number }
   notes: string[]
   message: string
 }
@@ -477,7 +479,7 @@ export default function MlStudio({ active }: { active: boolean }) {
             <CardTitle className="flex items-center gap-2 text-slate-900">
               <Sparkles className="size-5 text-teal-700" aria-hidden="true" /> ML Studio
             </CardTitle>
-            <CardDescription>ผู้ช่วย ML บนหลัก Train/Test — เทรนจากข้อมูลจริง + กฎ DQ + คนสอน</CardDescription>
+            <CardDescription>ผู้ช่วย ML ด้วย scikit-learn (LogisticRegression) บนหลัก Train/Test — เทรนจากข้อมูลจริง + กฎ DQ + คนสอน</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-slate-600">บทบาทของคุณยังไม่มีสิทธิ์เข้าถึง ML Studio — ผู้ที่เห็นได้: เจ้าของข้อมูล · ผู้ดูแลข้อมูล · ผู้ดูแลระบบ (เทรน/label) และบทบาทที่มีสิทธิ์ทบทวนผล ML (ดูผล)</p>
@@ -493,7 +495,7 @@ export default function MlStudio({ active }: { active: boolean }) {
       <header className="space-y-1">
         <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
           <BrainCircuit className="size-6 text-teal-700" aria-hidden="true" /> ML Studio
-          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-800">v0.35.0 · Train/Test</Badge>
+          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-800">v0.37.0 · scikit-learn</Badge>
         </h1>
         <p className="text-sm text-muted-foreground">
           ML เป็น<strong className="text-slate-800">ผู้ช่วย (Assistant)</strong>เท่านั้น — ความถูกต้องและความแม่นยำขึ้นอยู่กับการเทรน 3 อย่าง:{' '}
@@ -574,7 +576,7 @@ export default function MlStudio({ active }: { active: boolean }) {
                   {trainResult && (
                     <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm">
                       <p className="font-semibold text-emerald-900">{trainResult.message}</p>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                         <div className="rounded bg-white p-2 text-center">
                           <p className="text-xs text-muted-foreground">Accuracy</p>
                           <p className="text-sm font-bold text-slate-900">{pct(trainResult.metrics.accuracy)}</p>
@@ -591,7 +593,14 @@ export default function MlStudio({ active }: { active: boolean }) {
                           <p className="text-xs text-muted-foreground">F1</p>
                           <p className="text-sm font-bold text-slate-900">{pct(trainResult.metrics.f1)}</p>
                         </div>
+                        <div className="rounded bg-white p-2 text-center">
+                          <p className="text-xs text-muted-foreground">ROC-AUC</p>
+                          <p className="text-sm font-bold text-slate-900">{pct(trainResult.metrics.rocAuc)}</p>
+                        </div>
                       </div>
+                      <p className="text-xs font-medium text-emerald-900">
+                        เอนจิน: {trainResult.engine.name} ({trainResult.engine.estimator}) เวอร์ชัน {trainResult.engine.version} · คุณลักษณะ {trainResult.engine.featureCount} รายการ
+                      </p>
                       <p className="text-xs text-emerald-900">
                         ชุดฝึก {trainResult.trainRows} แถว · ทดสอบ {trainResult.testRows} แถว · กฎผู้ติดป้าย {trainResult.ruleCount} ข้อ · ข้อมูลสอนจากคน {trainResult.humanTeachCount}
                       </p>

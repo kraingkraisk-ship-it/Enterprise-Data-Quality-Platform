@@ -553,7 +553,7 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // v0.35.0 — ผล ML ย้ายไป ML Studio (เทรนจาก Data Asset + กฎ DQ + คนสอน) — ไม่ประเมิน anomaly/forecast อัตโนมัติที่นี่อีก
+      // v0.37.0 — ผล ML ย้ายไป ML Studio (เทรนจาก Data Asset + กฎ DQ + คนสอน) — ไม่ประเมิน anomaly/forecast อัตโนมัติที่นี่อีก
     }
 
     const rollup = buildRollup(

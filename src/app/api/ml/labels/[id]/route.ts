@@ -1,5 +1,5 @@
 /**
- * API /api/ml/labels/[id] (v0.35.0) — ตรวจ label รายแถว (human-in-the-loop)
+ * API /api/ml/labels/[id] (v0.37.0) — ตรวจ label รายแถว (human-in-the-loop)
  * PATCH {humanFlag: 'CONFIRMED' | 'OVERRIDDEN', note?, operatorEmail?} — สิทธิ์: LABEL_ML_DATA
  * CONFIRMED = เห็นด้วยกับ ML · OVERRIDDEN = แก้คำตัดสิน ML — ทั้งคู่เป็นข้อมูลสอนสำหรับ retrain
  */

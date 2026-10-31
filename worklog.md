@@ -2027,3 +2027,24 @@ Work Log:
 Stage Summary:
 - PAT รอบที่ 10 ใช้งานได้ครบ (อ่าน 200 + สิทธิ์ push/admin/maintain true + เขียนผ่าน blob probe + push worklog สำเร็จ)
 - v0.36.1 (Task 66 เมนู "คำแนะนำจาก ML") สมบูรณ์ทั้ง local/remote/tag · working tree clean · ระบบรอคำสั่งถัดไปจากผู้ใช้
+
+---
+Task ID: 67
+Agent: Z.ai Code (main orchestrator)
+Task: v0.37.0 — เปลี่ยนเอนจิน ML เป็น scikit-learn (LogisticRegression) ตามคำสั่งผู้ใช้ "ฉันต้องการใช้ Library scikit-learn ถ้าอันอื่นไม่เกี่ยวข้องสามารถลบทิ้งได้เลย" — คงหลักการ train/test จาก Data Asset + DQ Rule เดิมทุกอย่าง ลบเอนจินสถิติเขียนเองทิ้ง
+
+Work Log:
+- สถาปัตยกรรมใหม่: การเรียนรู้ย้ายไป mini-service ใหม่ mini-services/ml-engine (พอร์ตคงที่ 3020, `bun --hot`) — index.ts (Bun server + spawn python แบบ fallback venv/system) · train.py (DictVectorizer + LogisticRegression class_weight=balanced · metrics accuracy/precision/recall/F1/ROC-AUC + confusion matrix + coefficients อ่านเหตุผลย้อนได้ + บันทึกโมเดล joblib ราย modelKey) · predict.py (โหลด joblib → predict_proba รายแถว) · version.py — ทดสอบ curl /health /train /predict ผ่านครบ (sklearn 1.5.2 / python 3.12.16)
+- engine.ts: ลบคณิตเอนจินเขียนเองทั้งหมด (learnParams log-likelihood + Laplace, scoreRow, verdictOf, measureOnTest, ModelParams, ColumnWeights, Metrics, W_CAP, GRAY_BAND) — เก็บครบซึ่งเป็นหลักการ Data Asset + DQ Rule: labelRows (กฎ DQ ทุกข้อเป็นผู้ติดป้าย + ข้ามกฎต้องใช้บริบทภายนอก) · profileColumns/featuresOf (หลักฐาน 4 ชนิด: ค่าว่าง/ค่าซ้ำ/รูปแบบผิดปกติ/นอกช่วง P5–P95) · valueCountsOf · seededShuffle (แบ่ง train/test deterministic ตรวจย้อนได้) — เพิ่ม featuresVectorOf (เวกเตอร์ sparse "null:/dup:/shape:/range:คอลัมน์") · verdictFromProbability (เกณฑ์ 0.5 ± 0.25 = SUSPECT ให้คนช่วยตัดสิน ตรรกะเดิม) · reasonsFromFeatures (เหตุผลภาษาคน + สัมประสิทธิ์ LogisticRegression)
+- sklearn.ts ใหม่: skTrain (timeout 120s) / skPredict (30s) / SkEngineError (แยกรหัส SINGLE_CLASS → ข้อความไทย, MODEL_NOT_FOUND → degrade) — เรียก http://127.0.0.1:3020 ฝั่ง server เท่านั้น (เวกเตอร์+ป้ายเท่านั้น ไม่มีข้อมูลดิบ/PII ออกจากระบบ)
+- train.ts: ขั้น 1–4 เดิมทุกอย่าง (รวม Data Asset → กฎ DQ ติดป้าย → ข้อมูลสอนมนุษย์ [คลัง label CONFIRMED/OVERRIDDEN + สุ่มตรวจ] เข้าชุดฝึกเท่านั้น → แบ่ง % รายแถว) → ขั้น 5 เรียนรู้ด้วย scikit-learn + วัดบนชุดทดสอบ — paramsJson ใหม่ {engine:'scikit-learn', estimator:'LogisticRegression', modelKey, threshold:0.5, intercept, coefficients, sklearnVersion} · เวอร์ชันเก่า/นำเข้า parse ไม่เป็นรูป → params null (พยากรณ์ต่อไม่ได้ — แจ้งให้เทรนใหม่) · TrainResult เพิ่ม rocAuc + engine — TrainResult/audit detail อ้าง scikit-learn ทุกจุด
+- audit-samples POST: คำแนะนำรายแถวจาก skPredict (batch เดียว) + เหตุผลจากสัมประสิทธิ์ — เอนจินล่ม/ไม่พบโมเดล → advice ว่าง มนุษย์ยังตัดสินได้ปกติ (ไม่บล็อกการสอน)
+- schema: MlModelVersion เพิ่มคอลัมน์ rocAuc Float? + db push + prisma generate · export/import .dqmmodel เพิ่ม rocAuc (paramsJson ส่งต่นเป็น blob คงเดิม — ไฟล์เก่านำเข้าได้แต่ต้องเทรนใหม่จึงพยากรณ์ต่อได้)
+- UI: ML Studio badge "v0.37.0 · scikit-learn" + ผลเทรนแสดง 5 เมตริก (เพิ่มช่อง ROC-AUC) + บรรทัด "เอนจิน: scikit-learn (LogisticRegression) เวอร์ชัน 1.5.2 · คุณลักษณะ n รายการ" + notes อธิบายหลักฐานชัดสุดจากสัมประสิทธิ์ + views.ts/platform-overview/dq-dashboard/core-features-console ปรับข้อความอ้าง scikit-learn · APP_VERSION v0.37.0 · เปลี่ยนคอมเมนต์ v0.35.0 → v0.37.0 ทุกไฟล์ที่เหลือ
+- แก้บั๊กระหว่างทาง: DictVectorizer.feature_names_ เป็น list ไม่ใช่ ndarray (แก้ .tolist() → list()) · const adviceCounts ถูก reassign → let · turbopack cache เก่าค้างทำ /api/auth/login 500 → rm -rf .next + รีสตาร์ท (สูตรเดิม)
+- ทดสอบ: lint ผ่าน · E2E ผ่าน UI จริง (somchai.owner): เทรนสำเร็จเวอร์ชัน v8 — accuracy/precision/recall/F1 100% · ROC-AUC 1.00 (ฝึก 22 / ทดสอบ 9 · asset 2 · กฎผู้ติดป้าย 7) → กด "ใช้งาน" v8 เป็น ACTIVE สำเร็จ → สุ่มตรวจรอบที่ 3: 20 แถวพร้อม "คำแนะนำ ML" จากสัมประสิทธิ์จริง (segment +1.43 / as_of_date −1.77 / currency −0.58) → คลัง label v8 แสดงคำตัดสิน+เหตุผล sklearn และกด "ยืนยัน" (teaching loop human-in-the-loop ครบ) → ผลลัพธ์ ML อ้างโมเดล v8 → หน้าผลการตรวจสอบ การ์ด "คำแนะนำจาก ML" ปกติ (read-only + ปุ่มสอนที่ ML Studio) → mobile 375 ไม่มี h-scroll + footer sticky · 0 page error · dev.log สะอาด
+
+Stage Summary:
+- เอนจิน ML ของแพลตฟอร์มคือ scikit-learn (LogisticRegression) บนบริการแยก ml-engine พอร์ต 3020 — หลักการ train/test จาก Data Asset + DQ Rule + ข้อมูลสอนมนุษย์ คงเดิม 100% · โปร่งใสเหมือนเดิม (สัมประสิทธิ์รายหลักฐานอ่านเหตุผลได้ + metrics มาตรฐาน 5 ตัว รวม ROC-AUC)
+- เอนจินสถิติเขียนเองถูกลบทิ้งตามคำสั่ง (TS ฝั่งเรียนรู้/ให้คะแนน 0 บรรทัดคงเหลือ) · บริการ ml-engine ต้องรันก่อนเทรน/พยากรณ์ (nohup bun run dev ใน mini-services/ml-engine · log: dev.log ของบริการ · models/ ถูก gitignore)
+- tag v0.37.0 · รอ push + ยืนยัน GitHub API

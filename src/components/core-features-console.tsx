@@ -385,7 +385,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   const [rbReferenceSets, setRbReferenceSets] = useState<ReferenceSetOption[]>([])
   /* Rule Builder wizard (v0.18.1) — ขั้นตอนปัจจุบัน 1–4 */
   const [rbStep, setRbStep] = useState(1)
-  // B1 (v0.35.0) — คำแนะนำเงื่อนไขจาก ML Studio ตอนเลือกคอลัมน์ใน Rule Builder
+  // B1 (v0.37.0) — คำแนะนำเงื่อนไขจาก ML Studio (scikit-learn) ตอนเลือกคอลัมน์ใน Rule Builder
   const [rbRecs, setRbRecs] = useState<{
     dataType: string
     modelVersion: number | null
@@ -407,7 +407,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
   // tab 3 — run + review
   const [runDataset, setRunDataset] = useState('')
   const [runResult, setRunResult] = useState<RunResponse | null>(null)
-  // B2 (v0.35.0) — สรุปหลังตรวจจาก ML Studio (ผู้ช่วยเสนอแนะ — ไม่ตัดสินแทนคะแนนกฎ)
+  // B2 (v0.37.0) — สรุปหลังตรวจจาก ML Studio (ผู้ช่วยเสนอแนะ — ไม่ตัดสินแทนคะแนนกฎ)
   const [mlSummary, setMlSummary] = useState<{
     summaryText: string
     modelVersion: number | null
@@ -868,7 +868,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     }
   }
 
-  // B2 (v0.35.0) — โหลดสรุปหลังตรวจจาก ML Studio เมื่อรันเสร็จ (ผู้ช่วยเสนอแนะ — ล้มเหลวแล้วไม่กระทบผลตรวจ)
+  // B2 (v0.37.0) — โหลดสรุปหลังตรวจจาก ML Studio เมื่อรันเสร็จ (ผู้ช่วยเสนอแนะ — ล้มเหลวแล้วไม่กระทบผลตรวจ)
   useEffect(() => {
     if (!runResult?.batchId) {
       setMlSummary(null)
@@ -905,7 +905,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
     }
   }, [runResult?.batchId])
 
-  // B1 (v0.35.0) — คำแนะนำเงื่อนไขจาก ML Studio เมื่อเลือกคอลัมน์ใน Rule Builder (ขั้นที่ 3)
+  // B1 (v0.37.0) — คำแนะนำเงื่อนไขจาก ML Studio เมื่อเลือกคอลัมน์ใน Rule Builder (ขั้นที่ 3)
   useEffect(() => {
     if (rbStep !== 3 || !rbColumn) {
       setRbRecs(null)
@@ -1404,7 +1404,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   </p>
               </div>
 
-              {/* B1 (v0.35.0) — ML Studio แนะนำเงื่อนไขตามชนิดข้อมูล + 9 มิติ + สิ่งที่โมเดลเรียนรู้ (กดเลือกได้ทันที) */}
+              {/* B1 (v0.37.0) — ML Studio แนะนำเงื่อนไขตามชนิดข้อมูล + 9 มิติ + สิ่งที่โมเดลเรียนรู้ (กดเลือกได้ทันที) */}
               {rbColumn && (
                 <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-3">
                   <p className="flex items-center gap-1.5 text-xs font-semibold text-teal-900">
@@ -2298,7 +2298,7 @@ export default function CoreFeaturesConsole({ activeView, onViewChange, mode = '
                   </p>
                 </div>
 
-                {/* B2 (v0.35.0) — สรุปหลังตรวจ + ขั้นตอนถัดไปจาก ML Studio (ผู้ช่วยเสนอแนะ) */}
+                {/* B2 (v0.37.0) — สรุปหลังตรวจ + ขั้นตอนถัดไปจาก ML Studio (ผู้ช่วยเสนอแนะ) */}
                 {mlSummary && (
                   <div className="rounded-lg border border-teal-200 bg-teal-50/40 p-3">
                     <button

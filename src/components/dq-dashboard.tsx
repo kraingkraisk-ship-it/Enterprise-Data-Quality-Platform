@@ -1958,7 +1958,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                 </Card>
               </Collapsible>
 
-              {/* v0.35.0 — ผล ML ทั้งหมดอยู่ที่ "ML Studio" (เมนู คุณภาพข้อมูล) จุดเดียว
+              {/* v0.37.0 — ผล ML ทั้งหมดอยู่ที่ "ML Studio" (เมนู คุณภาพข้อมูล) จุดเดียว
                   — สร้างใหม่บนหลัก Train/Test แทนระบบ ML เดิม */}
               <Card className="border-teal-200 bg-teal-50/40">
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -1967,7 +1967,7 @@ export default function DqDashboard({ datasets, reloadTick, onRefetch, onGoMlCen
                       <BrainCircuit className="size-4.5" aria-hidden="true" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-teal-900">ผล ML อยู่ที่ "ML Studio" (v0.35.0)</p>
+                      <p className="text-sm font-semibold text-teal-900">ผล ML อยู่ที่ "ML Studio" (v0.37.0 · scikit-learn)</p>
                       <p className="mt-0.5 text-xs leading-relaxed text-teal-800/90">
                         สรุปหลังตรวจ · แนะนำกฎ · สาเหตุร่วม · แนวโน้มผิดซ้ำ — จากโมเดลที่เทรนจาก Data Asset + กฎ DQ ทุกข้อ + คนสอน
                         (ML เป็นผู้ช่วยเสนอแนะ ไม่ตัดสินแทนผลตรวจ)

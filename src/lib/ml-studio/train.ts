@@ -1,11 +1,12 @@
 /**
- * ML Studio — ผู้เทรนโมเดล (v0.35.0) — รันฝั่ง server เท่านั้น
+ * ML Studio — ผู้เทรนโมเดล (v0.37.0) — รันฝั่ง server เท่านั้น
  * ขั้นตอนการเทรน 1 รอบ (ทุกรอบ = เวอร์ชันใหม่):
  *   1) รวม Data Asset ตามโดเมน (ชุดฝึก = ข้อมูลจริง)
  *   2) กฎ DQ ทุกข้อทำหน้าที่ "ผู้ติดป้าย" — แถวใดล้มกฎข้อใด = ไม่ถูกต้อง พร้อมเหตุผล
  *   3) เพิ่ม "ข้อมูลสอน" จากมนุษย์ (คลัง label ที่ยืนยัน/แก้ + สุ่มตรวจที่ตัดสินแล้ว) เข้าชุดฝึก
  *   4) สุ่มแบ่งแถวตาม % train/test (deterministic — ตรวจย้อนได้)
- *   5) เรียนรู้พารามิเตอร์จาก "ชุดฝึกเท่านั้น" แล้ววัดความแม่นยำบน "ชุดทดสอบ"
+ *   5) แปลงเป็นเวกเตอร์คุณลักษณะ → เรียนรู้ด้วย scikit-learn (LogisticRegression) จาก "ชุดฝึกเท่านั้น"
+ *      แล้ววัดความแม่นยำ (accuracy/precision/recall/F1/ROC-AUC) บน "ชุดทดสอบ" — เอนจิน: mini-services/ml-engine
  *   6) บันทึกเวอร์ชัน + สร้างคลัง label ให้มนุษย์ตรวจต่อ (human-in-the-loop)
  */
 
@@ -14,17 +15,18 @@ import { CONDITIONS, isConditionKey, type DimensionKey } from '@/lib/dq'
 import { isDimensionKey } from '@/lib/dq'
 import {
   labelRows,
-  learnParams,
-  measureOnTest,
+  profileColumns,
   seededShuffle,
   valueCountsOf,
-  verdictOf,
+  featuresVectorOf,
+  reasonsFromFeatures,
+  verdictFromProbability,
   type Corpus,
   type LabelerRule,
   type LabeledRow,
-  type ModelParams,
   type ColumnProfile,
 } from './engine'
+import { skTrain } from './sklearn'
 
 /** จำกัดแถวต่อ Data Asset (คุมเวลาเทรน — ข้อมูลใหญ่พิจารณาเฉพาะส่วนต้นตามลำดับแถว) */
 const MAX_ROWS_PER_ASSET = 2000
@@ -122,9 +124,36 @@ export interface TrainResult {
   ruleCount: number
   skippedRuleCount: number
   humanTeachCount: number
-  metrics: { accuracy: number | null; precision: number | null; recall: number | null; f1: number | null }
+  metrics: { accuracy: number | null; precision: number | null; recall: number | null; f1: number | null; rocAuc: number | null }
+  engine: { name: string; estimator: string; version: string; featureCount: number }
   notes: string[]
   message: string
+}
+
+/** พารามิเตอร์โมเดลบนเอนจิน scikit-learn (เก็บใน paramsJson — สถิติรวม ไม่มีข้อมูลดิบ/PII) */
+export interface SkModelParams {
+  engine: 'scikit-learn'
+  estimator: 'LogisticRegression'
+  modelKey: string
+  threshold: number
+  intercept: number
+  coefficients: Array<{ name: string; weight: number }>
+  sklearnVersion: string
+}
+
+/** คำอธิบายหลักฐานเชิงลบที่ชัดที่สุดจากสัมประสิทธิ์ของโมเดล (ภาษาคน — โชว์บนหน้าจอได้) */
+function notesFromCoefficients(coefficients: Array<{ name: string; weight: number }>, rocAuc: number | null, featureCount: number, sklearnVersion: string): string[] {
+  const KIND_TH: Record<string, string> = { null: 'ค่าว่างใน', dup: 'ค่าซ้ำใน', shape: 'รูปแบบค่าผิดปกติใน', range: 'ค่านอกช่วงปกติใน' }
+  const notes: string[] = []
+  for (const c of coefficients.filter((c) => c.weight > 0).slice(0, 3)) {
+    const idx = c.name.indexOf(':')
+    const kind = idx > -1 ? c.name.slice(0, idx) : c.name
+    const column = idx > -1 ? c.name.slice(idx + 1) : ''
+    notes.push(`"${KIND_TH[kind] ?? kind} ${column}" เป็นหลักฐานชี้ "ไม่ถูกต้อง" ที่โมเดลเรียนรู้ได้ชัดที่สุด (สัมประสิทธิ์ +${c.weight.toFixed(2)})`)
+  }
+  if (rocAuc !== null) notes.push(`ROC-AUC ${rocAuc.toFixed(2)} — ความสามารถจำแนกแถวถูก/ไม่ถูกต้องของโมเดล (1.0 = แยกได้สมบูรณ์)`)
+  notes.push(`เอนจิน scikit-learn ${sklearnVersion} · LogisticRegression (class_weight balanced) · คุณลักษณะ ${featureCount} รายการ`)
+  return notes
 }
 
 /** เทรนโมเดล 1 รอบ — คืนเวอร์ชันใหม่ */
@@ -247,11 +276,24 @@ export async function trainModel(opts: TrainOptions): Promise<TrainResult> {
     )
   }
 
-  // 4) เรียนรู้จากชุดฝึก + วัดบนชุดทดสอบ
-  const { params, profiles } = learnParams(trainRows)
+  // 4) แปลงเป็นเวกเตอร์คุณลักษณะ (จาก Data Asset + กฎ DQ) → เรียนรู้ด้วย scikit-learn + วัดบนชุดทดสอบ
+  const profiles = profileColumns(trainRows)
   const counts = valueCountsOf(shuffled)
-  const metrics = measureOnTest(testRows, profiles, counts, params)
-  const canReportMetrics = testRows.length >= settings.minTestRows
+  const toTrainRow = (r: LabeledRow) => ({ features: featuresVectorOf(r, profiles, counts), y: (r.truth === 'INCORRECT' ? 1 : 0) as 0 | 1 })
+  const modelKey = `ml_${domainId || 'all'}_v${nextVersion}_${Date.now().toString(36)}`
+  const sk = await skTrain({ modelKey, train: trainRows.map(toTrainRow), test: testRows.map(toTrainRow), randomState: 42 })
+  const canReportMetrics = testRows.length >= settings.minTestRows && sk.metrics.accuracy !== null
+
+  const params: SkModelParams = {
+    engine: 'scikit-learn',
+    estimator: 'LogisticRegression',
+    modelKey: sk.modelKey,
+    threshold: 0.5,
+    intercept: sk.intercept,
+    coefficients: sk.coefficients,
+    sklearnVersion: sk.sklearnVersion,
+  }
+  const coefMap = new Map(sk.coefficients.map((c) => [c.name, c.weight]))
 
   // 5) สถิติประกอบ (ไม่มีข้อมูลดิบ — เฉพาะสรุปรวม)
   const dimensionCount = new Map<string, number>()
@@ -259,6 +301,8 @@ export async function trainModel(opts: TrainOptions): Promise<TrainResult> {
     for (const v of r.violations) dimensionCount.set(v.dimension, (dimensionCount.get(v.dimension) ?? 0) + 1)
   }
   const stats = {
+    engine: 'scikit-learn',
+    estimator: 'LogisticRegression',
     columns: profiles.map((p: ColumnProfile) => ({
       column: p.column,
       nullRate: Math.round(p.nullRate * 1000) / 1000,
@@ -279,10 +323,11 @@ export async function trainModel(opts: TrainOptions): Promise<TrainResult> {
       domainId,
       status: 'TRAINED',
       trainPct,
-      accuracy: canReportMetrics ? metrics.accuracy : null,
-      precision: canReportMetrics ? metrics.precision : null,
-      recall: canReportMetrics ? metrics.recall : null,
-      f1: canReportMetrics ? metrics.f1 : null,
+      accuracy: canReportMetrics ? sk.metrics.accuracy : null,
+      precision: canReportMetrics ? sk.metrics.precision : null,
+      recall: canReportMetrics ? sk.metrics.recall : null,
+      f1: canReportMetrics ? sk.metrics.f1 : null,
+      rocAuc: canReportMetrics ? sk.metrics.rocAuc : null,
       trainRows: trainRows.length,
       testRows: testRows.length,
       assetCount: assets.length,
@@ -296,16 +341,15 @@ export async function trainModel(opts: TrainOptions): Promise<TrainResult> {
   })
 
   // 7) สร้างคลัง label จากชุดทดสอบ (ให้มนุษย์ตรวจยืนยัน — human-in-the-loop)
-  const scored = testRows.map((r) => ({
-    row: r,
-    sc: verdictOf(r, profiles, counts, params),
-  }))
+  //    ความน่าจะเป็นรายแถวมาจากเอนจิน scikit-learn (ลำดับตรงกับ testRows)
+  const scored = testRows.map((r, i) => ({ row: r, p: sk.testProbabilities[i] ?? 0.5 }))
   const priority = { INCORRECT: 0, SUSPECT: 1, CORRECT: 2 } as const
-  scored.sort((a, b) => priority[a.sc.verdict] - priority[b.sc.verdict] || b.sc.confidence - a.sc.confidence)
+  scored.sort((a, b) => priority[verdictFromProbability(a.p)] - priority[verdictFromProbability(b.p)] || b.p - a.p)
   const chosen = scored.slice(0, MAX_LABEL_ITEMS)
 
-  const humanMap = new Map(humanRows.map((h) => [`${h.row.assetId}|${h.row.rowNo}`, h.row.truth]))
-  for (const { row, sc } of chosen) {
+  for (const { row, p } of chosen) {
+    const verdict = verdictFromProbability(p)
+    const reason = reasonsFromFeatures(row, profiles, counts, coefMap).join(' · ')
     await db.mlLabelItem.upsert({
       where: { versionId_assetId_rowNo: { versionId: version.id, assetId: row.assetId, rowNo: row.rowNo } },
       create: {
@@ -316,14 +360,14 @@ export async function trainModel(opts: TrainOptions): Promise<TrainResult> {
         assetName: row.assetName,
         rowNo: row.rowNo,
         rowDataJson: JSON.stringify(row.rowData),
-        mlVerdict: sc.verdict,
-        mlReason: sc.reasons.join(' · '),
-        mlScore: Math.round(sc.confidence * 1000) / 1000,
+        mlVerdict: verdict,
+        mlReason: reason,
+        mlScore: Math.round(p * 1000) / 1000,
       },
       update: {
-        mlVerdict: sc.verdict,
-        mlReason: sc.reasons.join(' · '),
-        mlScore: Math.round(sc.confidence * 1000) / 1000,
+        mlVerdict: verdict,
+        mlReason: reason,
+        mlScore: Math.round(p * 1000) / 1000,
       },
     })
   }
@@ -337,7 +381,7 @@ export async function trainModel(opts: TrainOptions): Promise<TrainResult> {
       action: 'ML_TRAIN',
       actor: opts.trainedBy,
       target: domainId ? `โดเมน ${domainId}` : 'ทุกโดเมน',
-      detail: `เทรนโมเดล v${nextVersion} — ชุดฝึก ${trainRows.length} แถว / ทดสอบ ${testRows.length} แถว (แบ่ง ${trainPct}%) · กฎผู้ติดป้าย ${appliedRuleIds.size} ข้อ · ข้อมูลสอน ${humanRows.length} · ${canReportMetrics ? `accuracy ${(metrics.accuracy! * 100).toFixed(1)}%` : 'ชุดทดสอบน้อยเกินรายงานคุณภาพ'}`,
+      detail: `เทรนโมเดล v${nextVersion} (scikit-learn LogisticRegression) — ชุดฝึก ${trainRows.length} แถว / ทดสอบ ${testRows.length} แถว (แบ่ง ${trainPct}%) · กฎผู้ติดป้าย ${appliedRuleIds.size} ข้อ · ข้อมูลสอน ${humanRows.length} · ${canReportMetrics ? `accuracy ${((sk.metrics.accuracy ?? 0) * 100).toFixed(1)}%${sk.metrics.rocAuc !== null ? ` · ROC-AUC ${sk.metrics.rocAuc.toFixed(2)}` : ''}` : 'ชุดทดสอบน้อยเกินรายงานคุณภาพ'}`,
     },
   })
 
@@ -353,12 +397,13 @@ export async function trainModel(opts: TrainOptions): Promise<TrainResult> {
     skippedRuleCount: skippedRuleIds.size,
     humanTeachCount: humanRows.length,
     metrics: canReportMetrics
-      ? { accuracy: metrics.accuracy, precision: metrics.precision, recall: metrics.recall, f1: metrics.f1 }
-      : { accuracy: null, precision: null, recall: null, f1: null },
-    notes: params.notes,
+      ? { accuracy: sk.metrics.accuracy, precision: sk.metrics.precision, recall: sk.metrics.recall, f1: sk.metrics.f1, rocAuc: sk.metrics.rocAuc }
+      : { accuracy: null, precision: null, recall: null, f1: null, rocAuc: null },
+    engine: { name: 'scikit-learn', estimator: 'LogisticRegression', version: sk.sklearnVersion, featureCount: sk.featureCount },
+    notes: notesFromCoefficients(sk.coefficients, canReportMetrics ? sk.metrics.rocAuc : null, sk.featureCount, sk.sklearnVersion),
     message: canReportMetrics
-      ? `เทรนสำเร็จ — เวอร์ชัน v${nextVersion} วัดความแม่นยำบนชุดทดสอบ ${testRows.length} แถว`
-      : `เทรนสำเร็จ — เวอร์ชัน v${nextVersion} (ชุดทดสอบ ${testRows.length} แถว น้อยกว่าขั้นต่ำ ${settings.minTestRows} จึงยังไม่รายงานคุณภาพ)`,
+      ? `เทรนสำเร็จ — เวอร์ชัน v${nextVersion} (scikit-learn) วัดความแม่นยำบนชุดทดสอบ ${testRows.length} แถว`
+      : `เทรนสำเร็จ — เวอร์ชัน v${nextVersion} (scikit-learn) (ชุดทดสอบ ${testRows.length} แถว น้อยกว่าขั้นต่ำ ${settings.minTestRows} จึงยังไม่รายงานคุณภาพ)`,
   }
 }
 
@@ -374,7 +419,8 @@ export async function getActiveVersion(domainId?: string) {
 export interface ParsedModel {
   version: number
   domainId: string
-  params: ModelParams
+  /** พารามิเตอร์เอนจิน scikit-learn (null = เวอร์ชันเก่า/นำเข้า — ไม่มีโมเดล joblib ให้พยากรณ์ต่อ ต้องเทรนใหม่) */
+  params: SkModelParams | null
   profiles: ColumnProfile[]
 }
 
@@ -383,7 +429,19 @@ export async function getActiveModel(domainId?: string): Promise<ParsedModel | n
   const v = await getActiveVersion(domainId)
   if (!v) return null
   try {
-    const params = JSON.parse(v.paramsJson) as ModelParams
+    const raw = JSON.parse(v.paramsJson) as Partial<SkModelParams> & Record<string, unknown>
+    const params: SkModelParams | null =
+      raw.engine === 'scikit-learn' && typeof raw.modelKey === 'string'
+        ? {
+            engine: 'scikit-learn',
+            estimator: 'LogisticRegression',
+            modelKey: raw.modelKey,
+            threshold: Number(raw.threshold ?? 0.5),
+            intercept: Number(raw.intercept ?? 0),
+            coefficients: Array.isArray(raw.coefficients) ? (raw.coefficients as SkModelParams['coefficients']) : [],
+            sklearnVersion: String(raw.sklearnVersion ?? ''),
+          }
+        : null
     const stats = JSON.parse(v.statsJson) as { columns?: Array<Partial<ColumnProfile> & { column: string }> }
     const profiles: ColumnProfile[] = (stats.columns ?? []).map((c) => ({
       column: c.column,

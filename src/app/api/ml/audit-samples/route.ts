@@ -1,5 +1,5 @@
 /**
- * API /api/ml/audit-samples (v0.35.0) — สุ่มตรวจ (มนุษย์ตัดสิน ML ช่วยแนะนำ)
+ * API /api/ml/audit-samples (v0.37.0) — สุ่มตรวจ (มนุษย์ตัดสิน ML ช่วยแนะนำ)
  * GET ?batchNo= (ไม่ระบุ = รอบล่าสุด) — สิทธิ์: LABEL_ML_DATA
  * POST {domainId?, size?, operatorEmail?} — สุ่มแถวจาก Data Asset ตามโดเมน → รอบสุ่มใหม่ (สิทธิ์: LABEL_ML_DATA)
  * แถวที่สุ่มพร้อม "คำแนะนำของโมเดล ACTIVE" — คำตัดสินสุดท้ายเป็นของมนุษย์ = ความจริงที่สอนโมเดล
@@ -9,7 +9,8 @@ import { db } from '@/lib/db'
 import { resolveOperator } from '@/lib/operator'
 import { maskValueByRole } from '@/lib/dq'
 import { getMlSettings, getActiveModel } from '@/lib/ml-studio/train'
-import { seededShuffle, verdictOf, valueCountsOf, type LabeledRow } from '@/lib/ml-studio/engine'
+import { seededShuffle, valueCountsOf, featuresVectorOf, reasonsFromFeatures, verdictFromProbability, type LabeledRow } from '@/lib/ml-studio/engine'
+import { skPredict, SkEngineError } from '@/lib/ml-studio/sklearn'
 
 export async function GET(req: NextRequest) {
   try {
@@ -138,47 +139,48 @@ export async function POST(req: NextRequest) {
     const batchNo = nextBatchNo + 1
     const shuffled = seededShuffle(candidates, `ml-audit|${batchNo}|${domainId}|${size}`)
 
-    // คำแนะนำจากโมเดล ACTIVE (ถ้ามี) — คะแนน/เหตุผลประกอบการตัดสินของมนุษย์
-    let adviceProfiles = model?.profiles ?? []
+    // คำแนะนำจากโมเดล ACTIVE (ถ้ามี) — ความน่าจะเป็นจากเอนจิน scikit-learn ประกอบการตัดสินของมนุษย์
+    const adviceProfiles = model?.profiles ?? []
     let adviceCounts = new Map<string, Map<string, Map<string, number>>>()
-    if (model) {
-      const sampleRows: LabeledRow[] = candidates.slice(0, 500).map((c) => ({
-        source: 'ASSET',
-        domainId: c.domainId,
-        assetId: c.assetId,
-        assetName: c.assetName,
-        rowNo: c.rowNo,
-        rowData: c.payload,
-        assetColumns: c.assetColumns,
-        truth: 'CORRECT',
-        violations: [],
-      }))
+    const modelKey = model?.params?.modelKey ?? null
+    const coefMap = model?.params ? new Map(model.params.coefficients.map((c) => [c.name, c.weight])) : undefined
+    const toRow = (c: Candidate): LabeledRow => ({
+      source: 'ASSET',
+      domainId: c.domainId,
+      assetId: c.assetId,
+      assetName: c.assetName,
+      rowNo: c.rowNo,
+      rowData: c.payload,
+      assetColumns: c.assetColumns,
+      truth: 'CORRECT',
+      violations: [],
+    })
+    if (model && modelKey) {
+      const sampleRows: LabeledRow[] = candidates.slice(0, 500).map(toRow)
       adviceCounts = valueCountsOf(sampleRows)
-      adviceProfiles = model.profiles
     }
 
     const chosen = shuffled.slice(0, size)
+    // พยากรณ์รายแถวจากเอนจิน scikit-learn (เวอร์ชันเก่า/นำเข้าไม่มีไฟล์โมเดล — ข้ามคำแนะนำได้)
+    let probs: number[] | null = null
+    if (modelKey) {
+      try {
+        probs = await skPredict(modelKey, chosen.map((c) => featuresVectorOf(toRow(c), adviceProfiles, adviceCounts)))
+      } catch (e) {
+        if (!(e instanceof SkEngineError)) throw e
+        probs = null // เอนจินไม่พร้อม/ไม่พบโมเดล — คำแนะนำว่าง มนุษย์ยังตัดสินได้ตามปกติ
+      }
+    }
     const created: string[] = []
-    for (const c of chosen) {
+    for (const [i, c] of chosen.entries()) {
       let advice = ''
       let mlVerdict = ''
       let mlScore = 0
-      if (model) {
-        const labeled: LabeledRow = {
-          source: 'ASSET',
-          domainId: c.domainId,
-          assetId: c.assetId,
-          assetName: c.assetName,
-          rowNo: c.rowNo,
-          rowData: c.payload,
-          assetColumns: c.assetColumns,
-          truth: 'CORRECT',
-          violations: [],
-        }
-        const sc = verdictOf(labeled, adviceProfiles, adviceCounts, model.params)
-        advice = sc.reasons.join(' · ')
-        mlVerdict = sc.verdict
-        mlScore = Math.round(sc.confidence * 1000) / 1000
+      if (probs) {
+        const p = probs[i] ?? 0.5
+        advice = reasonsFromFeatures(toRow(c), adviceProfiles, adviceCounts, coefMap).join(' · ')
+        mlVerdict = verdictFromProbability(p)
+        mlScore = Math.round(p * 1000) / 1000
       }
       const row = await db.mlAuditSample.create({
         data: {
@@ -201,7 +203,7 @@ export async function POST(req: NextRequest) {
         action: 'ML_AUDIT_CREATE',
         actor: op.ctx.email,
         target: `รอบที่ ${batchNo}`,
-        detail: `สุ่มตรวจ ${chosen.length} แถว จาก Data Asset ${domainId ? 'ในโดเมน' : 'ทุกโดเมน'} — คำแนะนำจากโมเดล ${model ? `v${model.version}` : 'ยังไม่มีโมเดล'} · มนุษย์เป็นผู้ตัดสิน`,
+        detail: `สุ่มตรวจ ${chosen.length} แถว จาก Data Asset ${domainId ? 'ในโดเมน' : 'ทุกโดเมน'} — คำแนะนำจากโมเดล ${model ? `v${model.version} (scikit-learn)` : 'ยังไม่มีโมเดล'} · มนุษย์เป็นผู้ตัดสิน`,
       },
     })
     return NextResponse.json({ batchNo, created: created.length, modelVersion: model?.version ?? null })

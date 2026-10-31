@@ -1,5 +1,5 @@
 /**
- * API /api/ml/versions (v0.35.0) — รายการเวอร์ชันโมเดล ML Studio
+ * API /api/ml/versions (v0.37.0) — รายการเวอร์ชันโมเดล ML Studio
  * GET — สิทธิ์: REVIEW_SIGNALS (ดูผล ML)
  * ?domainId= — กรองรายโดเมน (ไม่ระบุ = ทั้งหมด) · คืนพร้อมชื่อโดเมน
  */

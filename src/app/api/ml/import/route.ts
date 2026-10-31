@@ -1,5 +1,5 @@
 /**
- * API /api/ml/import (v0.35.0) — นำเข้าโมเดลจากไฟล์ .dqmmodel (สำรอง/เตรียมเทรนแยกรายโดเมนในอนาคต)
+ * API /api/ml/import (v0.37.0) — นำเข้าโมเดลจากไฟล์ .dqmmodel (สำรอง/เตรียมเทรนแยกรายโดเมนในอนาคต)
  * POST {payload: string (เนื้อไฟล์ JSON), operatorEmail?} — สิทธิ์: TRAIN_ML_MODEL
  * ตรวจ: รูปแบบไฟล์ (format/formatVersion) + checksum (กันไฟล์ถูกแก้) — นำเข้าเป็นเวอร์ชันใหม่สถานะ TRAINED
  * ไฟล์ที่มีข้อมูลดิบ (คร่อมเครื่องหมายความปลอดภัย) จะถูกปฏิเสธ
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
         precision: (model.precision as number | null) ?? null,
         recall: (model.recall as number | null) ?? null,
         f1: (model.f1 as number | null) ?? null,
+        rocAuc: (model.rocAuc as number | null) ?? null,
         trainRows: Number(model.trainRows ?? 0),
         testRows: Number(model.testRows ?? 0),
         assetCount: Number(model.assetCount ?? 0),

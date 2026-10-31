@@ -60,3 +60,7 @@ server.log
 *.pid
 # persisted tool output (runtime artifact)
 /tool-results/
+
+# ml-engine (scikit-learn service) runtime artifacts
+mini-services/ml-engine/dev.log
+mini-services/ml-engine/models/

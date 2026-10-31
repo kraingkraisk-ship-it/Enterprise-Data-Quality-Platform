@@ -170,7 +170,7 @@ function HomeShell() {
             <DqIssues active={view === 'issues'} />
           </div>
 
-          {/* ML Studio — ผู้ช่วย ML บนหลัก Train/Test (v0.35.0 แทนศูนย์ ML เดิม)
+          {/* ML Studio — ผู้ช่วย ML บนหลัก Train/Test (v0.37.0 แทนศูนย์ ML เดิม)
               คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลใหม่เมื่อ active */}
           <div className={view === 'ml-studio' ? '' : 'hidden'} aria-hidden={view !== 'ml-studio'}>
             <MlStudio active={view === 'ml-studio'} />

@@ -1,5 +1,5 @@
 /**
- * API /api/ml/trends (v0.35.0) — แนวโน้มจากผล train/test: ความเสี่ยงซ้ำ · ความอ่อนร่วมข้ามโดเมน · แนวโน้มจากการสอน
+ * API /api/ml/trends (v0.37.0) — แนวโน้มจากผล train/test: ความเสี่ยงซ้ำ · ความอ่อนร่วมข้ามโดเมน · แนวโน้มจากการสอน
  * GET — สิทธิ์: REVIEW_SIGNALS
  */
 import { NextResponse } from 'next/server'
