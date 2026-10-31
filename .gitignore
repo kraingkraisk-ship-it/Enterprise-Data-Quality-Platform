@@ -64,3 +64,6 @@ server.log
 # ml-engine (scikit-learn service) runtime artifacts
 mini-services/ml-engine/dev.log
 mini-services/ml-engine/models/
+
+# E2E smoke-test screenshots (agent-browser) — never commit
+tmp/
