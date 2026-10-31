@@ -82,14 +82,11 @@ import {
   ELEMENT_STATUSES,
   ELEMENT_STATUS_LABELS,
   ELEMENT_TEXT_MAX,
-  OP_UPDATE_FREQUENCIES,
-  OP_UPDATE_FREQUENCY_LABELS,
   type ElementDataType,
   type ElementOptionality,
   type ElementStatus,
-  type OpUpdateFrequency,
 } from '@/lib/elements'
-import { DATA_CLASSIFICATIONS, UNCLASSIFIED } from '@/lib/regulation'
+import { UNCLASSIFIED } from '@/lib/regulation'
 
 /* ------------------------------------------------------------------ */
 /* Data Catalog (v0.39.0 — เดิมชื่อ Data Domain Console) — เมนูอิสระภายใต้กลุ่ม Data Asset */
@@ -337,8 +334,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [elFormat, setElFormat] = useState('')
   const [elValueDomain, setElValueDomain] = useState('')
   /* ทะเบียนข้อมูลอ้างอิง (v0.31.0) — ผูก valueDomain กับทะเบียนค่ามาตรฐานแทนข้อความอิสระ */
-  const [elRefSet, setElRefSet] = useState('')
-  const [refSets, setRefSets] = useState<Array<{ id: string; code: string; name: string; status: string }>>([])
+  const [elRefSet, setElRefSet] = useState('') // v0.43.0 — ตัดออกจากฟอร์ม: คง state ไว้ passthrough ตอนแก้ไข (ไม่ส่ง = API คงค่าเดิม)
   const [elMaxLength, setElMaxLength] = useState('')
   const [elUnit, setElUnit] = useState('')
   const [elOwner, setElOwner] = useState('')
@@ -432,14 +428,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       .then((d) => {
         if (!alive) return
         setUsers((d?.users ?? []).filter((u: AssetUser & { status?: string }) => u.status === 'ACTIVE'))
-      })
-      .catch(() => undefined)
-    // ทะเบียนข้อมูลอ้างอิง (v0.31.0) — ตัวเลือกผูก valueDomain (เฉพาะทะเบียนที่อนุมัติแล้ว)
-    fetch('/api/reference/sets')
-      .then((r) => r.json())
-      .then((d) => {
-        if (!alive) return
-        setRefSets((d?.sets ?? []).filter((s: { status: string }) => s.status === 'ACTIVE'))
       })
       .catch(() => undefined)
     return () => {
@@ -741,23 +729,30 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
           optionality: elOptionality,
           sourceOrigin: elSourceOrigin.trim(),
           definition: elDefinition.trim(),
-          examples: elExamples.trim(),
           dataType: elDataType,
           formatPattern: elFormat.trim(),
-          valueDomain: elValueDomain.trim(),
-          referenceSetId: elRefSet,
           maxLength: elMaxLength.trim() === '' ? null : Number(elMaxLength),
-          unit: elUnit.trim(),
           ownerId: elOwner || null,
           stewardId: elSteward || null,
           custodianId: elCustodian || null,
           pii: elPii,
           isCde: elCde,
           isFinancial: elFinancial,
-          opUpdateFrequency: elOpFreq,
-          opNotes: elOpNotes.trim(),
-          classification: elClassification,
-          customFields: elCustom.trim() || '{}',
+          // v0.43.0 — ฟอร์มยึดโครงสร้างหน้ารายละเอียด 9 หัวข้อ: ตัด examples/valueDomain/unit/
+          // classification/opUpdateFrequency/opNotes/customFields และ referenceSetId ออกจากฟอร์ม
+          // สร้างใหม่ = ไม่ส่ง (API ใช้ค่า default) · แก้ไข = ส่งค่าเดิมกลับ (passthrough — API metaFields
+          // เขียนทับด้วยค่าว่างเมื่อไม่ส่ง, referenceSetId ไม่ส่ง = คงค่าเดิมตามสัญญา v0.31.0)
+          ...(isEdit
+            ? {
+                examples: elExamples,
+                valueDomain: elValueDomain.trim(),
+                unit: elUnit.trim(),
+                classification: elClassification,
+                opUpdateFrequency: elOpFreq,
+                opNotes: elOpNotes.trim(),
+                customFields: elCustom.trim() || '{}',
+              }
+            : {}),
         }),
       })
       const data = await res.json()
@@ -1719,29 +1714,43 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
       <Dialog open={elFormOpen} onOpenChange={setElFormOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{elFormMode === 'create' ? 'เพิ่ม Data Dictionary' : 'แก้ไขข้อมูลทะเบียน (Meta Data) ของ Data Dictionary'}</DialogTitle>
+            <DialogTitle>{elFormMode === 'create' ? 'เพิ่ม Data Dictionary' : 'แก้ไขข้อมูลทะเบียนของ Data Dictionary'}</DialogTitle>
             <DialogDescription>
               {elFormMode === 'create'
-                ? `ขั้นที่ 3 — สร้างใต้ Sub Data Domain "${elFormSubLabel}" — ตั้ง Business Name (เช่น ชื่อ-นามสกุลลูกค้า) เลือกคอลัมน์อ้างอิงจาก Data Asset และกรอกข้อมูลทะเบียน (รหัส EL-#### สร้างอัตโนมัติ · สถานะเริ่มต้น "ร่าง")`
-                : 'แก้ไขได้ทุกฟิลด์ของทะเบียน (สถานะเปลี่ยนผ่านส่วน "สถานะทะเบียน" ในหน้ารายละเอียด · ย้ายโดเมนย่อย = ลบแล้วสร้างใหม่เพื่อคงประวัติ)'}
+                ? `ขั้นที่ 3 — สร้างใต้ Sub Data Domain "${elFormSubLabel}" — โครงสร้าง 3 โซน 9 หัวข้อเดียวกับหน้ารายละเอียด (Business Name ถึง Owner / Steward) · รหัส EL-#### สร้างอัตโนมัติ · สถานะเริ่มต้น "ร่าง"`
+                : 'แก้ไขได้ทุกฟิลด์ตามโครงสร้าง 3 โซน 9 หัวข้อเดียวกับหน้ารายละเอียด (สถานะเปลี่ยนผ่านส่วน "สถานะทะเบียน" ในหน้ารายละเอียด · ย้ายโดเมนย่อย = ลบแล้วสร้างใหม่เพื่อคงประวัติ)'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-name">
-                  2.1 Business Name (ชื่อทางธุรกิจ) <span className="text-rose-600">*</span>
-                </Label>
-                <Input id="el-name" value={elName} onChange={(e) => setElName(e.target.value)} maxLength={ELEMENT_NAME_MAX} placeholder="เช่น ชื่อ-นามสกุลลูกค้า, รหัสสินค้า" />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-name-en">Business Name ภาษาอังกฤษ (ไม่บังคับ)</Label>
-                <Input id="el-name-en" value={elNameEn} onChange={(e) => setElNameEn(e.target.value)} maxLength={ELEMENT_NAME_MAX} placeholder="เช่น Customer Full Name" />
-              </div>
+            {/* สถานะทะเบียน — แสดงอย่างเดียว เปลี่ยนสถานะที่หน้ารายละเอียด (v0.43.0) */}
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+              <span className="text-muted-foreground">สถานะทะเบียน</span>
+              <Badge variant="outline" className={`text-[11px] ${(ELEMENT_STATUS_LABELS[elStatus as ElementStatus] ?? ELEMENT_STATUS_LABELS.DRAFT).chip}`}>
+                {(ELEMENT_STATUS_LABELS[elStatus as ElementStatus] ?? ELEMENT_STATUS_LABELS.DRAFT).th}
+              </Badge>
+              <span className="text-[10px] text-muted-foreground">
+                {elFormMode === 'create' ? 'รายการใหม่เริ่มต้นเป็น "ร่าง" — เปิดใช้งานได้จากหน้ารายละเอียด' : 'เปลี่ยนผ่านส่วน "สถานะทะเบียน" ในหน้ารายละเอียด'}
+              </span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            {/* ---------- โซน A — ระบุตัวตน (Identification): 2.1–2.3 ---------- */}
+            <section className="grid gap-3 rounded-lg border p-3" aria-label="โซน A — ระบุตัวตน">
+              <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
+                <BookText className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน A — ระบุตัวตน (Identification)
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-name">
+                    2.1 Business Name (ชื่อทางธุรกิจ) <span className="text-rose-600">*</span>
+                  </Label>
+                  <Input id="el-name" value={elName} onChange={(e) => setElName(e.target.value)} maxLength={ELEMENT_NAME_MAX} placeholder="เช่น ชื่อ-นามสกุลลูกค้า, รหัสสินค้า" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-name-en">Business Name ภาษาอังกฤษ (ไม่บังคับ)</Label>
+                  <Input id="el-name-en" value={elNameEn} onChange={(e) => setElNameEn(e.target.value)} maxLength={ELEMENT_NAME_MAX} placeholder="เช่น Customer Full Name" />
+                </div>
+              </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="el-technical">2.2 Technical Name / Field Name (ชื่อในระบบ/ฐานข้อมูล)</Label>
+                <Label htmlFor="el-technical">2.2 Technical Name / Field Name (ชื่อในระบบหรือฐานข้อมูล)</Label>
                 <Input
                   id="el-technical"
                   value={elTechnicalName}
@@ -1752,301 +1761,212 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="el-optionality">2.7 Multiplicity / Optionality (เงื่อนไขการบังคับใช้)</Label>
-                <Select value={elOptionality} onValueChange={setElOptionality}>
-                  <SelectTrigger id="el-optionality" aria-label="เงื่อนไขการบังคับใช้ของข้อมูล">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ELEMENT_OPTIONALITIES.map((o) => (
-                      <SelectItem key={o} value={o}>
-                        {ELEMENT_OPTIONALITY_LABELS[o].th} {ELEMENT_OPTIONALITY_LABELS[o].notation} — {ELEMENT_OPTIONALITY_LABELS[o].desc}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="el-source-origin">2.8 Source / Origin (แหล่งที่มาของข้อมูล — ไม่บังคับ)</Label>
-              <Input
-                id="el-source-origin"
-                value={elSourceOrigin}
-                onChange={(e) => setElSourceOrigin(e.target.value)}
-                maxLength={ELEMENT_TEXT_MAX}
-                placeholder="เช่น มาจากฟอร์มสมัครสมาชิก, มาจากระบบ POS (คอลัมน์จริงที่ผูกไว้แสดงในหน้ารายละเอียด)"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="el-definition">2.3 Definition / Description (คำอธิบายความหมาย)</Label>
-              <Textarea
-                id="el-definition"
-                value={elDefinition}
-                onChange={(e) => setElDefinition(e.target.value)}
-                rows={2}
-                maxLength={ELEMENT_TEXT_MAX}
-                placeholder="อธิบายความหมายและขอบเขตของข้อมูลนี้ เช่น ที่อยู่อีเมลสำหรับติดต่อลูกค้า ต้องอยู่ในรูปแบบอีเมลที่ถูกต้อง"
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-examples">ตัวอย่างค่า</Label>
-                <Input id="el-examples" value={elExamples} onChange={(e) => setElExamples(e.target.value)} maxLength={ELEMENT_TEXT_MAX} placeholder="เช่น anan.jaidee@example.co.th" />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-datatype">2.4 Data Type (ประเภทของข้อมูล)</Label>
-                <Select value={elDataType} onValueChange={setElDataType}>
-                  <SelectTrigger id="el-datatype" aria-label="ประเภทของข้อมูล">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ELEMENT_DATA_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {ELEMENT_DATA_TYPE_LABELS[t].th} ({t})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-format">2.6 Format / Pattern (รูปแบบการแสดงผล)</Label>
-                <Input id="el-format" value={elFormat} onChange={(e) => setElFormat(e.target.value)} maxLength={ELEMENT_TEXT_MAX} placeholder="เช่น YYYY-MM-DD หรือ 0xx-xxx-xxxx" />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-valuedomain">ค่าอนุญาต (Value Domain)</Label>
-                <Input id="el-valuedomain" value={elValueDomain} onChange={(e) => setElValueDomain(e.target.value)} maxLength={ELEMENT_TEXT_MAX} placeholder="เช่น USD, EUR, THB หรือ ≥ 0" />
-              </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="el-refset">ผูกทะเบียนข้อมูลอ้างอิง (ไม่บังคับ — v0.31.0)</Label>
-              <Select value={elRefSet || NO_DOMAIN} onValueChange={(v) => setElRefSet(v === NO_DOMAIN ? '' : v)}>
-                <SelectTrigger id="el-refset">
-                  <SelectValue placeholder="— ข้อความอิสระ (ไม่ผูกทะเบียน) —" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_DOMAIN}>— ข้อความอิสระ (ไม่ผูกทะเบียน) —</SelectItem>
-                  {refSets.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} ({s.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[10px] text-muted-foreground">
-                ผูกแล้วค่าอนุญาตอ้างอิงจากทะเบียนเดียวกับกฎ IN_LIST/REFERENCE_MATCH — แก้ค่าที่หน้า "ข้อมูลอ้างอิง" (Data Asset) จุดเดียว
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-maxlen">2.5 Data Length (ความยาวสูงสุด — เช่น Varchar(100))</Label>
-                <Input id="el-maxlen" type="number" min={0} value={elMaxLength} onChange={(e) => setElMaxLength(e.target.value)} placeholder="ไม่ระบุ" />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-unit">หน่วย</Label>
-                <Input id="el-unit" value={elUnit} onChange={(e) => setElUnit(e.target.value)} maxLength={40} placeholder="เช่น THB, %" />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>สถานะ (workflow อนุมัติ)</Label>
-                <div className="flex h-9 items-center">
-                  <Badge variant="outline" className={`text-[11px] ${(ELEMENT_STATUS_LABELS[elStatus as ElementStatus] ?? ELEMENT_STATUS_LABELS.DRAFT).chip}`}>
-                    {(ELEMENT_STATUS_LABELS[elStatus as ElementStatus] ?? ELEMENT_STATUS_LABELS.DRAFT).th}
-                  </Badge>
-                  <span className="ml-2 text-[10px] text-muted-foreground">เปลี่ยนผ่านแท็บธรรมาภิบาล</span>
-                </div>
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-owner">เจ้าของข้อมูล (Data Owner)</Label>
-                <Select value={elOwner || NO_DOMAIN} onValueChange={(v) => setElOwner(v === NO_DOMAIN ? '' : v)}>
-                  <SelectTrigger id="el-owner" aria-label="เจ้าของข้อมูล">
-                    <SelectValue placeholder="— ไม่ระบุ —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
-                    {users.map((u) => (
-                      <SelectItem key={u.email} value={u.email}>
-                        {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-steward">ผู้ดูแลข้อมูล (Data Steward)</Label>
-                <Select value={elSteward || NO_DOMAIN} onValueChange={(v) => setElSteward(v === NO_DOMAIN ? '' : v)}>
-                  <SelectTrigger id="el-steward" aria-label="ผู้ดูแลข้อมูล">
-                    <SelectValue placeholder="— ไม่ระบุ —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
-                    {users.map((u) => (
-                      <SelectItem key={u.email} value={u.email}>
-                        {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-custodian">ผู้เก็บรักษาข้อมูล (Data Custodian)</Label>
-                <Select value={elCustodian || NO_DOMAIN} onValueChange={(v) => setElCustodian(v === NO_DOMAIN ? '' : v)}>
-                  <SelectTrigger id="el-custodian" aria-label="ผู้เก็บรักษาข้อมูล">
-                    <SelectValue placeholder="— ไม่ระบุ —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
-                    {users.map((u) => (
-                      <SelectItem key={u.email} value={u.email}>
-                        {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-classification">การจำแนกข้อมูล</Label>
-                <Select value={elClassification} onValueChange={setElClassification}>
-                  <SelectTrigger id="el-classification" aria-label="การจำแนกข้อมูล">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={UNCLASSIFIED}>ไม่ระบุ</SelectItem>
-                    {DATA_CLASSIFICATIONS.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.th} ({c.id})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
-              <div>
-                <Label htmlFor="el-pii" className="text-sm">
-                  เป็นข้อมูลส่วนบุคคล (PII)
-                </Label>
-                <p className="text-[11px] text-muted-foreground">เมื่อเป็น PII ระบบจะปิดบังค่าตามบทบาทเมื่อแสดงผล (PDPA)</p>
-              </div>
-              <Switch id="el-pii" checked={elPii} onCheckedChange={setElPii} aria-label="เปิด/ปิดสถานะ PII" />
-            </div>
-            {/* ธงพิเศษ — เฉพาะธงที่มีผลต่อระบบจริง */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
-                <div>
-                  <Label htmlFor="el-cde" className="flex items-center gap-1 text-sm">
-                    <Star className="size-3.5 text-amber-600" aria-hidden="true" /> CDE — ข้อมูลวิกฤต
-                  </Label>
-                  <p className="text-[11px] text-muted-foreground">แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำเป็นความเสี่ยง · เตือนเมื่อยังไม่มีกฎ</p>
-                </div>
-                <Switch id="el-cde" checked={elCde} onCheckedChange={setElCde} aria-label="เปิด/ปิดธง CDE" />
-              </div>
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50/60 p-3">
-                <div>
-                  <Label htmlFor="el-financial" className="flex items-center gap-1 text-sm">
-                    <Banknote className="size-3.5 text-teal-600" aria-hidden="true" /> ผลต่อการรายงานการเงิน
-                  </Label>
-                  <p className="text-[11px] text-muted-foreground">แดชบอร์ดผู้บริหารนับความเสี่ยงรายงานเงินเมื่อคะแนนต่ำกว่าเกณฑ์</p>
-                </div>
-                <Switch id="el-financial" checked={elFinancial} onCheckedChange={setElFinancial} aria-label="เปิด/ปิดธงการเงิน" />
-              </div>
-            </div>
-            {/* เชิงปฏิบัติการ — กรอกมือ (ค่าจริงจากระบบแสดงในหน้ารายละเอียด) */}
-            <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-opfreq">ความถี่การปรับปรุงข้อมูล (เชิงปฏิบัติการ)</Label>
-                <Select value={elOpFreq || NO_DOMAIN} onValueChange={(v) => setElOpFreq(v === NO_DOMAIN ? '' : v)}>
-                  <SelectTrigger id="el-opfreq" aria-label="ความถี่การปรับปรุงข้อมูล">
-                    <SelectValue placeholder="— ไม่ระบุ —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
-                    {OP_UPDATE_FREQUENCIES.map((f) => (
-                      <SelectItem key={f} value={f}>
-                        {OP_UPDATE_FREQUENCY_LABELS[f].th} ({f})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-opnotes">หมายเหตุเชิงปฏิบัติการ</Label>
-                <Input
-                  id="el-opnotes"
-                  value={elOpNotes}
-                  onChange={(e) => setElOpNotes(e.target.value)}
+                <Label htmlFor="el-definition">2.3 Definition / Description (คำอธิบายความหมาย)</Label>
+                <Textarea
+                  id="el-definition"
+                  value={elDefinition}
+                  onChange={(e) => setElDefinition(e.target.value)}
+                  rows={2}
                   maxLength={ELEMENT_TEXT_MAX}
-                  placeholder="เช่น โหลดข้อมูลทุกวัน 06:00 น. โดยทีม Data Engineering"
+                  placeholder="อธิบายความหมายและขอบเขตของข้อมูลนี้ เช่น ที่อยู่อีเมลสำหรับติดต่อลูกค้า ต้องอยู่ในรูปแบบอีเมลที่ถูกต้อง"
                 />
               </div>
-              <p className="text-[11px] text-muted-foreground sm:col-span-2">
-                ค่าจริงจากระบบ (จำนวนคอลัมน์ที่แมป / กฎที่ผูก / ผลรันตรวจล่าสุด / คะแนน) แสดงในเมนูงานด้านคุณภาพข้อมูล — หน้ารายละเอียด Data Dictionary แยกส่วนงานเฉพาะข้อมูลทะเบียนตามหลัก Data Governance
+            </section>
+            {/* ---------- โซน B — โครงสร้างข้อมูล (Data Structure): 2.4–2.7 + ธง CDE/การเงิน/PII ---------- */}
+            <section className="grid gap-3 rounded-lg border p-3" aria-label="โซน B — โครงสร้างข้อมูล">
+              <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
+                <Cog className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน B — โครงสร้างข้อมูล (Data Structure)
               </p>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="el-custom">Field เสริม (JSON object — ไม่บังคับ)</Label>
-              <Textarea
-                id="el-custom"
-                value={elCustom}
-                onChange={(e) => setElCustom(e.target.value)}
-                rows={2}
-                className="font-mono text-xs"
-                placeholder='{"source_system": "CRM", "update_frequency": "daily"}'
-              />
-            </div>
-
-            {/* v0.39.0 — คอลัมน์อ้างอิงจาก Data Asset (reference ว่านำมาจากข้อมูลที่ไหน) */}
-            <div className="grid gap-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
-                <Link2 className="size-3.5" aria-hidden="true" /> คอลัมน์อ้างอิงจาก Data Asset (Reference) — ระบุว่าข้อมูลนี้นำมาจากที่ใด
-              </p>
-              <Select value={elRefAssetId} onValueChange={(v) => void loadElRefColumns(v)}>
-                <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือก Data Asset เพื่อเลือกคอลัมน์อ้างอิง">
-                  <SelectValue placeholder="— เลือก Data Asset จากคลัง —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {assets.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name} · {a.columnCount} คอลัมน์
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {elRefAssetId && (
-                elRefLoading ? (
-                  <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> กำลังโหลดคอลัมน์…
-                  </div>
-                ) : (
-                  <div className="grid max-h-40 gap-1 overflow-y-auto rounded border bg-card p-2 sm:grid-cols-2" role="group" aria-label="เลือกคอลัมน์อ้างอิง">
-                    {elRefColumns.map((c) => {
-                      const checked = elRefDraft.some((m) => m.assetId === elRefAssetId && m.columnName === c.name)
-                      return (
-                        <label key={c.name} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/60">
-                          <Checkbox checked={checked} onCheckedChange={() => toggleElRef(elRefAssetId, c.name)} aria-label={`เลือกคอลัมน์ ${c.name}`} />
-                          <span className="font-mono">{c.name}</span>
-                          <span className="text-[10px] text-muted-foreground">{DATA_TYPE_LABELS[c.dataType] ?? c.dataType}</span>
-                        </label>
-                      )
-                    })}
-                    {elRefColumns.length === 0 && <p className="p-2 text-xs text-muted-foreground">ไม่พบคอลัมน์ของ Data Asset นี้</p>}
-                  </div>
-                )
-              )}
-              {elRefDraft.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {elRefDraft.map((m) => {
-                    const asset = assets.find((a) => a.id === m.assetId)
-                    return <ReferenceChip key={`${m.assetId}.${m.columnName}`} assetName={asset?.name ?? '(asset)'} columnName={m.columnName} />
-                  })}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-datatype">2.4 Data Type (ประเภทของข้อมูล)</Label>
+                  <Select value={elDataType} onValueChange={setElDataType}>
+                    <SelectTrigger id="el-datatype" aria-label="ประเภทของข้อมูล">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ELEMENT_DATA_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {ELEMENT_DATA_TYPE_LABELS[t].th} ({t})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-              <p className="text-[10px] text-muted-foreground">
-                เลือกแล้ว {elRefDraft.length} คอลัมน์ — reference จะแสดงบนแคตตาล็อกและหัวข้อ 2.8 Source / Origin ว่า Data Dictionary นี้นำมาจาก Data Asset ใดคอลัมน์ใด (แก้ไขภายหลังได้ที่ปุ่ม "แก้ไข" ในหน้ารายละเอียด)
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-maxlen">2.5 Data Length (ความยาวสูงสุด — เช่น Varchar(100))</Label>
+                  <Input id="el-maxlen" type="number" min={0} value={elMaxLength} onChange={(e) => setElMaxLength(e.target.value)} placeholder="ไม่ระบุ" />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-format">2.6 Format / Pattern (รูปแบบการแสดงผล)</Label>
+                  <Input id="el-format" value={elFormat} onChange={(e) => setElFormat(e.target.value)} maxLength={ELEMENT_TEXT_MAX} placeholder="เช่น YYYY-MM-DD หรือ 0xx-xxx-xxxx" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-optionality">2.7 Multiplicity / Optionality (เงื่อนไขการบังคับใช้)</Label>
+                  <Select value={elOptionality} onValueChange={setElOptionality}>
+                    <SelectTrigger id="el-optionality" aria-label="เงื่อนไขการบังคับใช้ของข้อมูล">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ELEMENT_OPTIONALITIES.map((o) => (
+                        <SelectItem key={o} value={o}>
+                          {ELEMENT_OPTIONALITY_LABELS[o].th} {ELEMENT_OPTIONALITY_LABELS[o].notation} — {ELEMENT_OPTIONALITY_LABELS[o].desc}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {/* ธงข้อมูล — CDE / การเงิน / PII (แสดงเป็น badge ที่หัวหน้ารายละเอียด · มีผลต่อระบบจริง) */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                  <div>
+                    <Label htmlFor="el-cde" className="flex items-center gap-1 text-sm">
+                      <Star className="size-3.5 text-amber-600" aria-hidden="true" /> CDE — ข้อมูลวิกฤต
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">แดชบอร์ดผู้บริหารนับความครอบคลุม/คะแนนต่ำเป็นความเสี่ยง · เตือนเมื่อยังไม่มีกฎ</p>
+                  </div>
+                  <Switch id="el-cde" checked={elCde} onCheckedChange={setElCde} aria-label="เปิด/ปิดธง CDE" />
+                </div>
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50/60 p-3">
+                  <div>
+                    <Label htmlFor="el-financial" className="flex items-center gap-1 text-sm">
+                      <Banknote className="size-3.5 text-teal-600" aria-hidden="true" /> ผลต่อการรายงานการเงิน
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">แดชบอร์ดผู้บริหารนับความเสี่ยงรายงานเงินเมื่อคะแนนต่ำกว่าเกณฑ์</p>
+                  </div>
+                  <Switch id="el-financial" checked={elFinancial} onCheckedChange={setElFinancial} aria-label="เปิด/ปิดธงการเงิน" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+                <div>
+                  <Label htmlFor="el-pii" className="text-sm">
+                    เป็นข้อมูลส่วนบุคคล (PII)
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">เมื่อเป็น PII ระบบจะปิดบังค่าตามบทบาทเมื่อแสดงผล (PDPA)</p>
+                </div>
+                <Switch id="el-pii" checked={elPii} onCheckedChange={setElPii} aria-label="เปิด/ปิดสถานะ PII" />
+              </div>
+            </section>
+            {/* ---------- โซน C — ที่มาและผู้รับผิดชอบ (Source & Accountability): 2.8–2.9 ---------- */}
+            <section className="grid gap-3 rounded-lg border p-3" aria-label="โซน C — ที่มาและผู้รับผิดชอบ">
+              <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
+                <Briefcase className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน C — ที่มาและผู้รับผิดชอบ (Source &amp; Accountability)
               </p>
-            </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="el-source-origin">2.8 Source / Origin (แหล่งที่มาของข้อมูล — ไม่บังคับ)</Label>
+                <Input
+                  id="el-source-origin"
+                  value={elSourceOrigin}
+                  onChange={(e) => setElSourceOrigin(e.target.value)}
+                  maxLength={ELEMENT_TEXT_MAX}
+                  placeholder="เช่น มาจากฟอร์มสมัครสมาชิก, มาจากระบบ POS (คอลัมน์จริงที่ผูกไว้แสดงในหน้ารายละเอียด)"
+                />
+              </div>
+              {/* คอลัมน์อ้างอิงจาก Data Asset (v0.39.0 — ย้ายเข้าโซน C คู่กับหัวข้อ 2.8 ใน v0.43.0) */}
+              <div className="grid gap-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
+                  <Link2 className="size-3.5" aria-hidden="true" /> คอลัมน์อ้างอิงจาก Data Asset (Reference) — ระบุว่าข้อมูลนี้นำมาจากที่ใด
+                </p>
+                <Select value={elRefAssetId} onValueChange={(v) => void loadElRefColumns(v)}>
+                  <SelectTrigger className="h-8 w-full text-xs" aria-label="เลือก Data Asset เพื่อเลือกคอลัมน์อ้างอิง">
+                    <SelectValue placeholder="— เลือก Data Asset จากคลัง —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assets.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name} · {a.columnCount} คอลัมน์
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {elRefAssetId && (
+                  elRefLoading ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> กำลังโหลดคอลัมน์…
+                    </div>
+                  ) : (
+                    <div className="grid max-h-40 gap-1 overflow-y-auto rounded border bg-card p-2 sm:grid-cols-2" role="group" aria-label="เลือกคอลัมน์อ้างอิง">
+                      {elRefColumns.map((c) => {
+                        const checked = elRefDraft.some((m) => m.assetId === elRefAssetId && m.columnName === c.name)
+                        return (
+                          <label key={c.name} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/60">
+                            <Checkbox checked={checked} onCheckedChange={() => toggleElRef(elRefAssetId, c.name)} aria-label={`เลือกคอลัมน์ ${c.name}`} />
+                            <span className="font-mono">{c.name}</span>
+                            <span className="text-[10px] text-muted-foreground">{DATA_TYPE_LABELS[c.dataType] ?? c.dataType}</span>
+                          </label>
+                        )
+                      })}
+                      {elRefColumns.length === 0 && <p className="p-2 text-xs text-muted-foreground">ไม่พบคอลัมน์ของ Data Asset นี้</p>}
+                    </div>
+                  )
+                )}
+                {elRefDraft.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {elRefDraft.map((m) => {
+                      const asset = assets.find((a) => a.id === m.assetId)
+                      return <ReferenceChip key={`${m.assetId}.${m.columnName}`} assetName={asset?.name ?? '(asset)'} columnName={m.columnName} />
+                    })}
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground">
+                  เลือกแล้ว {elRefDraft.length} คอลัมน์ — reference จะแสดงบนแคตตาล็อกและหัวข้อ 2.8 Source / Origin ว่า Data Dictionary นี้นำมาจาก Data Asset ใดคอลัมน์ใด
+                </p>
+              </div>
+              <p className="text-xs font-semibold">2.9 OWNER / STEWARD (ผู้ดูแลข้อมูล)</p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-owner">เจ้าของข้อมูล (Data Owner)</Label>
+                  <Select value={elOwner || NO_DOMAIN} onValueChange={(v) => setElOwner(v === NO_DOMAIN ? '' : v)}>
+                    <SelectTrigger id="el-owner" aria-label="เจ้าของข้อมูล">
+                      <SelectValue placeholder="— ไม่ระบุ —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.email} value={u.email}>
+                          {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-steward">ผู้ดูแลข้อมูล (Data Steward)</Label>
+                  <Select value={elSteward || NO_DOMAIN} onValueChange={(v) => setElSteward(v === NO_DOMAIN ? '' : v)}>
+                    <SelectTrigger id="el-steward" aria-label="ผู้ดูแลข้อมูล">
+                      <SelectValue placeholder="— ไม่ระบุ —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.email} value={u.email}>
+                          {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="el-custodian">ผู้เก็บรักษาข้อมูล (Data Custodian)</Label>
+                  <Select value={elCustodian || NO_DOMAIN} onValueChange={(v) => setElCustodian(v === NO_DOMAIN ? '' : v)}>
+                    <SelectTrigger id="el-custodian" aria-label="ผู้เก็บรักษาข้อมูล">
+                      <SelectValue placeholder="— ไม่ระบุ —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_DOMAIN}>— ไม่ระบุ —</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.email} value={u.email}>
+                          {u.name} · {ROLES[u.role as keyof typeof ROLES]?.th ?? u.role}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setElFormOpen(false)}>
