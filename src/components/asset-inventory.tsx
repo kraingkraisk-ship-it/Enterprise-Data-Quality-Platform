@@ -118,12 +118,9 @@ function fmtDate(s: string): string {
 export function AssetInventory({
   active,
   reloadTick,
-  onGoDomains,
 }: {
   active?: boolean
   reloadTick?: number
-  /** ปุ่มไปหน้าจัดการ Data Domain (เมนูอิสระ v0.15.0) */
-  onGoDomains?: () => void
 }) {
   const { toast } = useToast()
   const [assets, setAssets] = useState<AssetItem[]>([])
@@ -298,11 +295,7 @@ export function AssetInventory({
           <p className="text-sm text-muted-foreground">ข้อมูลที่นำเข้ามาทั้งหมดในระบบ — กดที่รายการเพื่อสำรวจคอลัมน์และพรีวิวข้อมูล</p>
         </div>
         <div className="flex items-center gap-2">
-          {onGoDomains && (
-            <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={onGoDomains}>
-              <FolderTree className="size-4" aria-hidden="true" /> จัดการ Data Domain
-            </Button>
-          )}
+          {/* v0.38.1 — ตัดปุ่ม "จัดการ Data Domain" ออก: การจัดการโครงสร้างอยู่ที่หน้า Data Domain · Element · Meta ในเมนูแล้ว (หลัก Data Catalog — หน้า inventory ทำหน้าที่ค้นหา/เข้าใจ asset เท่านั้น) */}
           {/* v0.32.0 — มุมมองบทบาทใช้ผู้ใช้ปัจจุบันจาก header — แสดงเป็นชิปอ่านอย่างเดียว */}
           <div
             className="flex h-9 items-center gap-1.5 rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground"
@@ -363,9 +356,7 @@ export function AssetInventory({
       {/* แถวกรองตามโดเมนข้อมูล */}
       {domainTree.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="กรองรายการตามโดเมนข้อมูล">
-          <span className="mr-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
-            <FolderTree className="size-3.5" aria-hidden="true" /> โดเมน:
-          </span>
+          {/* v0.38.1 — ตัดคำนำหน้า "โดเมน:" — ชิปมีจุดสี + ชื่อ + จำนวน เข้าใจได้เอง (aria-label ของ group ยังอธิบายครบ) */}
           <button type="button" onClick={() => setDomainFilter('ALL')} className={domainChipCls(domainFilter === 'ALL')} aria-pressed={domainFilter === 'ALL'}>
             ทั้งหมด
           </button>
@@ -429,7 +420,8 @@ export function AssetInventory({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        // v0.38.1 — เพิ่ม grid-cols-1 (minmax(0,1fr)) กันการ์ดล้นจอ mobile 375 เมื่อข้อความยาว (เดิม track auto ขยายตาม max-content)
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filteredAssets.map((a) => {
             const meta = SOURCE_META[a.sourceType] ?? SOURCE_META.CSV
             return (

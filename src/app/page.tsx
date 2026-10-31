@@ -135,7 +135,7 @@ function HomeShell() {
             <AssetImport onGoInventory={() => setView('asset-inventory')} />
           </div>
           <div className={view === 'asset-inventory' ? '' : 'hidden'} aria-hidden={view !== 'asset-inventory'}>
-            <AssetInventory active={view === 'asset-inventory'} onGoDomains={() => setView('asset-domain')} />
+            <AssetInventory active={view === 'asset-inventory'} />
           </div>
 
           {/* Data Domain Console — เมนูอิสระภายใต้กลุ่ม Data Asset (v0.15.0)
