@@ -28,6 +28,7 @@ import {
   Send,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Star,
   Trash2,
   XCircle,
@@ -85,6 +86,7 @@ import {
   ELEMENT_STATUS_LABELS,
   ELEMENT_TEXT_MAX,
   elementSensitivityLabel,
+  elementTypeRecommendation,
   suggestElementExample,
   type ElementDataType,
   type ElementOptionality,
@@ -362,10 +364,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
   const [elRefColumns, setElRefColumns] = useState<AssetColumn[]>([])
   const [elRefLoading, setElRefLoading] = useState(false)
   const [elRefDraft, setElRefDraft] = useState<Array<{ assetId: string; columnName: string; note?: string }>>([])
-  /* v0.44.0 — เลือกคอลัมน์จาก Data Asset มาเป็น Technical Name (หัวข้อ 3 โซน A) */
-  const [elTechAssetId, setElTechAssetId] = useState('')
-  const [elTechColumns, setElTechColumns] = useState<AssetColumn[]>([])
-  const [elTechLoading, setElTechLoading] = useState(false)
+  // v0.45.0 — หัวข้อ 3 Technical Name (โซน A) ถูกตัดออกจากฟอร์ม (ซ้ำกับหัวข้อ 2 คอลัมน์อ้างอิงโซน C)
+  // — state elTechnicalName คงไว้ passthrough ค่าเดิมตอนแก้ไข (ไม่มี UI ให้แก้)
 
   /* ---------- ฟอร์มโดเมน (สร้าง/แก้ไข/ลบ) ---------- */
   const [formOpen, setFormOpen] = useState(false)
@@ -682,8 +682,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElSensitivity('INTERNAL_USE') // v0.44.0 — เริ่มต้น "ใช้ภายในองค์กร"
     setElCustom('')
     setElRefAssetId('') // v0.39.0 — คอลัมน์อ้างอิงเริ่มว่าง
-    setElTechAssetId('') // v0.44.0 — Technical Name picker เริ่มว่าง
-    setElTechColumns([])
     setElRefColumns([])
     setElRefDraft([])
     setElFormOpen(true)
@@ -720,8 +718,6 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setElCustom(detail.customFields && detail.customFields !== '{}' ? detail.customFields : '')
     setElFormSubLabel(detail.subDomain.parent ? `${detail.subDomain.parent.name} / ${detail.subDomain.name}` : detail.subDomain.name)
     setElRefAssetId('') // v0.39.0 — prefill คอลัมน์อ้างอิงจาก mapping เดิม
-    setElTechAssetId('') // v0.44.0 — ไม่ auto-เลือก asset (ค่า technicalName เดิมแสดงเป็น "ค่าปัจจุบัน" ใน select)
-    setElTechColumns([])
     setElRefColumns([])
     setElRefDraft(detail.columnMappings.map((m) => ({ assetId: m.assetId, columnName: m.columnName, note: m.note })))
     setDetailOpen(false)
@@ -889,22 +885,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     })
   }
 
-  /* v0.44.0 — โหลดคอลัมน์ของ Data Asset สำหรับ picker "หัวข้อ 3 Technical Name" (โซน A) */
-  async function loadElTechColumns(id: string) {
-    setElTechAssetId(id)
-    setElTechColumns([])
-    if (!id) return
-    setElTechLoading(true)
-    try {
-      const res = await fetch(`/api/assets/${id}?pageSize=5&role=DATA_STEWARD`)
-      const data = await res.json()
-      if (res.ok) setElTechColumns(data?.columns ?? [])
-    } catch {
-      /* คงรายการเดิมไว้ */
-    } finally {
-      setElTechLoading(false)
-    }
-  }
+  /* v0.45.0 — หัวข้อ 3 Technical Name (โซน A) ถูกตัดออกจากฟอร์ม — ไม่มี picker อีกต่อไป */
 
   /* v0.44.0 — สร้าง "ตัวอย่างข้อมูล" ให้สอดคล้องกับหัวข้อ 1–3 ของโซน B (Data Type/Length/Format) ทันทีที่เปลี่ยน */
   function syncElExample(next: { dataType?: string; maxLength?: string; format?: string }) {
@@ -915,6 +896,24 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
         next.format ?? elFormat,
       ),
     )
+  }
+
+  /* v0.45.0 — ค่าแนะนำของประเภทข้อมูลปัจจุบัน (แถวสีเขียวใต้ช่อง 2–4 โซน B — กดเพื่อเติม) */
+  const elTypeRec = elementTypeRecommendation(elDataType)
+
+  /** v0.45.0 — กดค่าแนะนำ: เติมค่าลงช่องและสร้างตัวอย่างข้อมูลใหม่ให้สอดคล้อง */
+  function applyRecLength() {
+    const v = elTypeRec.length ?? ''
+    setElMaxLength(v)
+    syncElExample({ maxLength: v })
+  }
+  function applyRecFormat() {
+    const v = elTypeRec.format ?? ''
+    setElFormat(v)
+    syncElExample({ format: v })
+  }
+  function applyRecOptionality() {
+    setElOptionality(elTypeRec.optionality)
   }
 
   return (
@@ -1472,12 +1471,12 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                   กดที่หัวหมวดเพื่อยุบ/ขยายรายการภายใต้ได้
                 </li>
                 <li>
-                  สร้าง <span className="font-semibold text-foreground">Data Dictionary</span> — ตั้ง Business Name (เช่น ชื่อ-นามสกุลลูกค้า, รหัสสินค้า) และ Technical Name (เช่น cus_first_name) แล้วเลือกคอลัมน์อ้างอิงจาก Data Asset —
+                  สร้าง <span className="font-semibold text-foreground">Data Dictionary</span> — ตั้ง Business Name (เช่น ชื่อ-นามสกุลลูกค้า, รหัสสินค้า) แล้วเลือกคอลัมน์อ้างอิงจาก Data Asset —
                   ระบบแสดง reference ว่านำมาจากข้อมูลที่ไหน
                 </li>
                 <li>
-                  กำหนด <span className="font-semibold text-foreground">ข้อมูลทะเบียนให้ครบ 13 หัวข้อ</span> (v0.44.0 เริ่มนับ 1 ใหม่รายโซน) — โซน A: Business Name (ไทย/อังกฤษ) · Technical Name (เลือกคอลัมน์จาก Data Asset หรือพิมพ์เอง) · Definition — โซน B: Data Type (14 ชนิด) · Data Length · Format · Multiplicity/Optionality (บังคับกรอก/ไม่บังคับ + CDE) · ตัวอย่างข้อมูล (สร้างอัตโนมัติให้สอดคล้องกับ Type/Length/Format) · ระดับชั้นความลับ (Public → Secret) — โซน C: Source/Origin · คอลัมน์อ้างอิง · Owner/Steward —
-                  กดที่รายการเพื่อกางสรุป ธุรกิจ/เทคนิค หรือกด &quot;รายละเอียด Data Dictionary&quot; เพื่อดูครบทั้ง 13 หัวข้อ (แยกส่วนงานจากกฎ DQ — กฎจัดการที่เมนู Data Quality Rules)
+                  กำหนด <span className="font-semibold text-foreground">ข้อมูลทะเบียนให้ครบ 12 หัวข้อ</span> (v0.45.0 ตัด Technical Name ที่ซ้ำกับคอลัมน์อ้างอิงออก) — โซน A: Business Name (ไทย/อังกฤษ) · Definition — โซน B: Data Type (14 ชนิด) · Data Length · Format · Mandatory/Optional ช่องข้อมูลที่จำเป็น (+ CDE · ข้อ 2–4 มีค่าแนะนำสีเขียวกดเติมได้ตามชนิดข้อมูล) · ตัวอย่างข้อมูล (สร้างอัตโนมัติให้สอดคล้องกับ Type/Length/Format) · ระดับชั้นความลับ (Public → Secret) — โซน C: Source/Origin · คอลัมน์อ้างอิง · Owner/Steward —
+                  กดที่รายการเพื่อกางสรุป ธุรกิจ/เทคนิค หรือกด &quot;รายละเอียด Data Dictionary&quot; เพื่อดูครบทั้ง 12 หัวข้อ (แยกส่วนงานจากกฎ DQ — กฎจัดการที่เมนู Data Quality Rules)
                 </li>
               </ol>
             </div>
@@ -1544,12 +1543,12 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 </DialogTitle>
                 <DialogDescription>
                   Data Dictionary ใต้โดเมนย่อย &quot;{detail.subDomain.parent ? `${detail.subDomain.parent.name} / ` : ''}
-                  {detail.subDomain.name}&quot; — โครงสร้าง 3 โซน 13 หัวข้อ (Business Name ถึง Owner / Steward · v0.44.0 เริ่มนับ 1 ใหม่รายโซน)
+                  {detail.subDomain.name}&quot; — โครงสร้าง 3 โซน 12 หัวข้อ (Business Name ถึง Owner / Steward · v0.45.0 ตัด Technical Name ที่ซ้ำกับคอลัมน์อ้างอิงออก)
                 </DialogDescription>
               </DialogHeader>
 
               <div className="grid gap-3">
-                {/* ---------- โซน A — ระบุตัวตน (Identification): หัวข้อ 1–4 (v0.44.0 เริ่มนับ 1 ใหม่รายโซน — ตรงกับฟอร์ม) ---------- */}
+                {/* ---------- โซน A — ระบุตัวตน (Identification): หัวข้อ 1–3 (v0.45.0 ตัด Technical Name ออก — ตรงกับฟอร์ม) ---------- */}
                 <section className="rounded-lg border p-3" aria-label="โซน A — ระบุตัวตน">
                   <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                     <BookText className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน A — ระบุตัวตน (Identification)
@@ -1569,24 +1568,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                     </div>
                     <div>
                       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        3. Technical Name / Field Name (ชื่อในระบบหรือฐานข้อมูล)
-                      </p>
-                      {detail.technicalName ? (
-                        <p className="mt-0.5 break-words font-mono text-xs [overflow-wrap:anywhere]">{detail.technicalName}</p>
-                      ) : (
-                        <p className="mt-0.5 text-xs text-muted-foreground">— ยังไม่ระบุ (เช่น cus_first_name, product_id) —</p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        4. Definition / Description (คำอธิบายความหมาย)
+                        3. Definition / Description (คำอธิบายความหมาย)
                       </p>
                       <p className="mt-0.5 text-xs [overflow-wrap:anywhere]">{detail.definition || '— ยังไม่ระบุ —'}</p>
                     </div>
                   </div>
                 </section>
 
-                {/* ---------- โซน B — โครงสร้างข้อมูล (Data Structure): หัวข้อ 1–6 (v0.44.0 เพิ่มตัวอย่างข้อมูล + ระดับชั้นความลับ) ---------- */}
+                {/* ---------- โซน B — โครงสร้างข้อมูล (Data Structure): หัวข้อ 1–6 (v0.45.0 — ข้อ 4 เปลี่ยนชื่อเป็น Mandatory/Optional ช่องข้อมูลที่จำเป็น) ---------- */}
                 <section className="rounded-lg border p-3" aria-label="โซน B — โครงสร้างข้อมูล">
                   <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                     <Cog className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน B — โครงสร้างข้อมูล (Data Structure)
@@ -1611,7 +1600,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                       <p className="mt-0.5 break-words font-mono text-xs [overflow-wrap:anywhere]">{detail.formatPattern || '—'}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">4. Multiplicity / Optionality (เงื่อนไขการบังคับใช้)</p>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">4. Mandatory/Optional ช่องข้อมูลที่จำเป็น</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <Badge
                           variant="outline"
@@ -1621,7 +1610,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                               : 'border-slate-300 bg-slate-100 text-slate-600'
                           }`}
                         >
-                          {detail.optionality === 'REQUIRED' ? 'Required · บังคับกรอก [1..1]' : 'Optional · ไม่บังคับ [0..1]'}
+                          {ELEMENT_OPTIONALITY_LABELS[detail.optionality as ElementOptionality]?.th ?? detail.optionality}
                         </Badge>
                         {detail.isCde && (
                           <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] font-medium text-amber-800">
@@ -1792,8 +1781,8 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
             <DialogTitle>{elFormMode === 'create' ? 'เพิ่ม Data Dictionary' : 'แก้ไขข้อมูลทะเบียนของ Data Dictionary'}</DialogTitle>
             <DialogDescription>
               {elFormMode === 'create'
-                ? `ขั้นที่ 3 — สร้างใต้ Sub Data Domain "${elFormSubLabel}" — โครงสร้าง 3 โซน 13 หัวข้อเดียวกับหน้ารายละเอียด (Business Name ถึง Owner / Steward · v0.44.0 เลือกคอลัมน์จาก Data Asset + ตัวอย่างอัตโนมัติ + ระดับชั้นความลับ) · รหัส EL-#### สร้างอัตโนมัติ · สถานะเริ่มต้น "ร่าง"`
-                : 'แก้ไขได้ทุกฟิลด์ตามโครงสร้าง 3 โซน 13 หัวข้อเดียวกับหน้ารายละเอียด (สถานะเปลี่ยนผ่านส่วน "สถานะทะเบียน" ในหน้ารายละเอียด · ย้ายโดเมนย่อย = ลบแล้วสร้างใหม่เพื่อคงประวัติ)'}
+                ? `ขั้นที่ 3 — สร้างใต้ Sub Data Domain "${elFormSubLabel}" — โครงสร้าง 3 โซน 12 หัวข้อเดียวกับหน้ารายละเอียด (Business Name ถึง Owner / Steward · v0.45.0 ข้อ 2–4 มีค่าแนะนำกดเติมได้ + ตัวอย่างอัตโนมัติ + ระดับชั้นความลับ) · รหัส EL-#### สร้างอัตโนมัติ · สถานะเริ่มต้น "ร่าง"`
+                : 'แก้ไขได้ทุกฟิลด์ตามโครงสร้าง 3 โซน 12 หัวข้อเดียวกับหน้ารายละเอียด (สถานะเปลี่ยนผ่านส่วน "สถานะทะเบียน" ในหน้ารายละเอียด · ย้ายโดเมนย่อย = ลบแล้วสร้างใหม่เพื่อคงประวัติ)'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -1807,7 +1796,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 {elFormMode === 'create' ? 'รายการใหม่เริ่มต้นเป็น "ร่าง" — เปิดใช้งานได้จากหน้ารายละเอียด' : 'เปลี่ยนผ่านส่วน "สถานะทะเบียน" ในหน้ารายละเอียด'}
               </span>
             </div>
-            {/* ---------- โซน A — ระบุตัวตน (Identification): หัวข้อ 1–4 (v0.44.0 เริ่มนับ 1 ใหม่รายโซน) ---------- */}
+            {/* ---------- โซน A — ระบุตัวตน (Identification): หัวข้อ 1–3 (v0.45.0 ตัด Technical Name ออก — ซ้ำกับหัวข้อ 2 คอลัมน์อ้างอิงโซน C) ---------- */}
             <section className="grid gap-3 rounded-lg border p-3" aria-label="โซน A — ระบุตัวตน">
               <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                 <BookText className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน A — ระบุตัวตน (Identification)
@@ -1825,59 +1814,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 </div>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="el-technical">3. Technical Name / Field Name (ชื่อในระบบหรือฐานข้อมูล)</Label>
-                {/* v0.44.0 — เลือก column จาก Data Asset มาเป็น Technical Name (หรือพิมพ์เอง) */}
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Select value={elTechAssetId} onValueChange={(v) => void loadElTechColumns(v)}>
-                    <SelectTrigger className="h-9 w-full text-xs" aria-label="เลือก Data Asset ต้นทางของคอลัมน์">
-                      <SelectValue placeholder="— เลือก Data Asset —" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assets.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name} · {a.columnCount} คอลัมน์
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {elTechLoading ? (
-                    <div className="flex h-9 items-center gap-2 rounded-md border px-3 text-xs text-muted-foreground" aria-live="polite">
-                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> กำลังโหลดคอลัมน์…
-                    </div>
-                  ) : (
-                    <Select value={elTechnicalName} onValueChange={setElTechnicalName}>
-                      <SelectTrigger className="h-9 w-full font-mono text-xs" aria-label="เลือกคอลัมน์จาก Data Asset">
-                        <SelectValue placeholder={elTechAssetId ? '— เลือกคอลัมน์ —' : 'เลือก Data Asset ก่อน หรือพิมพ์เอง'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {elTechnicalName && !elTechColumns.some((c) => c.name === elTechnicalName) && (
-                          <SelectItem value={elTechnicalName}>
-                            {elTechnicalName} (ค่าปัจจุบัน)
-                          </SelectItem>
-                        )}
-                        {elTechColumns.map((c) => (
-                          <SelectItem key={c.name} value={c.name}>
-                            {c.name} · {DATA_TYPE_LABELS[c.dataType] ?? c.dataType}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                <Input
-                  id="el-technical"
-                  value={elTechnicalName}
-                  onChange={(e) => setElTechnicalName(e.target.value)}
-                  maxLength={ELEMENT_NAME_MAX}
-                  className="font-mono text-xs"
-                  placeholder="หรือพิมพ์ชื่อฟิลด์เอง เช่น cus_first_name, product_id"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  เลือก Data Asset แล้วเลือกคอลัมน์เพื่อกรอกให้อัตโนมัติ หรือพิมพ์เองก็ได้ — บันทึกลง Technical Name ค่าเดียวกัน
-                </p>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="el-definition">4. Definition / Description (คำอธิบายความหมาย)</Label>
+                <Label htmlFor="el-definition">3. Definition / Description (คำอธิบายความหมาย)</Label>
                 <Textarea
                   id="el-definition"
                   value={elDefinition}
@@ -1888,7 +1825,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 />
               </div>
             </section>
-            {/* ---------- โซน B — โครงสร้างข้อมูล (Data Structure): หัวข้อ 1–6 + ธง CDE/PII (v0.44.0 — ตัดธง “ผลต่อการรายงานการเงิน” ออกจากฟอร์ม ค่าเดิมคงอยู่ในระบบ) ---------- */}
+            {/* ---------- โซน B — โครงสร้างข้อมูล (Data Structure): หัวข้อ 1–6 + ธง CDE/PII (v0.45.0 — ข้อ 2–4 มีค่าแนะนำกดเติมได้ · ข้อ 4 เปลี่ยนชื่อเป็น Mandatory/Optional) ---------- */}
             <section className="grid gap-3 rounded-lg border p-3" aria-label="โซน B — โครงสร้างข้อมูล">
               <p className="flex items-center gap-1.5 border-b pb-2 text-xs font-semibold">
                 <Cog className="size-3.5 text-emerald-700" aria-hidden="true" /> โซน B — โครงสร้างข้อมูล (Data Structure)
@@ -1929,6 +1866,16 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                     }}
                     placeholder="ไม่ระบุ"
                   />
+                  {/* v0.45.0 — ค่าแนะนำ (สีเขียว) ตามหัวข้อ 1 Data Type — กดเพื่อเติมอัตโนมัติ */}
+                  <button
+                    type="button"
+                    onClick={applyRecLength}
+                    className="-my-1 flex w-fit items-center gap-1 py-1 text-[11px] text-emerald-700 underline-offset-2 hover:text-emerald-800 hover:underline"
+                    aria-label={`เติมค่าแนะนำความยาว ${elTypeRec.length ?? 'ไม่ระบุ'}`}
+                  >
+                    <Sparkles className="size-3 shrink-0" aria-hidden="true" />
+                    ค่าแนะนำ: {elTypeRec.length ?? 'ไม่ระบุ'} — กดเพื่อเติม
+                  </button>
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1945,21 +1892,41 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                     maxLength={ELEMENT_TEXT_MAX}
                     placeholder="เช่น YYYY-MM-DD หรือ 0xx-xxx-xxxx"
                   />
+                  {/* v0.45.0 — ค่าแนะนำ (สีเขียว) ตามหัวข้อ 1 Data Type — กดเพื่อเติมอัตโนมัติ */}
+                  <button
+                    type="button"
+                    onClick={applyRecFormat}
+                    className="-my-1 flex w-fit items-center gap-1 py-1 text-[11px] text-emerald-700 underline-offset-2 hover:text-emerald-800 hover:underline"
+                    aria-label={`เติมค่าแนะนำรูปแบบ ${elTypeRec.format ?? 'ไม่กำหนด'}`}
+                  >
+                    <Sparkles className="size-3 shrink-0" aria-hidden="true" />
+                    ค่าแนะนำ: {elTypeRec.format ?? 'ไม่กำหนด'} — กดเพื่อเติม
+                  </button>
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="el-optionality">4. Multiplicity / Optionality (เงื่อนไขการบังคับใช้)</Label>
+                  <Label htmlFor="el-optionality">4. Mandatory/Optional ช่องข้อมูลที่จำเป็น</Label>
                   <Select value={elOptionality} onValueChange={setElOptionality}>
-                    <SelectTrigger id="el-optionality" aria-label="เงื่อนไขการบังคับใช้ของข้อมูล" className="w-full">
+                    <SelectTrigger id="el-optionality" aria-label="Mandatory/Optional ช่องข้อมูลที่จำเป็น" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {ELEMENT_OPTIONALITIES.map((o) => (
                         <SelectItem key={o} value={o}>
-                          {ELEMENT_OPTIONALITY_LABELS[o].th} {ELEMENT_OPTIONALITY_LABELS[o].notation} — {ELEMENT_OPTIONALITY_LABELS[o].desc}
+                          {ELEMENT_OPTIONALITY_LABELS[o].th}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {/* v0.45.0 — ค่าแนะนำ (สีเขียว) ตามหัวข้อ 1 Data Type — กดเพื่อเลือกอัตโนมัติ */}
+                  <button
+                    type="button"
+                    onClick={applyRecOptionality}
+                    className="-my-1 flex w-fit items-center gap-1 py-1 text-[11px] text-emerald-700 underline-offset-2 hover:text-emerald-800 hover:underline"
+                    aria-label={`เลือกค่าแนะนำ ${ELEMENT_OPTIONALITY_LABELS[elTypeRec.optionality].th}`}
+                  >
+                    <Sparkles className="size-3 shrink-0" aria-hidden="true" />
+                    ค่าแนะนำ: {ELEMENT_OPTIONALITY_LABELS[elTypeRec.optionality].th} — กดเพื่อเติม
+                  </button>
                 </div>
               </div>
               {/* หัวข้อ 5–6 (v0.44.0): ตัวอย่างข้อมูลอัตโนมัติ + ระดับชั้นความลับ */}

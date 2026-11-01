@@ -54,13 +54,52 @@ export const ELEMENT_DATA_TYPE_LABELS: Record<ElementDataType, { th: string; en:
   JSON: { th: 'โครงสร้าง JSON', en: 'JSON' },
 }
 
-/** เงื่อนไขการบังคับใช้ (Task 74 v0.42.0: Multiplicity / Optionality) — REQUIRED ต้องมีข้อมูลเสมอ [1..1], OPTIONAL จะมีหรือไม่มีก็ได้ [0..1] */
+/**
+ * เงื่อนไขการบังคับใช้ (Task 74 v0.42.0: Multiplicity / Optionality)
+ * v0.45.0 — เปลี่ยนชื่อหัวข้อเป็น "Mandatory/Optional ช่องข้อมูลที่จำเป็น" + เปลี่ยนข้อความตัวเลือก
+ * (ตัดสัญลักษณ์ [1..1]/[0..1] ออกจาก UI ทั้งหมด — DB ยังเก็บ REQUIRED/OPTIONAL เดิม ไม่ต้อง migrate)
+ */
 export const ELEMENT_OPTIONALITIES = ['REQUIRED', 'OPTIONAL'] as const
 export type ElementOptionality = (typeof ELEMENT_OPTIONALITIES)[number]
 
-export const ELEMENT_OPTIONALITY_LABELS: Record<ElementOptionality, { th: string; notation: string; desc: string }> = {
-  REQUIRED: { th: 'บังคับกรอก (Required)', notation: '[1..1]', desc: 'ต้องมีข้อมูลเสมอ' },
-  OPTIONAL: { th: 'ไม่บังคับ (Optional)', notation: '[0..1]', desc: 'จะมีหรือไม่มีก็ได้' },
+export const ELEMENT_OPTIONALITY_LABELS: Record<ElementOptionality, { th: string; desc: string }> = {
+  REQUIRED: { th: 'ต้องมีข้อมูลเสมอ (Required)', desc: 'ช่องข้อมูลที่จำเป็น — ทุกแถวต้องมีค่า' },
+  OPTIONAL: { th: 'มีหรือไม่มีก็ได้ (Optional)', desc: 'ช่องข้อมูลเสริม — กรอกหรือเว้นว่างก็ได้' },
+}
+
+/**
+ * v0.45.0 — ค่าแนะนำต่อ 1 ประเภทข้อมูล (แถวสีเขียวใต้ช่อง 2–4 โซน B) — กดเพื่อเติมค่าอัตโนมัติ
+ * length/format = null หมายถึง "ไม่ระบุ/ไม่กำหนด" (กดเพื่อเคลียร์ค่าในช่อง)
+ */
+export interface ElementTypeRecommendation {
+  /** ความยาวแนะนำ (ข้อ 2 Data Length) — null = ไม่ระบุ */
+  length: string | null
+  /** รูปแบบการแสดงผลแนะนำ (ข้อ 3 Format) — null = ไม่กำหนด */
+  format: string | null
+  /** เงื่อนไขการบังคับใช้แนะนำ (ข้อ 4 Mandatory/Optional) */
+  optionality: ElementOptionality
+}
+
+export const ELEMENT_TYPE_RECOMMENDATIONS: Record<ElementDataType, ElementTypeRecommendation> = {
+  TEXT: { length: '100', format: null, optionality: 'OPTIONAL' },
+  LONG_TEXT: { length: '1000', format: null, optionality: 'OPTIONAL' },
+  INTEGER: { length: '10', format: 'ไม่มีทศนิยม', optionality: 'OPTIONAL' },
+  NUMBER: { length: '12', format: '#,##0.00', optionality: 'OPTIONAL' },
+  BOOLEAN: { length: '1', format: 'true false', optionality: 'REQUIRED' },
+  DATE: { length: '10', format: 'YYYY-MM-DD', optionality: 'REQUIRED' },
+  DATETIME: { length: '19', format: 'YYYY-MM-DD HH:mm:ss', optionality: 'REQUIRED' },
+  TIME: { length: '8', format: 'HH:mm:ss', optionality: 'OPTIONAL' },
+  EMAIL: { length: '254', format: 'name@domain', optionality: 'REQUIRED' },
+  PHONE: { length: '20', format: '0xx-xxx-xxxx', optionality: 'REQUIRED' },
+  URL: { length: '2048', format: 'https://domain/path', optionality: 'OPTIONAL' },
+  CODE: { length: '10', format: 'ตามชุดค่าอนุญาต (Enum)', optionality: 'REQUIRED' },
+  UUID: { length: '36', format: 'มาตรฐาน 36 ตัวอักษร', optionality: 'REQUIRED' },
+  JSON: { length: null, format: '{"key":"value"}', optionality: 'OPTIONAL' },
+}
+
+/** คืนค่าแนะนำของประเภทข้อมูล (ประเภทที่ไม่รู้จัก = TEXT — deny-by-default) */
+export function elementTypeRecommendation(dataType: string): ElementTypeRecommendation {
+  return isElementDataType(dataType) ? ELEMENT_TYPE_RECOMMENDATIONS[dataType] : ELEMENT_TYPE_RECOMMENDATIONS.TEXT
 }
 
 export function isElementOptionality(v: string): v is ElementOptionality {
