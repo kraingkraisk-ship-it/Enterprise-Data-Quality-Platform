@@ -29,7 +29,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 /** เวอร์ชันแพลตฟอร์ม (semver) — แสดงบน sidebar/header/footer */
-export const APP_VERSION = 'v0.45.0'
+export const APP_VERSION = 'v0.46.0'
 
 /**
  * มุมมองภายในคอนโซลคุณภาพข้อมูล (CoreFeaturesConsole)
@@ -181,7 +181,7 @@ export const VIEWS: Record<ViewKey, ViewMeta> = {
     key: 'asset-domain',
     th: 'Data Catalog',
     en: 'Data Catalog',
-    desc: 'สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) แบบ Master–Detail (v0.45.0): เลือก Data Domain จากรายการซ้ายเพื่อเจาะดูรายละเอียด — Sub Data Domain (ยุบ/ขยายได้ หมวดแรกกางไว้) › Data Dictionary (แถวรวม + กางสรุปธุรกิจ/เทคนิค พร้อมคอลัมน์อ้างอิงว่านำมาจากข้อมูลใด) › Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) · ฟอร์มสร้าง/แก้ไขและหน้ารายละเอียด Data Dictionary ใช้โครงสร้างเดียวกัน 3 โซน 12 หัวข้อ เริ่มนับ 1 ใหม่รายโซน (A: Business Name ไทย/อังกฤษ · Definition — B: Data Type 14 ชนิด · Data Length · Format · Mandatory/Optional ช่องข้อมูลที่จำเป็น + ธง CDE/PII · ตัวอย่างข้อมูลสร้างอัตโนมัติให้สอดคล้องกับ Type/Length/Format · ระดับชั้นความลับ Public/Internal Use/Confidential/Secret — C: Source/Origin · คอลัมน์อ้างอิง · Owner/Steward แสดงทีละบรรทัด) โดยข้อ 2–4 ของโซน B มีค่าแนะนำสีเขียวตามชนิดข้อมูล กดเพื่อเติมอัตโนมัติ (v0.45.0 ตัด Technical Name ที่ซ้ำกับคอลัมน์อ้างอิงออก) แยกส่วนงานจาก DQ Rule อย่างชัดเจน · ลบ/ดูรายละเอียดได้จากแถวโดยตรง · สร้างโดเมนพร้อมเลือก Data Asset · ค้นหาแบบ Data Dictionary · ปุ่มวิธีใช้งาน',
+    desc: 'สารบัญข้อมูลองค์กร (Data Inventory · Data Dictionary) แบบ Master–Detail (v0.45.0): เลือก Data Domain จากรายการซ้ายเพื่อเจาะดูรายละเอียด — Sub Data Domain (ยุบ/ขยายได้ หมวดแรกกางไว้) › Data Dictionary (แถวรวม + กางสรุปธุรกิจ/เทคนิค พร้อมคอลัมน์อ้างอิงว่านำมาจากข้อมูลใด) › Meta Data (ค่ามาตรฐาน เช่น THB = ค่าเงินบาทไทย) · ฟอร์มสร้าง/แก้ไขและหน้ารายละเอียด Data Dictionary ใช้โครงสร้างเดียวกัน 3 โซน 12 หัวข้อ เริ่มนับ 1 ใหม่รายโซน (A: Business Name ไทย/อังกฤษ · Definition — B: Data Type 14 ชนิด · Data Length · Format · Mandatory/Optional ช่องข้อมูลที่จำเป็น + ธง CDE/PII · ตัวอย่างข้อมูลสร้างอัตโนมัติให้สอดคล้องกับ Type/Length/Format · ระดับชั้นความลับ Public/Internal Use/Confidential/Secret — C: Source/Origin · คอลัมน์อ้างอิง · Owner/Steward แสดงทีละบรรทัด) โดยข้อ 2–4 ของโซน B มีค่าแนะนำสีเขียวตามชนิดข้อมูล กดเพื่อเติมอัตโนมัติ (v0.45.0 ตัด Technical Name ที่ซ้ำกับคอลัมน์อ้างอิงออก) แยกส่วนงานจาก DQ Rule อย่างชัดเจน · ลบ/ดูรายละเอียดได้จากแถวโดยตรง · ปุ่ม "รายละเอียด Data Set" (v0.46.0) ข้างๆ ปุ่มรายละเอียด Data Dictionary — แสดงคอลัมน์จริงที่อ้างอิงจาก Data Asset จัดกลุ่มตาม Data Set (ชื่อ · Schema.Table · แหล่งที่มา · จำนวนแถว/คอลัมน์ทั้งหมด) พร้อมเมทาดาทาคอลัมน์ (ประเภทกายภาพ · ชนิดที่อนุมาน · ลำดับ · หมายเหตุการแมป) และตัวอย่างข้อมูลจริง 5 แถวแรก ปิดบัง PII ตามบทบาทผู้ใช้ · สร้างโดเมนพร้อมเลือก Data Asset · ค้นหาแบบ Data Dictionary · ปุ่มวิธีใช้งาน',
     icon: FolderTree,
   },
   'asset-reference': {

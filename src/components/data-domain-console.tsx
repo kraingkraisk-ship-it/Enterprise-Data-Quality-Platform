@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   Cog,
+  Database,
   FileText,
   FolderPlus,
   FolderTree,
@@ -221,6 +222,42 @@ interface ElementDetail {
   subDomain: { id: string; name: string; nameEn: string; parentId: string | null; parent?: { id: string; name: string; color: string } | null }
   columnMappings: Array<{ id: string; assetId: string; columnName: string; note: string; asset: { id: string; name: string } }>
   rules: Array<{ id: string; column: string; condition: string; conditionName: string; dimension: string; severity: string; threshold: number }>
+}
+
+/** v0.46.0 — เมทาดาทาคอลัมน์จริงที่อ้างอิง (จาก DataAssetColumn + note การแมป) */
+interface ElementDataSetColumn {
+  name: string
+  dataType: string
+  physicalType: string
+  position: number
+  note: string
+  mappedBy: string
+}
+
+/** v0.46.0 — กลุ่มละ 1 Data Set (Data Asset ต้นทาง) — เมทาดาทา + ตัวอย่างข้อมูลจริง 5 แถว (ปิดบัง PII ตามบทบาท) */
+interface ElementDataSetGroup {
+  asset: {
+    id: string
+    name: string
+    schemaName: string
+    tableName: string
+    sourceType: string
+    rowCount: number
+    columnCount: number
+    piiEnabled: boolean
+    status: string
+  }
+  piiMasked: boolean
+  columns: ElementDataSetColumn[]
+  sampleRows: Array<{ rowNo: number; cells: Record<string, unknown> }>
+  sampleCount: number
+}
+
+/** v0.46.0 — payload จาก API /api/elements/[id]/data-sets */
+interface ElementDataSetsPayload {
+  element: { id: string; code: string; nameTh: string }
+  dataSets: ElementDataSetGroup[]
+  mappingCount: number
 }
 
 /** ผู้รับผิดชอบ (resolve จากบัญชีผู้ใช้จริง) */
@@ -622,6 +659,12 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     }
   }
 
+  /* ------------------------- Data Set: รายละเอียด Data Set (v0.46.0 — คอลัมน์จริง + ตัวอย่างข้อมูลจริง · ปิดบัง PII ตามบทบาท) ------------------------- */
+  const [dataSetOpen, setDataSetOpen] = useState(false)
+  const [dataSetLoading, setDataSetLoading] = useState(false)
+  const [dataSetData, setDataSetData] = useState<ElementDataSetsPayload | null>(null)
+  const [dataSetError, setDataSetError] = useState('')
+
   /* ------------------------- Data Dictionary: โหลดรายละเอียด + CRUD ------------------------- */
   const loadElementDetail = useCallback(async (id: string): Promise<ElementDetail | null> => {
     setElementDetailLoading(true)
@@ -644,6 +687,37 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setDetailStewardship(null)
     setDetailOpen(true)
     void loadElementDetail(e.id)
+  }
+
+  /* v0.46.0 — เปิด "หน้ารายละเอียด Data Set" (ปุ่มข้างๆ "รายละเอียด Data Dictionary") — ดึงเมทาดาทาคอลัมน์จริง + ตัวอย่างข้อมูลจาก Data Asset ต้นทาง */
+  const loadDataSets = useCallback(
+    async (id: string) => {
+      setDataSetLoading(true)
+      setDataSetError('')
+      try {
+        const res = await fetch(`/api/elements/${id}/data-sets?role=${encodeURIComponent(sessionUser?.role ?? 'BUSINESS_USER')}`, { cache: 'no-store' })
+        const data = (await res.json().catch(() => null)) as ElementDataSetsPayload | { error: string } | null
+        if (!res.ok || !data || !('dataSets' in data)) {
+          setDataSetData(null)
+          setDataSetError('error' in data && data.error ? data.error : 'โหลดรายละเอียด Data Set ไม่สำเร็จ')
+          return
+        }
+        setDataSetData(data)
+      } catch {
+        setDataSetData(null)
+        setDataSetError('เชื่อมต่อระบบไม่สำเร็จ — โหลดรายละเอียด Data Set ไม่ได้')
+      } finally {
+        setDataSetLoading(false)
+      }
+    },
+    [sessionUser?.role],
+  )
+
+  function openElementDataSets(e: ElementRow) {
+    setDataSetData(null)
+    setDataSetError('')
+    setDataSetOpen(true)
+    void loadDataSets(e.id)
   }
 
   /** v0.39.0 — เปิดฟอร์มสร้าง element จากแคตตาล็อก (ระบุโดเมนย่อยปลายทางชัดเจน) */
@@ -1399,6 +1473,11 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                       <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => openElementDetail(e)} title="เปิดรายละเอียดครบทุกกลุ่ม (ธุรกิจ เทคนิค เชิงปฏิบัติการ กำกับดูแล การแมป)">
                                         <FileText className="size-3" aria-hidden="true" /> รายละเอียด Data Dictionary
                                       </Button>
+                                      {e.columnMappings.length > 0 && (
+                                        <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => openElementDataSets(e)} title="ดูรายละเอียด Data Set — คอลัมน์จริงที่อ้างอิงจาก Data Asset พร้อมเมทาดาทาและตัวอย่างข้อมูลจริง (ปิดบัง PII ตามบทบาท)">
+                                          <Database className="size-3" aria-hidden="true" /> รายละเอียด Data Set
+                                        </Button>
+                                      )}
                                       {canManage && (
                                         <Button
                                           size="sm"
@@ -1774,6 +1853,157 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
           )}
         </DialogContent>
       </Dialog>
+      {/* ------------------------- Dialog รายละเอียด Data Set (v0.46.0 — เมทาดาทาคอลัมน์จริง + ตัวอย่างข้อมูลจริง 5 แถว · ปิดบัง PII ตามบทบาท) ------------------------- */}
+      <Dialog open={dataSetOpen} onOpenChange={setDataSetOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          {dataSetLoading ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>กำลังโหลดรายละเอียด Data Set</DialogTitle>
+                <DialogDescription>โปรดรอสักครู่ — ระบบกำลังดึงข้อมูลจาก Data Asset ต้นทาง</DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" aria-hidden="true" /> กำลังโหลดรายละเอียด Data Set…
+              </div>
+            </>
+          ) : dataSetError ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>โหลดรายละเอียด Data Set ไม่สำเร็จ</DialogTitle>
+                <DialogDescription>เกิดข้อผิดพลาดขณะดึงข้อมูลจาก Data Asset ต้นทาง</DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                <XCircle className="size-4 shrink-0" aria-hidden="true" /> {dataSetError}
+              </div>
+            </>
+          ) : !dataSetData || dataSetData.dataSets.length === 0 ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>ยังไม่มีคอลัมน์อ้างอิงจาก Data Asset</DialogTitle>
+                <DialogDescription>Data Dictionary นี้ยังไม่ได้ผูกคอลัมน์จริง — เพิ่มได้จากปุ่ม &quot;แก้ไข&quot; (โซน C ข้อ 2)</DialogDescription>
+              </DialogHeader>
+              <div className="py-12 text-center text-sm text-muted-foreground">ยังไม่มี Data Set ให้แสดง</div>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex flex-wrap items-center gap-2">
+                  <Database className="size-4 text-emerald-700" aria-hidden="true" />
+                  <span className="font-mono text-sm text-muted-foreground">{dataSetData.element.code}</span>
+                  รายละเอียด Data Set ({dataSetData.dataSets.length} Data Set)
+                </DialogTitle>
+                <DialogDescription>
+                  จาก Data Dictionary &quot;{dataSetData.element.nameTh}&quot; — คอลัมน์จริงที่อ้างอิงจาก Data Asset ({dataSetData.mappingCount} คอลัมน์)
+                  พร้อมเมทาดาทาและตัวอย่างข้อมูลจริง 5 แถวแรก · ปิดบัง PII ตามบทบาทผู้ใช้
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid min-w-0 gap-3">
+                {dataSetData.dataSets.map((g) => (
+                  <section key={g.asset.id} className="min-w-0 rounded-lg border p-3" aria-label={`Data Set ${g.asset.name}`}>
+                    {/* หัวกลุ่ม — ข้อมูล Data Set (v0.46.0 ตอบ 1: ชื่อ · Schema.Table · แหล่งที่มา · จำนวนแถว/คอลัมน์ทั้งหมด) */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b pb-2">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold">
+                        <Database className="size-3.5 text-emerald-700" aria-hidden="true" /> {g.asset.name}
+                      </p>
+                      <Badge variant="outline" className="text-[10px]">
+                        {SOURCE_LABELS[g.asset.sourceType] ?? g.asset.sourceType}
+                      </Badge>
+                      {g.asset.piiEnabled && (
+                        <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[10px] text-rose-700">
+                          <ShieldAlert className="mr-0.5 size-2.5" aria-hidden="true" /> ปิดบัง PII: เปิด
+                        </Badge>
+                      )}
+                      {g.asset.status === 'ARCHIVED' && (
+                        <Badge variant="outline" className="text-[10px] text-slate-500">
+                          <Archive className="mr-0.5 size-2.5" aria-hidden="true" /> เก็บถาวร
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="mt-1.5 grid gap-0.5 text-[11px] text-muted-foreground sm:grid-cols-2">
+                      <span>
+                        ตารางกายภาพ:{' '}
+                        <span className="font-mono text-foreground">
+                          {g.asset.schemaName || g.asset.tableName ? `${g.asset.schemaName || '—'}.${g.asset.tableName || '—'}` : '— ยังไม่ระบุ —'}
+                        </span>
+                      </span>
+                      <span>
+                        ขนาดข้อมูล: <span className="font-medium text-foreground">{g.asset.rowCount.toLocaleString()}</span> แถว ·{' '}
+                        <span className="font-medium text-foreground">{g.asset.columnCount}</span> คอลัมน์ทั้งหมด
+                      </span>
+                    </div>
+                    {/* เมทาดาทาคอลัมน์จริงที่อ้างอิง (ตรงกับ Zone C ข้อ 2) */}
+                    <p className="mt-2.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">คอลัมน์จริงที่อ้างอิง ({g.columns.length})</p>
+                    <div className="mt-1 overflow-x-auto">
+                      <table className="w-full min-w-[460px] text-left text-xs">
+                        <thead>
+                          <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
+                            <th scope="col" className="py-1 pr-2 font-medium">คอลัมน์จริง</th>
+                            <th scope="col" className="py-1 pr-2 font-medium">ประเภทกายภาพ</th>
+                            <th scope="col" className="py-1 pr-2 font-medium">ชนิดที่อนุมาน</th>
+                            <th scope="col" className="py-1 pr-2 font-medium">ลำดับ</th>
+                            <th scope="col" className="py-1 font-medium">หมายเหตุการแมป</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {g.columns.map((c) => (
+                            <tr key={c.name} className="border-b last:border-0">
+                              <td className="py-1 pr-2 font-mono">{c.name}</td>
+                              <td className="py-1 pr-2 font-mono">{c.physicalType || '—'}</td>
+                              <td className="py-1 pr-2">{DATA_TYPE_LABELS[c.dataType] ?? c.dataType}</td>
+                              <td className="py-1 pr-2 tabular-nums text-muted-foreground">{c.position}</td>
+                              <td className="py-1 [overflow-wrap:anywhere]">{c.note || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {/* ตัวอย่างข้อมูลจริง 5 แถวแรก (เฉพาะคอลัมน์ที่อ้างอิง — ปิดบัง PII ฝั่ง server ตามบทบาท) */}
+                    <p className="mt-2.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      ตัวอย่างข้อมูลจริง ({g.sampleCount} แถวแรก){g.piiMasked ? ' — ปิดบัง PII ตามบทบาทผู้ใช้' : ''}
+                    </p>
+                    {g.sampleCount === 0 ? (
+                      <p className="mt-1 rounded border border-dashed p-2.5 text-[11px] text-muted-foreground">
+                        Data Set นี้ยังไม่มีแถวข้อมูลจริง (นำเข้าโครงสร้างไว้แต่ยังไม่มีข้อมูล) — ระบบจะแสดงตัวอย่างทันทีเมื่อมีข้อมูล
+                      </p>
+                    ) : (
+                      <div className="mt-1 overflow-x-auto">
+                        <table className="w-full min-w-[300px] text-left text-xs">
+                          <thead>
+                            <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
+                              <th scope="col" className="py-1 pr-2 font-medium">แถว</th>
+                              {g.columns.map((c) => (
+                                <th key={c.name} scope="col" className="py-1 pr-2 font-mono font-medium">{c.name}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {g.sampleRows.map((r) => (
+                              <tr key={r.rowNo} className="border-b last:border-0">
+                                <td className="py-1 pr-2 tabular-nums text-muted-foreground">{r.rowNo}</td>
+                                {g.columns.map((c) => (
+                                  <td key={c.name} className="py-1 pr-2 [overflow-wrap:anywhere]">
+                                    {String(r.cells[c.name] ?? '') || '—'}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {g.piiMasked && (
+                      <p className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <ShieldAlert className="size-3 shrink-0" aria-hidden="true" /> ค่าที่เป็นข้อมูลส่วนบุคคลถูกปิดบังตามบทบาทผู้ใช้ (PDPA)
+                      </p>
+                    )}
+                  </section>
+                ))}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* ------------------------- Dialog ฟอร์ม Data Dictionary (สร้าง/แก้ไข) ------------------------- */}
       <Dialog open={elFormOpen} onOpenChange={setElFormOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">

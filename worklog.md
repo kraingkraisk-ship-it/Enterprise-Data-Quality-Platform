@@ -2334,3 +2334,24 @@ Stage Summary:
 - tag v0.45.0 · push ด้วย PAT รอบที่ 22 inline (ตรวจแล้ว: user 200) · ยืนยันผ่าน GitHub API หลัง push
 
 ---
+
+---
+Task ID: 78
+Agent: Z.ai Code (main orchestrator)
+Task: v0.46.0 — คำสั่งผู้ใช้: เพิ่ม "เมนูดูรายละเอียด Data Set" ภายใต้ Data Catalog › Data Dictionary — กดแล้วแสดงหน้าของ Data Set ขึ้นมา โดยข้อมูลที่แสดงนำมาจาก "Zone C ข้อ 2 คอลัมน์จริงที่อ้างอิงจาก Data Asset" ที่ได้เลือกไว้ · ผู้ใช้ยืนยัน: คำถาม 1 = ปุ่มอยู่ข้างๆ ปุ่ม "รายละเอียด Data Dictionary" (คำถาม 2 = ตอบ 3 เมทาดาทา + ตัวอย่างข้อมูลจริง) · คำถาม 3 = ตอบ 1 หัวกลุ่มครบ (ชื่อ · Schema.Table · แหล่งที่มา · จำนวนแถว/คอลัมน์ทั้งหมด)
+
+Work Log:
+- API ใหม่ GET /api/elements/[id]/data-sets?role=ROLE (read-only ไม่แตะ schema ไม่ migrate): element + columnMappings include asset → จัดกลุ่มตาม DataAsset (Map assetId, ลำดับ assetId asc เดิม) → ต่อกลุ่มคืน (1) asset {name, schemaName, tableName, sourceType, rowCount, columnCount, piiEnabled, status} (2) เมทาดาทาเฉพาะคอลัมน์ที่อ้างอิงจาก DataAssetColumn (name · physicalType · dataType · position เรียง position asc) ผูก note/mappedBy จาก mapping (3) ตัวอย่างข้อมูลจริง 5 แถวแรกจาก DataAssetRecord (rowNo asc) ตัดเฉพาะคอลัมน์ที่อ้างอิง + maskRowByRole(row, role, asset.piiEnabled) ฝั่ง server เสมอ (piiMasked = piiEnabled && !canSeePii(role)) — deny-by-default role default BUSINESS_USER · middleware session gate ครอบทุกเส้นอยู่แล้ว · 404 เมื่อไม่พบ element
+- Console (data-domain-console.tsx): ปุ่ม "รายละเอียด Data Set" (Database icon) วางต่อจากปุ่ม "รายละเอียด Data Dictionary" ใน footer รายการ — แสดงเมื่อ e.columnMappings.length > 0 เท่านั้น · state dataSetOpen/Loading/Data/Error + loadDataSets (fetch พร้อม role = sessionUser.role จริง — DATA_OWNER เห็นค่าจริง บทบาทอื่นถูกปิดบัง) + openElementDataSets · Dialog ใหม่ max-w-2xl max-h-90vh: หัวเรื่อง EL-#### รายละเอียด Data Set (N Data Set) + desc อ้าง Data Dictionary ต้นทาง → เรนเดอร์กลุ่มละ 1 section พร้อม aria-label · หัวกลุ่ม: ชื่อ Data Asset + badge แหล่งที่มา (ไฟล์ CSV/ไฟล์ JSON/ฐานข้อมูล) + badge "ปิดบัง PII: เปิด" + badge เก็บถาวร (ARCHIVED) + ตารางกายภาพ Schema.Table (mono) + ขนาดข้อมูล N แถว · M คอลัมน์ทั้งหมด · ตารางเมทาดาทา 5 คอลัมน์ (คอลัมน์จริง mono · ประเภทกายภาพ mono · ชนิดที่อนุมาน DATA_TYPE_LABELS · ลำดับ · หมายเหตุการแมป) · ตารางตัวอย่างข้อมูลจริง 5 แถวแรก (แถว + คอลัมน์ที่อ้างอิง) พร้อมหมายเหตุ PDPA เมื่อ piiMasked · กรณี asset ไม่มีแถวข้อมูล (rowCount=0 เช่น CRM/EDW) แสดงข้อความ dashed แทนตารางว่าง · โหลด/ไม่พบ/empty 3 สถานะครบ · loading state + error state destructive
+- แก้บั๊ก E2E จริง: grid blowout บน mobile — min-w-[460px] ของตารางเมทาดาทาดัน grid item ยืดเกิน dialog (เมตริกจริง: sectW 486 > dlgW 343, dlgScrollW 534 badge ถูก clip) → แก้ด้วย min-w-0 ที่ grid container + section → dlgScrollW 341 ≤ 343 badge wrap ถูกต้อง ตาราง scroll ภายใน wrapper overflow-x-auto เท่านั้น
+- views.ts: APP_VERSION v0.46.0 + desc เมนู Data Catalog เพิ่มปุ่ม/ขอบเขตรายละเอียด Data Set
+- ไม่แตะ: Prisma schema / ข้อมูลเดโม / สิทธิ์ / โซน A–B / โครงสร้าง 3 โซน 12 หัวข้อ / ฟอร์ม / API เดิมทุกเส้น (feature ใหม่ read-only 100%)
+- E2E API (session cookie จริง): EL-0001 DATA_OWNER → piiMasked:false ค่าเต็ม NC-1001 + 5 แถว · BUSINESS_USER → piiMasked:true · EL-0003 (email อยู่ PII_FIELD_HINTS) DATA_OWNER anan.jaidee@example.co.th เต็ม ↔ BUSINESS_USER a••••••••••@example.co.th ปิดบังจริง · EL-0013 CRM → CUSTOMER.customer_master + note VARCHAR(20) + sampleCount 0 · 404 เมื่อ id ไม่มี
+- E2E UI (Agent Browser desktop 1280 + mobile 375): ปุ่ม "รายละเอียด Data Set" แสดงคู่ปุ่มเดิมทุกแถวที่มีคอลัมน์อ้างอิง · EL-0002 (DATA_OWNER สมชาย): หัวกลุ่ม "ทะเบียนลูกค้าสาขาภาคเหนือ (CSV) ไฟล์ CSV ปิดบัง PII: เปิด" + ตารางกายภาพ "— ยังไม่ระบุ —" + ขนาด 8 แถว · 7 คอลัมน์ + เมทาดาทา full_name/ข้อความ/1 + ตัวอย่าง 5 แถวชื่อจริง (อนันต์ ใจดี…) · EL-0013 (DATA_OWNER): ฐานข้อมูล + CUSTOMER.customer_master + VARCHAR(20) + หมายเหตุการแมป + ข้อความ "ยังไม่มีแถวข้อมูลจริง" · EL-0003 (anucha DQ_ANALYST): อีเมลปิดบัง a••••••••••@example.co.th ทั้ง 5 แถว + หมายเหตุ PDPA · แก้บั๊ก grid blowout แล้ววัดซ้ำ: mobile 375 sw=375 dlgScrollW 341 ≤ 343 · desktop 1280 dlgScrollW 670 ≤ 672 · 2 ตาราง 6 แถว tbody · 0 page error · lint ผ่าน (read-only feature — ไม่มีข้อมูลทดสอบค้างใน DB)
+
+Stage Summary:
+- "รายละเอียด Data Set" ครบตามยืนยันผู้ใช้: ปุ่มข้างๆ "รายละเอียด Data Dictionary" กดแล้วเปิดหน้าของ Data Set จัดกลุ่มตาม Data Asset ต้นทาง — ข้อมูลทั้งหมดดึงจาก "คอลัมน์จริงที่อ้างอิงจาก Data Asset" (Zone C ข้อ 2) ที่เลือกไว้เท่านั้น (เมทาดาทา + ตัวอย่างข้อมูลจริง 5 แถวแรก)
+- PII masking ตามบทบาททำงานจริงทั้ง API และ UI (DATA_OWNER เห็นค่าเต็ม · DQ_ANALYST/BUSINESS_USER ถูกปิดบังฝั่ง server ก่อนส่งออกเสมอ — ไม่มีข้อมูลส่วนบุคคลหลุดไป client ที่ไม่มีสิทธิ์)
+- เพิ่ม API อ่านใหม่ 1 เส้น (read-only) — ไม่แตะ schema/API เดิม/ข้อมูล ไม่ต้อง migrate · APP_VERSION v0.46.0
+- บั๊ก mobile grid blowout พบจากเมตริกจริงและแก้ที่ราก (min-w-0) ตรวจซ้ำทั้ง desktop/mobile ผ่าน
+- commit + tag v0.46.0 (เตรียม push — PAT จะขอรอบถัดไป)
