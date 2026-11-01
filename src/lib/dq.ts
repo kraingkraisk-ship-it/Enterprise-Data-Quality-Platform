@@ -927,9 +927,24 @@ export const PII_FIELD_HINTS: Record<string, (v: string) => string> = {
 
 /** ปิดบัง PII ตามบทบาท — ทำฝั่ง backend เสมอ (ห้ามส่ง PII ให้บทบาทที่ไม่มีสิทธิ์) */
 export function maskRowByRole(row: Row, role: string, piiEnabled: boolean): Row {
+  return maskRowByRoleWithGrants(row, role, piiEnabled)
+}
+
+/**
+ * ปิดบัง PII ตามบทบาท + ยกเว้นคอลัมน์ที่ได้รับสิทธิ์ชั่วคราว (v0.47.0)
+ * grantedColumns = ชุดชื่อคอลัมน์ของ asset นี้ที่ Data Owner อนุมัติให้ผู้ใช้รายนี้ดูค่าจริง
+ * (จาก ColumnAccessRequest สถานะ APPROVED และยังไม่หมดอายุ) — คอลัมน์อื่นยังปิดบังตามเดิม
+ */
+export function maskRowByRoleWithGrants(
+  row: Row,
+  role: string,
+  piiEnabled: boolean,
+  grantedColumns?: ReadonlySet<string>,
+): Row {
   const masked: Row = { ...row }
   if (!piiEnabled || canSeePii(role)) return masked
   for (const [field, masker] of Object.entries(PII_FIELD_HINTS)) {
+    if (grantedColumns?.has(field)) continue
     if (field in masked && typeof masked[field] === 'string' && masked[field]) {
       masked[field] = masker(String(masked[field]))
     }

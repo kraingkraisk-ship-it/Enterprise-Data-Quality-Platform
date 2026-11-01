@@ -359,9 +359,42 @@ model DataAsset {
   records DataAssetRecord[]
   columnDomainAssignments DataDomainColumnAssignment[]
   elementMappings DataElementColumnMapping[]
+  accessRequests ColumnAccessRequest[]
 
   @@index([status])
   @@index([domainId])
+}
+
+// ---------------------------------------------------------------------------
+// คำขอดูค่าจริงรายคอลัมน์ (v0.47.0) — กลไก "ขอดูค่าจริง" ของบทบาทที่ถูกปิดบัง PII
+// หลักการ: deny-by-default ยังคงอยู่ — ค่าจริงปลดบังได้เฉพาะ (ผู้ขอ × คอลัมน์) ที่ได้รับอนุมัติ
+// และยังไม่หมดอายุ · ผู้ตัดสิน = Data Owner เท่านั้น (สิทธิ์ APPROVE_PII_ACCESS)
+// ทุก action (ขอ/อนุมัติ/ไม่อนุมัติ/ยกเลิก) บันทึกลง AuditLog ตามกลุ่ม RBAC
+// สถานะ: PENDING → APPROVED | REJECTED · APPROVED → REVOKED (หมดอายุ = คง APPROVED แต่ expiresAt ผ่านไปแล้ว)
+// ---------------------------------------------------------------------------
+
+model ColumnAccessRequest {
+  id            String    @id @default(cuid())
+  assetId       String // DataAsset.id — คอลัมน์ต้องมีจริงใน asset (ตรวจใน API — deny-by-default)
+  columnName    String
+  requestedBy   String // email ผู้ขอ (จาก session เสมอ — ปลอมไม่ได้)
+  reason        String // เหตุผลการขอ (บังคับ — เก็บเป็นหลักฐานใน audit)
+  durationHours Int       @default(24) // อายุสิทธิ์ที่ขอ: 8 | 24 | 72 ชั่วโมง
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | REVOKED
+  decidedBy     String? // email Data Owner ผู้ตัดสิน
+  decidedAt     DateTime?
+  decisionNote  String    @default("") // หมายเหตุการตัดสิน (ไม่บังคับ)
+  expiresAt     DateTime // หมดอายุเสมอ (สิทธิ์ชั่วคราว — ตั้งตอนอนุมัติ)
+  revokedBy     String?
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  asset DataAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([status, expiresAt])
+  @@index([assetId, columnName])
+  @@index([requestedBy])
 }
 
 // ---------------------------------------------------------------------------

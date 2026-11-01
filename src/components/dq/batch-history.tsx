@@ -15,6 +15,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DimensionBadge } from '@/components/dimension-picker'
 import { SEVERITY_LABELS } from '@/lib/dq'
+import { useToast } from '@/hooks/use-toast'
 
 /* ------------------------------------------------------------------ */
 /* รอบการตรวจ (Validation Batch) — ประวัติการรันทุกครั้ง + เจาะรายรอบ    */
@@ -88,6 +89,7 @@ interface BatchHistoryProps {
 }
 
 export default function BatchHistory({ reloadKey, datasets, onGoFailedRecords }: BatchHistoryProps) {
+  const { toast } = useToast()
   const [batches, setBatches] = useState<BatchItem[] | null>(null)
   const [filterDataset, setFilterDataset] = useState('')
   const [detail, setDetail] = useState<{ batch: BatchItem; results: BatchResultItem[] } | null>(null)
@@ -108,16 +110,24 @@ export default function BatchHistory({ reloadKey, datasets, onGoFailedRecords }:
     void load()
   }, [load, reloadKey])
 
+  /* v0.47.0 — เปิดดูรอบการตรวจ: แจ้งเตือนทันทีเมื่อโหลดไม่สำเร็จ (เดิม error หลุดเงียบ
+     ทำให้กดแล้วไม่เห็นการเปลี่ยนแปลงใด ๆ) + สถานะโหลดชัดเจนบนปุ่มที่กด */
   async function openDetail(b: BatchItem) {
     setLoadingDetail(true)
     try {
       const res = await fetch(`/api/dq/validations/${b.id}`)
-      const data = (await res.json()) as { batch?: BatchItem; results?: BatchResultItem[]; error?: string }
-      if (data.batch && data.results) {
-        setDetail({ batch: data.batch, results: data.results })
+      const data = (await res.json().catch(() => null)) as { batch?: BatchItem; results?: BatchResultItem[]; error?: string } | null
+      if (!res.ok || !data?.batch || !data?.results) {
+        toast({
+          title: 'เปิดรอบการตรวจไม่สำเร็จ',
+          description: data?.error ?? `HTTP ${res.status} — ลองกด "รีเฟรช" แล้วกดเปิดดูอีกครั้ง`,
+          variant: 'destructive',
+        })
+        return
       }
+      setDetail({ batch: data.batch, results: data.results })
     } catch {
-      /* ไม่สำเร็จ — ปิดได้เฉย ๆ */
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', description: 'เปิดรอบการตรวจไม่สำเร็จ — ตรวจการเชื่อมต่อแล้วลองอีกครั้ง', variant: 'destructive' })
     } finally {
       setLoadingDetail(false)
     }
@@ -205,9 +215,9 @@ export default function BatchHistory({ reloadKey, datasets, onGoFailedRecords }:
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" onClick={() => void openDetail(b)} disabled={loadingDetail}>
+                      <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" onClick={() => void openDetail(b)} disabled={loadingDetail} aria-label={`เปิดดูผลรายกฎของรอบตรวจ ${b.datasetName} ${fmtTime(b.createdAt)}`}>
                         <Eye className="size-3" aria-hidden="true" />
-                        เปิดดู
+                        {loadingDetail ? 'กำลังเปิด…' : 'เปิดดู'}
                       </Button>
                     </td>
                   </tr>

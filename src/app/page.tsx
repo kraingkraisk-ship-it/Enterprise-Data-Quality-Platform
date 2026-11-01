@@ -129,100 +129,54 @@ function HomeShell() {
           {/* หน้าแนะนำแพลตฟอร์ม (เนื้อหาคงที่ — เรนเดอร์เฉพาะเมื่อเปิด) */}
           {view === 'about' && <PlatformOverview onNavigate={setView} />}
 
-          {/* โมดูล Data Asset — นำเข้าข้อมูล + คลังข้อมูล
-              คง mounted ไว้เสมอ ฟอร์ม/สถานะไม่หายเวลาสลับหน้า */}
-          <div className={view === 'asset-import' ? '' : 'hidden'} aria-hidden={view !== 'asset-import'}>
-            <AssetImport onGoInventory={() => setView('asset-inventory')} />
-          </div>
-          <div className={view === 'asset-inventory' ? '' : 'hidden'} aria-hidden={view !== 'asset-inventory'}>
-            <AssetInventory active={view === 'asset-inventory'} />
-          </div>
+          {/* v0.47.0 — เรนเดอร์เฉพาะ view ที่ active เท่านั้น (unmount หน้าอื่น) — ลดภาระ DOM
+              และตัด heading/ปุ่มข้ามโมดูลออกจาก accessibility tree (แก้จากการซ่อนด้วย .hidden ทั้ง 17 โมดูล)
+              หมายเหตุ: สถานะฟอร์มรายหน้าจะรีเซ็ตเมื่อสลับหน้า — เป็น trade-off ที่ผู้ใช้ยืนยัน */}
+          {view === 'asset-import' && <AssetImport onGoInventory={() => setView('asset-inventory')} />}
+          {view === 'asset-inventory' && <AssetInventory active />}
 
-          {/* Data Domain Console — เมนูอิสระภายใต้กลุ่ม Data Asset (v0.15.0)
-              คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
-          <div className={view === 'asset-domain' ? '' : 'hidden'} aria-hidden={view !== 'asset-domain'}>
-            <DataDomainConsole active={view === 'asset-domain'} />
-          </div>
+          {/* Data Domain Console — เมนูอิสระภายใต้กลุ่ม Data Asset (v0.15.0) */}
+          {view === 'asset-domain' && <DataDomainConsole active />}
 
-          {/* Reference Data Center — ทะเบียนค่าอ้างอิงศูนย์กลางใต้กลุ่ม Data Asset (v0.31.0)
-              คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลใหม่เมื่อ active */}
-          <div className={view === 'asset-reference' ? '' : 'hidden'} aria-hidden={view !== 'asset-reference'}>
-            <ReferenceCenter active={view === 'asset-reference'} />
-          </div>
+          {/* Reference Data Center — ทะเบียนค่าอ้างอิงศูนย์กลางใต้กลุ่ม Data Asset (v0.31.0) */}
+          {view === 'asset-reference' && <ReferenceCenter active />}
 
-          {/* Data Mapping Console — เส้นเชื่อม element ต้นทาง→ปลายทาง + lineage (v0.21.0)
-              คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
-          <div className={view === 'data-mapping' ? '' : 'hidden'} aria-hidden={view !== 'data-mapping'}>
-            <DataMappingConsole active={view === 'data-mapping'} />
-          </div>
+          {/* Data Mapping Console — เส้นเชื่อม element ต้นทาง→ปลายทาง + lineage (v0.21.0) */}
+          {view === 'data-mapping' && <DataMappingConsole active />}
 
           {/* หน้าใหม่ของโมดูล Data Quality — บัตรคะแนน + ข้อมูลที่ไม่ผ่าน + โปรไฟล์ + ปัญหา */}
-          <div className={view === 'scorecard' ? '' : 'hidden'} aria-hidden={view !== 'scorecard'}>
-            <DqScorecard active={view === 'scorecard'} onGoValidations={() => setView('validation-results')} />
-          </div>
-          <div className={view === 'failed-records' ? '' : 'hidden'} aria-hidden={view !== 'failed-records'}>
-            <DqFailedRecords active={view === 'failed-records'} />
-          </div>
-          <div className={view === 'profiling' ? '' : 'hidden'} aria-hidden={view !== 'profiling'}>
-            <DqProfiling active={view === 'profiling'} onViewChange={setView} />
-          </div>
-          <div className={view === 'issues' ? '' : 'hidden'} aria-hidden={view !== 'issues'}>
-            <DqIssues active={view === 'issues'} />
-          </div>
+          {view === 'scorecard' && <DqScorecard active onGoValidations={() => setView('validation-results')} />}
+          {view === 'failed-records' && <DqFailedRecords active />}
+          {view === 'profiling' && <DqProfiling active onViewChange={setView} />}
+          {view === 'issues' && <DqIssues active />}
 
-          {/* ML Studio — ผู้ช่วย ML บนหลัก Train/Test (v0.37.0 แทนศูนย์ ML เดิม)
-              คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลใหม่เมื่อ active */}
-          <div className={view === 'ml-studio' ? '' : 'hidden'} aria-hidden={view !== 'ml-studio'}>
-            <MlStudio active={view === 'ml-studio'} />
-          </div>
+          {/* ML Studio — ผู้ช่วย ML บนหลัก Train/Test (v0.37.0) */}
+          {view === 'ml-studio' && <MlStudio active />}
 
-          {/* หน้าระดับผู้บริหาร — แดชบอร์ด (พิมพ์/PDF จากปุ่มในหน้า) สิทธิ์ตรวจใน API (v0.32.0 ยุบ exec-reports) */}
-          <div className={view === 'exec-dashboard' ? '' : 'hidden'} aria-hidden={view !== 'exec-dashboard'}>
-            <ExecutiveDashboard active={view === 'exec-dashboard'} />
-          </div>
+          {/* หน้าระดับผู้บริหาร — แดชบอร์ด (พิมพ์/PDF จากปุ่มในหน้า) สิทธิ์ตรวจใน API (v0.32.0) */}
+          {view === 'exec-dashboard' && <ExecutiveDashboard active />}
 
-          {/* ประเมินความสอดคล้อง — จุดเดียวของความเสี่ยงรายมาตรฐาน (v0.24.0 · v0.34.0 รวมแท็บรายมาตรฐานของ Risk มาที่นี่)
-              คง mounted ไว้เสมอ สลับด้วย visibility — โหลด/รีเฟรชข้อมูลเมื่อ active */}
-          <div
-            className={view === 'compliance-assessment' ? '' : 'hidden'}
-            aria-hidden={view !== 'compliance-assessment'}
-          >
-            <ComplianceAssessment active={view === 'compliance-assessment'} />
-          </div>
+          {/* ประเมินความสอดคล้อง — จุดเดียวของความเสี่ยงรายมาตรฐาน (v0.24.0 · v0.34.0) */}
+          {view === 'compliance-assessment' && <ComplianceAssessment active />}
 
-          {/* แผนงาน DQ — แผนแม่บททวนสอบ 2026–2030 + Progress ถ่วงน้ำหนัก (v0.34.0)
-              คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลเมื่อ active */}
-          <div
-            className={view === 'project-plan' ? '' : 'hidden'}
-            aria-hidden={view !== 'project-plan'}
-          >
-            <DqProjectPlan active={view === 'project-plan'} />
-          </div>
+          {/* แผนงาน DQ — แผนแม่บททวนสอบ 2026–2030 + Progress ถ่วงน้ำหนัก (v0.34.0) */}
+          {view === 'project-plan' && <DqProjectPlan active />}
 
-          {/* RBAC Console — คง mounted ไว้เสมอเพื่อรักษาสถานะ สลับด้วย visibility */}
-          <div className={view === 'rbac' ? '' : 'hidden'} aria-hidden={view !== 'rbac'}>
-            <RbacConsole onGoAuditCenter={() => setView('audit-center')} />
-          </div>
+          {/* RBAC Console */}
+          {view === 'rbac' && <RbacConsole onGoAuditCenter={() => setView('audit-center')} />}
 
-          {/* ศูนย์บันทึกตรวจสอบ — คลัง Audit Log ศูนย์กลางทั้งระบบ (v0.30.0)
-              คง mounted ไว้เสมอ สลับด้วย visibility — โหลดข้อมูลใหม่เมื่อ active */}
-          <div className={view === 'audit-center' ? '' : 'hidden'} aria-hidden={view !== 'audit-center'}>
-            <AuditCenter active={view === 'audit-center'} />
-          </div>
+          {/* ศูนย์บันทึกตรวจสอบ — คลัง Audit Log ศูนย์กลางทั้งระบบ (v0.30.0) */}
+          {view === 'audit-center' && <AuditCenter active />}
 
           {/* คอนโซลคุณภาพข้อมูล (คลังกฎ / ผลการตรวจ / ข้อยกเว้น / DQ แดชบอร์ด)
-              — คง mounted ไว้เสมอ ข้อมูลและฟอร์มไม่หายเวลาสลับหน้า
               — 'rule-library' ใช้โหมด library (แท็บกฎ + เงื่อนไขภายในหน้าเดียว) */}
-          <div
-            className={view === 'rule-library' || isConsoleView(view) ? '' : 'hidden'}
-            aria-hidden={!(view === 'rule-library' || isConsoleView(view))}
-          >
+          {(view === 'rule-library' || isConsoleView(view)) && (
             <CoreFeaturesConsole
               activeView={isConsoleView(view) ? (view === 'validation-results' ? 'run' : view) : 'rules'}
               onViewChange={setView}
               mode={view === 'rule-library' ? 'library' : 'full'}
             />
-          </div>
+          )}
         </main>
 
         {/* ----------------------------- footer ----------------------------- */}

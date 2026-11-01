@@ -21,6 +21,7 @@ import {
   Info,
   Link2,
   Loader2,
+  Lock,
   PackageSearch,
   Pencil,
   Plus,
@@ -248,6 +249,8 @@ interface ElementDataSetGroup {
     status: string
   }
   piiMasked: boolean
+  maskedColumns: string[] // v0.47.0 — คอลัมน์ PII ที่ถูกปิดบังจริงสำหรับผู้ชมนี้ (จุดยื่นคำขอดูค่าจริง)
+  grantedColumns: Array<{ column: string; expiresAt: string }> // v0.47.0 — สิทธิ์ชั่วคราวที่ใช้งานอยู่ (อนุมัติโดย Data Owner)
   columns: ElementDataSetColumn[]
   sampleRows: Array<{ rowNo: number; cells: Record<string, unknown> }>
   sampleCount: number
@@ -258,6 +261,26 @@ interface ElementDataSetsPayload {
   element: { id: string; code: string; nameTh: string }
   dataSets: ElementDataSetGroup[]
   mappingCount: number
+}
+
+/** v0.47.0 — คำขอดูค่าจริงรายคอลัมน์ จาก API /api/access-requests */
+interface AccessRequestItem {
+  id: string
+  assetId: string
+  assetName: string
+  columnName: string
+  requestedBy: string
+  requesterName: string
+  reason: string
+  durationHours: number
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REVOKED'
+  decidedBy: string | null
+  decidedByName: string | null
+  decidedAt: string | null
+  decisionNote: string
+  expiresAt: string
+  createdAt: string
+  expired: boolean
 }
 
 /** ผู้รับผิดชอบ (resolve จากบัญชีผู้ใช้จริง) */
@@ -321,6 +344,23 @@ function ReferenceChip({ assetName, columnName }: { assetName: string; columnNam
 }
 
 /* ----------------------------- หน้าหลัก ----------------------------- */
+
+/** สถานะคำขอดูค่าจริง (v0.47.0) — badge ตามขนบสีของแพลตฟอร์ม (ไม่ใช้ blue/indigo) */
+const ACCESS_STATUS_META: Record<AccessRequestItem['status'], { th: string; cls: string }> = {
+  PENDING: { th: 'รออนุมัติ', cls: 'border-amber-300 bg-amber-50 text-amber-900' },
+  APPROVED: { th: 'อนุมัติแล้ว', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
+  REJECTED: { th: 'ไม่อนุมัติ', cls: 'border-rose-300 bg-rose-50 text-rose-800' },
+  REVOKED: { th: 'ยกเลิกแล้ว', cls: 'border-slate-300 bg-slate-50 text-slate-600' },
+}
+
+/** แสดงวันเวลาแบบย่อ th-TH (แผงคำขอ + badge สิทธิ์ชั่วคราว) */
+function fmtDateTimeTh(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString('th-TH', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return iso
+  }
+}
 
 export function DataDomainConsole({ active }: { active?: boolean }) {
   const { toast } = useToast()
@@ -689,13 +729,14 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     void loadElementDetail(e.id)
   }
 
-  /* v0.46.0 — เปิด "หน้ารายละเอียด Data Set" (ปุ่มข้างๆ "รายละเอียด Data Dictionary") — ดึงเมทาดาทาคอลัมน์จริง + ตัวอย่างข้อมูลจาก Data Asset ต้นทาง */
+  /* v0.46.0 — เปิด "หน้ารายละเอียด Data Set" (ปุ่มข้างๆ "รายละเอียด Data Dictionary") — ดึงเมทาดาทาคอลัมน์จริง + ตัวอย่างข้อมูลจาก Data Asset ต้นทาง
+     v0.47.0 — บทบาทผู้ชมอ่านจาก session cookie ฝั่ง server (ไม่ส่ง role จาก client อีกต่อไป) + รองรับสิทธิ์ชั่วคราวรายคอลัมน์ */
   const loadDataSets = useCallback(
     async (id: string) => {
       setDataSetLoading(true)
       setDataSetError('')
       try {
-        const res = await fetch(`/api/elements/${id}/data-sets?role=${encodeURIComponent(sessionUser?.role ?? 'BUSINESS_USER')}`, { cache: 'no-store' })
+        const res = await fetch(`/api/elements/${id}/data-sets`, { cache: 'no-store' })
         const data = (await res.json().catch(() => null)) as ElementDataSetsPayload | { error: string } | null
         if (!res.ok || !data || !('dataSets' in data)) {
           setDataSetData(null)
@@ -710,7 +751,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
         setDataSetLoading(false)
       }
     },
-    [sessionUser?.role],
+    [],
   )
 
   function openElementDataSets(e: ElementRow) {
@@ -718,6 +759,107 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
     setDataSetError('')
     setDataSetOpen(true)
     void loadDataSets(e.id)
+  }
+
+  /* ------------------------- คำขอดูค่าจริงรายคอลัมน์ (v0.47.0 — ขอสิทธิ์ชั่วคราวจาก Data Owner พร้อม audit) ------------------------- */
+  const [accessReqs, setAccessReqs] = useState<AccessRequestItem[]>([])
+  const [accessIsOwner, setAccessIsOwner] = useState(false)
+  const [accessLoaded, setAccessLoaded] = useState(false)
+  const [accessLoading, setAccessLoading] = useState(false)
+
+  const loadAccessRequests = useCallback(async () => {
+    setAccessLoading(true)
+    try {
+      const res = await fetch('/api/access-requests', { cache: 'no-store' })
+      const data = (await res.json().catch(() => null)) as { isOwner?: boolean; requests?: AccessRequestItem[] } | null
+      if (res.ok && data) {
+        setAccessReqs(data.requests ?? [])
+        setAccessIsOwner(Boolean(data.isOwner))
+        setAccessLoaded(true)
+      }
+    } catch {
+      /* เงียบไว้ — แผงนี้เป็นส่วนเสริม ไม่บล็อกการใช้งานหน้า */
+    } finally {
+      setAccessLoading(false)
+    }
+  }, [])
+
+  // โหลดเมื่อเปิดหน้า + ทุกครั้งที่กลับมา active
+  useEffect(() => {
+    if (active) void loadAccessRequests()
+  }, [active, loadAccessRequests])
+
+  // ----- ฟอร์มขอดูค่าจริง (เปิดจากหน้ารายละเอียด Data Set — รายคอลัมน์) -----
+  const [reqOpen, setReqOpen] = useState(false)
+  const [reqBusy, setReqBusy] = useState(false)
+  const [reqTarget, setReqTarget] = useState<{ assetId: string; assetName: string; columnName: string } | null>(null)
+  const [reqReason, setReqReason] = useState('')
+  const [reqDuration, setReqDuration] = useState('24')
+
+  function openAccessRequest(assetId: string, assetName: string, columnName: string) {
+    setReqTarget({ assetId, assetName, columnName })
+    setReqReason('')
+    setReqDuration('24')
+    setReqOpen(true)
+  }
+
+  async function submitAccessRequest() {
+    if (!reqTarget || !reqReason.trim()) return
+    setReqBusy(true)
+    try {
+      const res = await fetch('/api/access-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operatorEmail,
+          assetId: reqTarget.assetId,
+          columnName: reqTarget.columnName,
+          reason: reqReason.trim(),
+          durationHours: Number(reqDuration),
+        }),
+      })
+      const data = (await res.json().catch(() => null)) as { message?: string; error?: string } | null
+      if (!res.ok) {
+        toast({ title: 'ส่งคำขอไม่สำเร็จ', description: data?.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      toast({ title: 'ส่งคำขอแล้ว', description: 'รอเจ้าของข้อมูล (Data Owner) อนุมัติ — ติดตามได้ในแผง "คำขอดูค่าจริง" ด้านบน' })
+      setReqOpen(false)
+      void loadAccessRequests()
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setReqBusy(false)
+    }
+  }
+
+  // ----- ตัดสินคำขอ (เฉพาะ Data Owner) — อนุมัติ/ยกเลิกทำทันที · ไม่อนุมัติมีช่องหมายเหตุก่อนยืนยัน -----
+  const [decideBusy, setDecideBusy] = useState('')
+  const [rejectTarget, setRejectTarget] = useState<AccessRequestItem | null>(null)
+  const [rejectNote, setRejectNote] = useState('')
+
+  async function decideAccessRequest(item: AccessRequestItem, decision: 'APPROVE' | 'REJECT' | 'REVOKE', note = '') {
+    setDecideBusy(item.id)
+    try {
+      const res = await fetch(`/api/access-requests/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorEmail, decision, note }),
+      })
+      const data = (await res.json().catch(() => null)) as { message?: string; error?: string } | null
+      if (!res.ok) {
+        toast({ title: 'ดำเนินการไม่สำเร็จ', description: data?.error ?? `HTTP ${res.status}`, variant: 'destructive' })
+        return
+      }
+      toast({ title: data?.message ?? 'ดำเนินการสำเร็จ', description: 'บันทึกหลักฐานใน Audit Trail แล้ว' })
+      setRejectTarget(null)
+      setRejectNote('')
+      await loadAccessRequests()
+    } catch {
+      toast({ title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', variant: 'destructive' })
+    } finally {
+      setDecideBusy('')
+    }
   }
 
   /** v0.39.0 — เปิดฟอร์มสร้าง element จากแคตตาล็อก (ระบุโดเมนย่อยปลายทางชัดเจน) */
@@ -1028,6 +1170,103 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
         </div>
       </div>
 
+      {/* คำขอดูค่าจริงรายคอลัมน์ (v0.47.0) — Data Owner: คิวรออนุมัติ · บทบาทอื่น: คำขอของฉัน — แสดงเมื่อมีข้อมูล */}
+      {accessLoaded && (accessIsOwner || accessReqs.length > 0) && (
+        <section className="rounded-xl border bg-card p-4" aria-label="คำขอดูค่าจริงรายคอลัมน์">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+              <ShieldAlert className="size-4 text-amber-600" aria-hidden="true" />
+              คำขอดูค่าจริงรายคอลัมน์ (PII)
+              {accessReqs.filter((r) => r.status === 'PENDING').length > 0 && (
+                <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-900">
+                  รออนุมัติ {accessReqs.filter((r) => r.status === 'PENDING').length}
+                </Badge>
+              )}
+            </p>
+            <Button variant="ghost" size="icon" className="size-7" onClick={() => void loadAccessRequests()} aria-label="โหลดคำขอใหม่" disabled={accessLoading}>
+              <RefreshCw className={`size-3.5 ${accessLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            </Button>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {accessIsOwner
+              ? 'คำขอจากผู้ดูแลข้อมูล/บทบาทอื่นที่ขอปลดบังคอลัมน์ PII ชั่วคราว — อนุมัติ/ไม่อนุมัติพร้อมบันทึก Audit Trail ทุกครั้ง'
+              : 'สถานะคำขอของท่าน — เมื่ออนุมัติแล้วค่าจริงจะแสดงในหน้ารายละเอียด Data Set จนถึงเวลาที่กำหนด'}
+          </p>
+          {accessReqs.length === 0 ? (
+            <p className="mt-2 rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">ไม่มีคำขอดูค่าจริงในขณะนี้</p>
+          ) : (
+            <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-0.5">
+              {accessReqs.map((r) => {
+                const meta = ACCESS_STATUS_META[r.status] ?? ACCESS_STATUS_META.PENDING
+                const actionable = accessIsOwner && r.status === 'PENDING'
+                const revocable = accessIsOwner && r.status === 'APPROVED' && !r.expired
+                return (
+                  <div key={r.id} className="rounded-lg border p-2.5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <Badge variant="outline" className={`text-[10px] ${meta.cls}`}>{meta.th}</Badge>
+                      <span className="font-mono text-[11px] font-medium">{r.assetName}</span>
+                      <span aria-hidden="true" className="text-muted-foreground">·</span>
+                      <span className="font-mono text-[11px]">{r.columnName}</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground">ขอเมื่อ {fmtDateTimeTh(r.createdAt)}</span>
+                    </div>
+                    <p className="mt-1 break-words text-[11px] text-muted-foreground">
+                      ผู้ขอ: <span className="font-medium text-foreground">{r.requesterName}</span> · เหตุผล: {r.reason}
+                    </p>
+                    {(r.status === 'APPROVED' || r.status === 'REJECTED' || r.status === 'REVOKED') && (
+                      <p className="mt-0.5 break-words text-[10px] text-muted-foreground">
+                        {r.status === 'APPROVED' && !r.expired && <>ใช้ได้ถึง {fmtDateTimeTh(r.expiresAt)} · ตัดสินโดย {r.decidedByName ?? r.decidedBy}</>}
+                        {r.status === 'APPROVED' && r.expired && <>หมดอายุแล้ว ({fmtDateTimeTh(r.expiresAt)})</>}
+                        {r.status === 'REJECTED' && <>ไม่อนุมัติโดย {r.decidedByName ?? r.decidedBy}{r.decisionNote ? ` · หมายเหตุ: ${r.decisionNote}` : ''}</>}
+                        {r.status === 'REVOKED' && <>ยกเลิกโดย {r.revokedBy ?? 'Data Owner'}{r.decisionNote ? ` · หมายเหตุ: ${r.decisionNote}` : ''}</>}
+                      </p>
+                    )}
+                    {(actionable || revocable) && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {actionable && (
+                          <>
+                            <Button
+                              size="sm"
+                              className="h-7 gap-1 bg-emerald-600 px-2.5 text-[11px] text-white hover:bg-emerald-700"
+                              disabled={decideBusy === r.id}
+                              onClick={() => void decideAccessRequest(r, 'APPROVE')}
+                            >
+                              <CheckCircle2 className="size-3" aria-hidden="true" /> อนุมัติ ({r.durationHours} ชม.)
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 px-2.5 text-[11px] text-rose-700 hover:bg-rose-50"
+                              disabled={decideBusy === r.id}
+                              onClick={() => {
+                                setRejectTarget(r)
+                                setRejectNote('')
+                              }}
+                            >
+                              <XCircle className="size-3" aria-hidden="true" /> ไม่อนุมัติ
+                            </Button>
+                          </>
+                        )}
+                        {revocable && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 px-2.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                            disabled={decideBusy === r.id}
+                            onClick={() => void decideAccessRequest(r, 'REVOKE')}
+                          >
+                            <Lock className="size-3" aria-hidden="true" /> ยกเลิกสิทธิ์ (ปิดบังกลับ)
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* สรุปรวม 4 ใบ (v0.40.0 — เหลือตัวชี้วัดหลักของแคตตาล็อก) */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card>
@@ -1086,8 +1325,9 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 className="h-8 shrink-0 gap-1 bg-emerald-600 px-2.5 text-[11px] text-white hover:bg-emerald-700"
                 onClick={() => openCreateDomain('', '')}
                 title="เพิ่ม Data Domain — ขั้นที่ 1 ของการจัดทำแคตตาล็อก"
+                aria-label="เพิ่ม Data Domain — ขั้นที่ 1 ของการจัดทำแคตตาล็อก"
               >
-                <Plus className="size-3.5" aria-hidden="true" /> เพิ่ม
+                <Plus className="size-3.5" aria-hidden="true" /> เพิ่ม Data Domain
               </Button>
             </div>
             <div className="relative mt-2">
@@ -1116,7 +1356,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                 <div className="mt-2 rounded-lg border border-dashed p-6 text-center">
                   <FolderTree className="mx-auto size-7 text-muted-foreground/40" aria-hidden="true" />
                   <p className="mt-2 text-sm font-medium">แคตตาล็อกยังว่าง — เริ่มที่ขั้นที่ 1</p>
-                  <p className="mt-1 text-xs text-muted-foreground">กด &quot;เพิ่ม&quot; ตั้งชื่อระบบบริการ (เช่น ระบบข้อมูลการเงิน) แล้วเลือก Data Asset เข้ามา</p>
+                  <p className="mt-1 text-xs text-muted-foreground">กด &quot;เพิ่ม Data Domain&quot; ตั้งชื่อระบบบริการ (เช่น ระบบข้อมูลการเงิน) แล้วเลือก Data Asset เข้ามา</p>
                 </div>
               )
             ) : (
@@ -1318,6 +1558,7 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                                 className="h-7 px-2 text-[11px]"
                                 onClick={() => openCreateElement(sub.id, activeDomain.name ? `${activeDomain.name} / ${sub.name}` : sub.name)}
                                 title="เพิ่ม Data Dictionary ใต้โดเมนย่อยนี้"
+                                aria-label="เพิ่ม Data Dictionary ใต้โดเมนย่อยนี้"
                               >
                                 <Plus className="size-3" aria-hidden="true" /> Data Dictionary
                               </Button>
@@ -1991,6 +2232,31 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
                         </table>
                       </div>
                     )}
+                    {g.grantedColumns.length > 0 && (
+                      <p className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] text-emerald-800">
+                        <ShieldCheck className="size-3 shrink-0" aria-hidden="true" />
+                        สิทธิ์ชั่วคราวที่ใช้งานอยู่ (Data Owner อนุมัติ):
+                        {g.grantedColumns.map((gc) => (
+                          <Badge key={gc.column} variant="outline" className="border-emerald-300 bg-emerald-50 text-[10px] font-normal text-emerald-800">
+                            {gc.column} · ถึง {fmtDateTimeTh(gc.expiresAt)}
+                          </Badge>
+                        ))}
+                      </p>
+                    )}
+                    {g.piiMasked && g.maskedColumns.length > 0 && (
+                      <div className="mt-2 rounded-lg border border-dashed bg-muted/30 p-2.5">
+                        <p className="flex items-center gap-1 text-[11px] font-medium">
+                          <Lock className="size-3 shrink-0" aria-hidden="true" /> ขอดูค่าจริงรายคอลัมน์ — ยื่นต่อเจ้าของข้อมูล (บันทึก Audit Trail ทุกคำขอ)
+                        </p>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {g.maskedColumns.map((col) => (
+                            <Button key={col} size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" onClick={() => openAccessRequest(g.asset.id, g.asset.name, col)}>
+                              <Lock className="size-3" aria-hidden="true" /> {col} · ขอดูค่าจริง
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {g.piiMasked && (
                       <p className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground">
                         <ShieldAlert className="size-3 shrink-0" aria-hidden="true" /> ค่าที่เป็นข้อมูลส่วนบุคคลถูกปิดบังตามบทบาทผู้ใช้ (PDPA)
@@ -2001,6 +2267,93 @@ export function DataDomainConsole({ active }: { active?: boolean }) {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ------------------------- Dialog ฟอร์ม "ขอดูค่าจริง" (v0.47.0 — ยื่นคำขอต่อ Data Owner รายคอลัมน์) ------------------------- */}
+      <Dialog open={reqOpen} onOpenChange={setReqOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="size-4 text-amber-600" aria-hidden="true" />
+              ขอดูค่าจริง — {reqTarget?.columnName}
+            </DialogTitle>
+            <DialogDescription>
+              ยื่นคำขอปลดบังคอลัมน์นี้ชั่วคราวต่อเจ้าของข้อมูล (Data Owner) — เหตุผล คำขอ และการตัดสินทุกขั้นตอนถูกบันทึกใน Audit Trail
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-lg border bg-muted/40 p-2.5 text-xs">
+              <p className="font-medium">{reqTarget?.assetName}</p>
+              <p className="mt-0.5 text-muted-foreground">
+                คอลัมน์ <span className="font-mono text-foreground">{reqTarget?.columnName}</span> · ปัจจุบันปิดบังตามบทบาทของท่าน (deny-by-default)
+              </p>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="pii-req-reason">เหตุผลการขอ (บังคับ)</Label>
+              <Textarea
+                id="pii-req-reason"
+                value={reqReason}
+                onChange={(e) => setReqReason(e.target.value)}
+                placeholder="เช่น สอบสวนปัญหาข้อมูลจากรอบตรวจล่าสุด — ต้องตรวจค่าจริงของคอลัมน์นี้เพื่อยืนยันสาเหตุ"
+                rows={3}
+                maxLength={500}
+              />
+              <p className="text-[11px] text-muted-foreground">เหตุผลจะแสดงต่อเจ้าของข้อมูลและเก็บเป็นหลักฐานใน Audit Trail</p>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="pii-req-duration">อายุสิทธิ์ (หมดอายุอัตโนมัติ)</Label>
+              <Select value={reqDuration} onValueChange={setReqDuration}>
+                <SelectTrigger id="pii-req-duration" aria-label="เลือกอายุสิทธิ์ชั่วคราว" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="8">8 ชั่วโมง</SelectItem>
+                  <SelectItem value="24">24 ชั่วโมง (แนะนำ)</SelectItem>
+                  <SelectItem value="72">72 ชั่วโมง</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReqOpen(false)} disabled={reqBusy}>
+              ยกเลิก
+            </Button>
+            <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void submitAccessRequest()} disabled={reqBusy || !reqReason.trim()}>
+              <Send className="size-4" aria-hidden="true" /> ส่งคำขอ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ------------------------- Dialog หมายเหตุการไม่อนุมัติ (v0.47.0 — Data Owner) ------------------------- */}
+      <Dialog open={rejectTarget !== null} onOpenChange={(open) => !open && setRejectTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>ไม่อนุมัติคำขอดูค่าจริง</DialogTitle>
+            <DialogDescription>
+              คำขอของ {rejectTarget?.requesterName} — คอลัมน์ {rejectTarget?.columnName} ({rejectTarget?.assetName})
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pii-reject-note">หมายเหตุถึงผู้ขอ (ไม่บังคับ)</Label>
+            <Textarea
+              id="pii-reject-note"
+              value={rejectNote}
+              onChange={(e) => setRejectNote(e.target.value)}
+              rows={2}
+              maxLength={500}
+              placeholder="เช่น ข้อมูลช่วงนี้อยู่ระหว่างตรวจสอบภายใน ขอให้ยื่นคำขอใหม่หลังสิ้นไตรมาส"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectTarget(null)} disabled={decideBusy !== ''}>
+              กลับ
+            </Button>
+            <Button variant="destructive" onClick={() => rejectTarget && void decideAccessRequest(rejectTarget, 'REJECT', rejectNote.trim())} disabled={decideBusy !== ''}>
+              ยืนยันไม่อนุมัติ
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

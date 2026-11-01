@@ -91,6 +91,12 @@ export const AUDIT_ACTIONS: Record<string, { th: string; group: AuditGroupKey }>
   LOGIN_FAILED: { th: 'เข้าสู่ระบบไม่สำเร็จ', group: RBAC },
   LOGOUT: { th: 'ออกจากระบบ', group: RBAC },
 
+  /* ---------------- คำขอดูค่าจริงรายคอลัมน์ (v0.47.0) ---------------- */
+  REQUEST_COLUMN_ACCESS: { th: 'ขอดูค่าจริงรายคอลัมน์', group: RBAC },
+  APPROVE_COLUMN_ACCESS: { th: 'อนุมัติขอดูค่าจริง', group: RBAC },
+  REJECT_COLUMN_ACCESS: { th: 'ไม่อนุมัติขอดูค่าจริง', group: RBAC },
+  REVOKE_COLUMN_ACCESS: { th: 'ยกเลิกสิทธิ์ดูค่าจริง', group: RBAC },
+
   /* ------------------------------ ข้อมูลและโดเมน ------------------------------ */
   IMPORT_DATA_ASSET: { th: 'นำเข้าข้อมูล', group: ASSET },
   CREATE_DATASET: { th: 'สร้างชุดข้อมูล', group: ASSET },

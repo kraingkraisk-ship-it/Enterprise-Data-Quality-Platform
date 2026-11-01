@@ -30,6 +30,7 @@ export const PERMISSION_KEYS = [
   'TRAIN_ML_MODEL',
   'LABEL_ML_DATA',
   'MANAGE_USERS',
+  'APPROVE_PII_ACCESS',
 ] as const
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number]
@@ -47,6 +48,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, { th: string; en: string }
   TRAIN_ML_MODEL: { th: 'เทรน/จัดการโมเดล ML', en: 'Train ML Model' },
   LABEL_ML_DATA: { th: 'ตรวจ label/สุ่มตรวจข้อมูล ML', en: 'Label ML Data' },
   MANAGE_USERS: { th: 'จัดการผู้ใช้และสิทธิ์', en: 'Manage Users' },
+  APPROVE_PII_ACCESS: { th: 'อนุมัติขอดูค่าจริงรายคอลัมน์', en: 'Approve PII Access' },
 }
 
 export interface RoleDefinition {
@@ -77,6 +79,7 @@ export const ROLES: Record<RoleKey, RoleDefinition> = {
       'MANAGE_PROJECT_PLAN',
       'TRAIN_ML_MODEL',
       'LABEL_ML_DATA',
+      'APPROVE_PII_ACCESS',
     ],
     scope: 'เห็นเฉพาะชุดข้อมูลที่ตนเป็นเจ้าของหรือได้รับมอบสิทธิ์',
   },
