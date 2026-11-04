@@ -1,0 +1,69 @@
+# EDQP — docker compose (demo/sandbox deployment)
+# Usage:  docker compose -f deploy/docker-compose.yml up -d
+# Data survives redeploys via named volume `db-data` and bind mount for uploads/exports.
+# IMPORTANT: run schema push + seed once against the mounted volume before first use
+# (from a machine with bun):  DATABASE_URL=file:$PWD/db/custom.db bun run db:push && bun prisma/seed.ts
+# ─────────────────────────────────────────────────────────────────────────────
+# PRODUCTION SWAP TARGETS (docs/DEPLOYMENT.md §4):
+#   * postgres service  → swap target for SQLite (assumption A2: provider + DATABASE_URL)
+#   * redis service     → swap target for in-memory rate limiter (A9) and Celery broker (A3)
+#   Both are commented out: enabling them requires the corresponding code swap —
+#   do NOT enable without the §4 checklist.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: edqp:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"   # TLS terminates at the gateway (Caddyfile) — loopback only here
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: file:/app/db/custom.db
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in your environment or .env}
+    volumes:
+      - db-data:/app/db         # SQLite file (backup per docs/RUNBOOK.md §6)
+      - ../uploads:/app/uploads # uploaded files (UUID-renamed)
+      - ../exports:/app/exports # generated report artefacts
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── PRODUCTION SWAP TARGET: PostgreSQL (enable together with prisma provider swap) ──
+  # postgres:
+  #   image: postgres:16-alpine
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: edqp
+  #     POSTGRES_USER: edqp
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+  #   volumes:
+  #     - pg-data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U edqp"]
+  #     interval: 10s
+  #     retries: 5
+  #   # then set DATABASE_URL=postgresql://edqp:…@postgres:5432/edqp in the app service
+
+  # ── PRODUCTION SWAP TARGET: Redis (enable together with rate-limit / Celery swap) ──
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   command: ["redis-server", "--appendonly", "yes"]
+  #   volumes:
+  #     - redis-data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     retries: 5
+
+volumes:
+  db-data:
+  # pg-data:
+  # redis-data:

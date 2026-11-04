@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>คู่มือการใช้งาน Data Quality Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+@page { size: 720px 1020px; margin: 0; }
+
+:root {
+  --c-deep:   oklch(0.30 0.06 200);   /* dark teal — cover, headings   */
+  --c-primary:oklch(0.55 0.105 190);  /* brand teal (same as platform) */
+  --c-soft:   oklch(0.965 0.016 190); /* pale teal card background     */
+  --c-ink:    oklch(0.26 0.015 240);  /* body text                     */
+  --c-muted:  oklch(0.50 0.025 235);  /* secondary text                */
+  --c-line:   oklch(0.905 0.012 210); /* hairline borders              */
+  --c-bg:     oklch(0.985 0.003 210); /* page background               */
+}
+
+html, body {
+  margin: 0; padding: 0;
+  width: 720px;
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: 'Inter', 'Noto Sans Thai', sans-serif;
+  font-size: 14.5px;
+  line-height: 1.8;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+* { box-sizing: border-box; }
+p, td, li { overflow-wrap: break-word; word-break: break-word; }
+p { margin: 0 0 12px 0; }
+strong { font-weight: 700; color: var(--c-deep); }
+
+@media screen {
+  html { height: auto; display: flex; justify-content: center; background: #dfe4e6; }
+  body { margin: 24px auto; box-shadow: 0 4px 30px rgba(0,0,0,.18); }
+}
+
+/* ============ COVER ============ */
+.cover {
+  width: 720px; height: 1020px;
+  break-after: page;
+  position: relative;
+  background:
+    radial-gradient(circle at 720px -20px, transparent 0 148px, oklch(0.75 0.06 190 / 0.35) 149px 150.5px, transparent 152px),
+    radial-gradient(circle at 695px 0px, transparent 0 93px, oklch(0.75 0.06 190 / 0.22) 94px 95.5px, transparent 97px),
+    radial-gradient(circle at -35px 855px, transparent 0 73px, oklch(0.75 0.06 190 / 0.25) 74px 75.5px, transparent 77px),
+    linear-gradient(155deg, oklch(0.26 0.07 205) 0%, oklch(0.33 0.075 195) 55%, oklch(0.38 0.08 188) 100%);
+  color: #f2f7f8;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 0 64px;
+}
+.cover-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 2.5px;
+  text-transform: uppercase; color: oklch(0.90 0.04 185);
+  border: 1px solid oklch(0.85 0.05 190 / .45);
+  border-radius: 999px; padding: 7px 18px; width: fit-content;
+  margin-bottom: 34px;
+}
+.cover-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: oklch(0.82 0.10 175); }
+.cover-title {
+  font-size: 58px; font-weight: 800; line-height: 1.08; letter-spacing: -1px;
+  margin: 0 0 10px 0; color: #ffffff;
+}
+.cover-title-th {
+  font-size: 30px; font-weight: 700; line-height: 1.35;
+  color: oklch(0.90 0.05 185); margin-bottom: 22px;
+}
+.cover-sub {
+  font-size: 15px; line-height: 1.9; color: oklch(0.88 0.02 200 / .92);
+  max-width: 520px; margin-bottom: 44px;
+}
+.cover-stats { display: flex; flex-wrap: wrap; gap: 12px; max-width: 560px; }
+.cover-stat {
+  flex: 1 1 120px; min-width: 118px; max-width: 100%;
+  border: 1px solid oklch(0.85 0.05 190 / .35);
+  background: oklch(0.95 0.02 190 / .08);
+  border-radius: 12px; padding: 14px 16px;
+}
+.cover-stat .n { font-size: 26px; font-weight: 800; color: #fff; line-height: 1.15; }
+.cover-stat .l { font-size: 11.5px; color: oklch(0.90 0.03 195 / .85); line-height: 1.45; }
+.cover-foot {
+  position: absolute; left: 64px; right: 64px; bottom: 46px;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  border-top: 1px solid oklch(0.85 0.05 190 / .3); padding-top: 18px;
+  font-size: 12px; color: oklch(0.90 0.02 200 / .8);
+}
+.cover-foot .brand { font-weight: 700; letter-spacing: 1px; font-size: 12.5px; }
+
+/* ============ MAIN CONTENT ============ */
+.main-content { padding: 56px 64px 48px 64px; }
+
+.chapter-header { break-after: avoid; break-inside: avoid; margin-top: 30px; }
+.chapter-header.first { margin-top: 0; }
+.section-tag {
+  font-size: 11px; font-weight: 700; letter-spacing: 2.2px; text-transform: uppercase;
+  color: var(--c-primary); margin-bottom: 6px;
+}
+.section-title {
+  font-size: 25px; font-weight: 800; line-height: 1.3; color: var(--c-deep);
+  margin-bottom: 8px;
+}
+.divider {
+  width: 46px; height: 4px; border-radius: 2px;
+  background: var(--c-primary); margin-bottom: 16px;
+}
+h3.sub {
+  font-size: 16.5px; font-weight: 700; color: var(--c-deep);
+  margin: 20px 0 8px 0; break-after: avoid;
+}
+.lead { font-size: 14.5px; color: var(--c-muted); }
+.body-text { color: var(--c-ink); }
+
+/* TOC */
+.toc { margin: 4px 0 8px 0; }
+.toc-row {
+  display: flex; align-items: baseline; gap: 14px;
+  padding: 9px 2px; border-bottom: 1px solid var(--c-line);
+  break-inside: avoid;
+}
+.toc-num {
+  font-size: 13px; font-weight: 800; color: var(--c-primary);
+  min-width: 24px; font-variant-numeric: tabular-nums;
+}
+.toc-t { font-size: 14px; font-weight: 600; color: var(--c-deep); }
+.toc-d { font-size: 12px; color: var(--c-muted); margin-left: auto; text-align: right; max-width: 46%; }
+
+/* Cards */
+.card {
+  background: var(--c-soft); border: 1px solid var(--c-line);
+  border-radius: 12px; padding: 16px 18px;
+  break-inside: avoid; margin: 0 0 14px 0;
+}
+.card-title { font-size: 14px; font-weight: 700; color: var(--c-deep); margin-bottom: 6px; }
+.card p:last-child { margin-bottom: 0; }
+.card .card-en { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--c-primary); margin-bottom: 4px; }
+
+.callout {
+  border-left: 4px solid var(--c-primary);
+  background: var(--c-soft);
+  border-radius: 0 10px 10px 0;
+  padding: 12px 16px; margin: 14px 0;
+  break-inside: avoid; font-size: 13.5px;
+}
+.callout .c-label { font-weight: 800; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--c-primary); display: block; margin-bottom: 3px; }
+.callout.warn { border-left-color: oklch(0.62 0.13 60); }
+.callout.warn .c-label { color: oklch(0.55 0.12 60); }
+
+/* Step list */
+.steps { margin: 12px 0 16px 0; }
+.step {
+  display: flex; gap: 14px; padding: 12px 0;
+  border-bottom: 1px dashed var(--c-line);
+  break-inside: avoid;
+}
+.step:last-child { border-bottom: none; }
+.step-num {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--c-primary); color: #fff;
+  font-size: 14px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 2px;
+}
+.step-body { flex: 1 1 auto; min-width: 80px; }
+.step-body .s-t { font-weight: 700; color: var(--c-deep); font-size: 14px; margin-bottom: 2px; }
+.step-body .s-d { font-size: 13.5px; color: var(--c-muted); line-height: 1.7; }
+
+/* Grammar box */
+.grammar {
+  border: 1.5px solid var(--c-primary); background: #fff;
+  border-radius: 12px; padding: 18px 20px; margin: 14px 0;
+  break-inside: avoid;
+}
+.grammar .g-tag { font-size: 11px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; color: var(--c-primary); margin-bottom: 8px; }
+.grammar .g-line { font-size: 16px; font-weight: 700; line-height: 1.75; color: var(--c-deep); }
+.grammar .g-slot {
+  color: var(--c-primary); background: var(--c-soft);
+  border-radius: 6px; padding: 1px 7px; white-space: nowrap;
+}
+.grammar .g-note { font-size: 12.5px; color: var(--c-muted); margin-top: 9px; line-height: 1.7; }
+
+/* Chips & badges */
+.chip {
+  display: inline-block; font-size: 11.5px; font-weight: 600;
+  border: 1px solid var(--c-line); background: #fff;
+  border-radius: 999px; padding: 2px 10px; color: var(--c-muted);
+  white-space: nowrap;
+}
+.chip.teal { border-color: oklch(0.80 0.05 190); color: var(--c-primary); background: var(--c-soft); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
+.dot.crit { background: oklch(0.60 0.16 25); }
+.dot.high { background: oklch(0.68 0.13 65); }
+.dot.med  { background: oklch(0.75 0.11 130); }
+.dot.low  { background: oklch(0.60 0.03 240); }
+
+/* Grids */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0 14px 0; }
+.grid-2 .card { margin: 0; }
+.dim-item {
+  background: #fff; border: 1px solid var(--c-line); border-radius: 10px;
+  padding: 10px 13px; break-inside: avoid;
+}
+.dim-item .d-th { font-weight: 700; font-size: 13px; color: var(--c-deep); }
+.dim-item .d-en { font-size: 11px; color: var(--c-primary); font-weight: 600; letter-spacing: .4px; }
+.dim-item .d-q { font-size: 12px; color: var(--c-muted); line-height: 1.6; margin-top: 2px; }
+
+/* Tables */
+table.data {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  margin: 12px 0 16px 0; font-size: 12.5px;
+  border: 1px solid var(--c-line); border-radius: 10px; overflow: hidden;
+}
+table.data thead { display: table-header-group; }
+table.data th {
+  background: var(--c-deep); color: #fff; text-align: left;
+  font-weight: 600; font-size: 12px; letter-spacing: .3px;
+  padding: 9px 12px;
+}
+table.data td {
+  padding: 8px 12px; border-top: 1px solid var(--c-line);
+  vertical-align: top; line-height: 1.65; background: #fff;
+}
+table.data tr { break-inside: avoid; }
+table.data tr:nth-child(even) td { background: oklch(0.985 0.005 195); }
+table.data .mono { font-family: 'Inter', 'Noto Sans Thai', monospace; font-weight: 700; color: var(--c-primary); font-size: 11.5px; }
+.t-note { font-size: 12px; color: var(--c-muted); margin: -8px 0 14px 0; }
+
+/* Status pills */
+.pill {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  border-radius: 6px; padding: 1px 8px;
+  border: 1px solid var(--c-line); background: #fff; color: var(--c-muted);
+}
+
+/* FAQ */
+.qa {
+  border: 1px solid var(--c-line); border-radius: 12px;
+  padding: 14px 18px; margin-bottom: 12px;
+  break-inside: avoid; background: #fff;
+}
+.qa .q { font-weight: 700; font-size: 14px; color: var(--c-deep); margin-bottom: 5px; }
+.qa .q .qmark { color: var(--c-primary); margin-right: 8px; font-weight: 800; }
+.qa .a { font-size: 13.5px; color: var(--c-muted); line-height: 1.75; }
+.qa .a strong { color: var(--c-deep); }
+
+/* Lifecycle flow */
+.flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin: 12px 0 16px 0; max-width: 100%; }
+.flow-node {
+  flex: 1 1 100px; min-width: 96px; max-width: 100%;
+  background: #fff; border: 1.5px solid var(--c-primary);
+  border-radius: 10px; padding: 10px 12px;
+  break-inside: avoid; position: relative;
+}
+.flow-node .f-t { font-size: 12.5px; font-weight: 700; color: var(--c-deep); }
+.flow-node .f-d { font-size: 11px; color: var(--c-muted); line-height: 1.5; margin-top: 2px; }
+.flow-node + .flow-node::before {
+  content: '→'; position: absolute; left: -13px; top: 50%; transform: translateY(-50%);
+  color: var(--c-primary); font-weight: 800; font-size: 14px;
+}
+
+/* ============ ENDING ============ */
+.ending {
+  width: 720px; height: 1020px;
+  break-before: page; position: relative;
+  background:
+    radial-gradient(circle at 710px 1030px, transparent 0 158px, oklch(0.75 0.06 190 / 0.30) 159px 160.5px, transparent 162px),
+    radial-gradient(circle at -30px 250px, transparent 0 98px, oklch(0.75 0.06 190 / 0.20) 99px 100.5px, transparent 102px),
+    linear-gradient(155deg, oklch(0.26 0.07 205) 0%, oklch(0.33 0.075 195) 55%, oklch(0.38 0.08 188) 100%);
+  color: #f2f7f8;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 0 64px;
+}
+.ending-big { font-size: 34px; font-weight: 800; line-height: 1.4; color: #fff; margin-bottom: 18px; }
+.ending-sub { font-size: 15px; line-height: 1.9; color: oklch(0.90 0.02 200 / .9); max-width: 520px; margin-bottom: 36px; }
+.end-docs { border-top: 1px solid oklch(0.85 0.05 190 / .3); padding-top: 24px; max-width: 520px; }
+.end-docs .e-title { font-size: 11.5px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: oklch(0.88 0.05 185); margin-bottom: 12px; }
+.end-doc { display: flex; gap: 12px; align-items: baseline; margin-bottom: 10px; }
+.end-doc .d-name { font-size: 13px; font-weight: 700; color: #fff; min-width: 190px; }
+.end-doc .d-desc { font-size: 12px; color: oklch(0.88 0.02 200 / .75); }
+.ending-foot { position: absolute; left: 64px; right: 64px; bottom: 46px; border-top: 1px solid oklch(0.85 0.05 190 / .3); padding-top: 16px; font-size: 12px; color: oklch(0.90 0.02 200 / .75); display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<!-- ================= COVER ================= -->
+<div class="cover">
+  <div class="cover-badge"><span class="dot" style="background:oklch(0.82 0.10 175)"></span> คู่มือการใช้งาน · USER GUIDE</div>
+  <div class="cover-title">Data Quality<br>Platform</div>
+  <div class="cover-title-th">คู่มือการใช้งานระบบบริหารจัดการคุณภาพข้อมูลระดับองค์กร</div>
+  <div class="cover-sub">
+    เอกสารฉบับนี้อธิบายวิธีใช้งานแพลตฟอร์มตรวจสอบและติดตามคุณภาพข้อมูลอย่างครบวงจร
+    ตั้งแต่การเชื่อมต่อแหล่งข้อมูล การสร้างกฎคุณภาพแบบไม่ต้องเขียนโค้ด
+    การรันการตรวจสอบ การตรวจจับความผิดปกติด้วย Machine Learning
+    ไปจนถึงการรายงานผลและการตรวจสอบย้อนกลับตามกรอบธรรมาภิบาลข้อมูล
+  </div>
+
+  <div class="cover-stats">
+    <div class="cover-stat"><div class="n">5</div><div class="l">แดชบอร์ดเฉพาะบทบาท<br>Role-based Dashboards</div></div>
+    <div class="cover-stat"><div class="n">10</div><div class="l">เทมเพลตกฎคุณภาพ<br>Rule Templates</div></div>
+    <div class="cover-stat"><div class="n">9</div><div class="l">มิติคุณภาพข้อมูล<br>DQ Dimensions</div></div>
+    <div class="cover-stat"><div class="n">8</div><div class="l">บทบาทผู้ใช้งาน<br>User Roles</div></div>
+  </div>
+
+  <div class="cover-foot">
+    <div class="brand">ENTERPRISE DATA QUALITY PLATFORM</div>
+    <div>เวอร์ชัน 1.0 · 15 ตุลาคม 2569 · ภาษาไทย / English</div>
+  </div>
+</div>
+
+<!-- ================= MAIN CONTENT ================= -->
+<div class="main-content">
+
+  <!-- ===== TOC ===== -->
+  <div class="chapter-header first">
+    <div class="section-tag">สารบัญ · CONTENTS</div>
+    <div class="section-title">สารบัญเอกสาร</div>
+    <div class="divider"></div>
+  </div>
+
+  <div class="toc">
+    <div class="toc-row"><div class="toc-num">1</div><div class="toc-t">รู้จักแพลตฟอร์มและหลักการออกแบบ</div><div class="toc-d">หลักการสำคัญ 4 ข้อ และ 9 มิติคุณภาพข้อมูล</div></div>
+    <div class="toc-row"><div class="toc-num">2</div><div class="toc-t">เริ่มต้นใช้งานระบบ</div><div class="toc-d">เข้าสู่ระบบ บทบาทผู้ใช้ และโครงสร้างหน้าจอ</div></div>
+    <div class="toc-row"><div class="toc-num">3</div><div class="toc-t">แดชบอร์ดทั้ง 5 แบบ</div><div class="toc-d">เลือกดูข้อมูลตามบทบาทของคุณ</div></div>
+    <div class="toc-row"><div class="toc-num">4</div><div class="toc-t">แหล่งข้อมูล แคตตาล็อก และการวิเคราะห์ข้อมูล</div><div class="toc-d">อัปโหลดไฟล์ เชื่อมต่อฐานข้อมูล และ Profiling</div></div>
+    <div class="toc-row"><div class="toc-num">5</div><div class="toc-t">สร้างกฎคุณภาพด้วย Rule Builder</div><div class="toc-d">สร้างกฎแบบไม่ต้องเขียนโค้ดใน 4 ขั้นตอน</div></div>
+    <div class="toc-row"><div class="toc-num">6</div><div class="toc-t">รันการตรวจสอบและอ่านผลลัพธ์</div><div class="toc-d">Validation Runs สถานะงาน และหลักฐานอ้างอิง</div></div>
+    <div class="toc-row"><div class="toc-num">7</div><div class="toc-t">ความผิดปกติและโมเดล Machine Learning</div><div class="toc-d">Anomaly, Duplicate, Drift และการตรวจทานโดยมนุษย์</div></div>
+    <div class="toc-row"><div class="toc-num">8</div><div class="toc-t">ติดตามปัญหาข้อมูล (Issues)</div><div class="toc-d">จัดการงานแก้ไขตั้งแต่ตรวจพบจนปิดงาน</div></div>
+    <div class="toc-row"><div class="toc-num">9</div><div class="toc-t">รายงานและคะแนนคุณภาพข้อมูล</div><div class="toc-d">สูตรคะแนน DQ Score และการส่งออกรายงาน</div></div>
+    <div class="toc-row"><div class="toc-num">10</div><div class="toc-t">ธรรมาภิบาล ความปลอดภัย และการตรวจสอบย้อนกลับ</div><div class="toc-d">สิทธิ์เข้าถึง การปกปิด PII และ Audit Logs</div></div>
+    <div class="toc-row"><div class="toc-num">11</div><div class="toc-t">คำถามที่พบบ่อย</div><div class="toc-d">แนวทางแก้ไขปัญหาที่พบบ่อยในการใช้งาน</div></div>
+  </div>
+
+  <div class="callout" style="margin-top:18px">
+    <span class="c-label">เกี่ยวกับคู่มือฉบับนี้</span>
+    คู่มือฉบับนี้เขียนขึ้นสำหรับแพลตฟอร์มเวอร์ชัน 1.0 (ณ วันที่ 15 ตุลาคม 2569)
+    โดยอ้างอิงฟีเจอร์และคำศัพท์หน้าจอตามระบบจริงทั้งภาษาไทยและอังกฤษ
+    เนื่องจากระบบรองรับสองภาษา ชื่อเมนูและปุ่มต่าง ๆ จึงแสดงเป็น
+    <strong>"ไทย (English)"</strong> เพื่อให้ผู้ใช้ค้นหาองค์ประกอบบนหน้าจอได้ทันที
+    คู่มือสมมติว่าผู้อ่านมีบัญชีผู้ใช้ขององค์กรอยู่แล้ว หากยังไม่มีกรุณาติดต่อผู้ดูแลระบบ
+    ตามขั้นตอนในบทที่ 2
+  </div>
+
+  <!-- ===== CHAPTER 1 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 1 · INTRODUCTION</div>
+    <div class="section-title">รู้จักแพลตฟอร์มและหลักการออกแบบ</div>
+    <div class="divider"></div>
+  </div>
+
+  <p class="body-text">
+    <strong>Data Quality Platform</strong> คือระบบกลางสำหรับตรวจสอบ ติดตาม และบริหารจัดการคุณภาพข้อมูลขององค์กร
+    ระบบจะเชื่อมต่อกับแหล่งข้อมูลที่มีอยู่ของคุณ ไม่ว่าจะเป็นไฟล์ CSV, Excel, ฐานข้อมูล PostgreSQL,
+    MS SQL Server หรือ REST API แล้วประเมินคุณภาพข้อมูลตาม<strong>กฎคุณภาพ (Quality Rules)</strong>
+    ที่นิยามไว้ พร้อมเสริมด้วยการตรวจจับความผิดปกติด้วย Machine Learning
+    ทุกอย่างแสดงผลเป็นแดชบอร์ด รายงาน และบันทึกการตรวจสอบย้อนกลับได้ครบถ้วน
+    จุดประสงค์หลักไม่ใช่การเปลี่ยนข้อมูลของคุณ แต่คือการทำให้องค์กร
+    <strong>"เห็นปัญหาก่อนจะกลายเป็นความเสียหาย"</strong>
+  </p>
+
+  <h3 class="sub">หลักการออกแบบที่ผู้ใช้ต้องเข้าใจ</h3>
+  <p class="body-text">พฤติกรรมของระบบทุกส่วนออกแบบตามหลักการ 4 ข้อต่อไปนี้ ซึ่งผู้ใช้ควรเข้าใจตั้งแต่วันแรกของการใช้งาน</p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-en">PRINCIPLE 01 · READ-ONLY</div>
+      <div class="card-title">ระบบไม่แก้ไขหรือลบข้อมูลต้นทางโดยอัตโนมัติ</div>
+      <p style="font-size:13px; color:var(--c-muted)">ระบบเข้าถึงข้อมูลในโหมดอ่านอย่างเดียวเสมอ
+      การตรวจพบข้อผิดพลาดจะถูกแจ้งเตือนและสร้างเป็นปัญหาข้อมูล (Issue) เท่านั้น
+      การแก้ไขข้อมูลจริงยังคงอยู่ในความรับผิดชอบของเจ้าของระบบต้นทางตามกระบวนการอนุมัติขององค์กร</p>
+    </div>
+    <div class="card">
+      <div class="card-en">PRINCIPLE 02 · ML AS A SIGNAL</div>
+      <div class="card-title">ผลจาก ML เป็น "สัญญาณ" ไม่ใช่ "คำตัดสิน"</div>
+      <p style="font-size:13px; color:var(--c-muted)">โมเดล Machine Learning ช่วยชี้จุดที่น่าสงสัย เช่น ค่าผิดปกติ
+      ระเบียนซ้ำ หรือการเปลี่ยนแปลงของการกระจายข้อมูล แต่ระบบจะไม่ยืนยันว่าเป็นข้อบกพร่องเสมอ
+      ทุกสัญญาณต้องผ่านการตรวจทาน (Review) โดยมนุษย์ก่อนนำไปใช้ตัดสินใจ</p>
+    </div>
+    <div class="card">
+      <div class="card-en">PRINCIPLE 03 · DATASET-LEVEL ACCESS</div>
+      <div class="card-title">ไม่ได้รับอนุญาต = มองไม่เห็นทั้งหมด</div>
+      <p style="font-size:13px; color:var(--c-muted)">สิทธิ์เข้าถึงกำหนดเป็นรายชุดข้อมูล (Dataset)
+      ผู้ใช้จะเห็นเฉพาะชุดข้อมูลที่ได้รับมอบสิทธิ์เท่านั้น ชุดข้อมูลอื่นจะไม่ปรากฏในแคตตาล็อก ผลค้นหา
+      หรือผลลัพธ์ใด ๆ ทั้งสิ้น ไม่ใช่แค่ "เห็นแต่กดไม่ได้"</p>
+    </div>
+    <div class="card">
+      <div class="card-en">PRINCIPLE 04 · PII MASKED BY DEFAULT</div>
+      <div class="card-title">ข้อมูลส่วนบุคคลถูกปกปิดตามค่าเริ่มต้น</div>
+      <p style="font-size:13px; color:var(--c-muted)">คอลัมน์ที่ระบุว่าเป็น PII เช่น อีเมล เบอร์โทร ชื่อ
+      เลขบัตรประชาชน หรือเลขบัญชี จะถูกปกปิดอัตโนมัติทั้งบนหน้าจอ ใน Log และในไฟล์หลักฐานที่ส่งออก
+      ตามนโยบายความเป็นส่วนตัวขององค์กรและ PDPA</p>
+    </div>
+  </div>
+
+  <h3 class="sub">9 มิติคุณภาพข้อมูล (DQ Dimensions)</h3>
+  <p class="body-text">
+    ระบบประเมินคุณภาพข้อมูลบนกรอบมิติมาตรฐานสากล 9 มิติ สอดคล้องกับ ISO 8000 และ ISO/IEC 25012
+    ทุกกฎคุณภาพที่คุณสร้างจะถูกผูกกับมิติหนึ่งมิติ เพื่อให้คะแนนรวมสะท้อนจุดอ่อนของข้อมูลได้อย่างตรงจุด
+  </p>
+
+  <div class="grid-2">
+    <div class="dim-item"><div class="d-th">1. ความสมบูรณ์ <span class="d-en">· Completeness</span></div><div class="d-q">ค่าที่จำเป็นมีอยู่ครบถ้วนหรือไม่ — มีค่าว่างในฟิลด์สำคัญหรือไม่</div></div>
+    <div class="dim-item"><div class="d-th">2. ความถูกต้อง <span class="d-en">· Accuracy</span></div><div class="d-q">ค่าสะท้อนความจริงหรือไม่ — เช่น อายุ 0 ปี หรือราคาติดลบ</div></div>
+    <div class="dim-item"><div class="d-th">3. ความถูกต้องตามรูปแบบ <span class="d-en">· Validity</span></div><div class="d-q">ค่าอยู่ในรูปแบบหรือชุดค่าที่กำหนดหรือไม่ — เช่น รูปแบบอีเมล รหัสสาขา</div></div>
+    <div class="dim-item"><div class="d-th">4. ความสอดคล้อง <span class="d-en">· Consistency</span></div><div class="d-q">ฟิลด์ที่เกี่ยวข้องกันสอดคล้องกันหรือไม่ — เช่น วันสิ้นสุดต้องไม่น้อยกว่าวันเริ่มต้น</div></div>
+    <div class="dim-item"><div class="d-th">5. ความเป็นเอกลักษณ์ <span class="d-en">· Uniqueness</span></div><div class="d-q">มีระเบียนซ้ำที่ไม่คาดคิดหรือไม่ — เช่น รหัสลูกค้าซ้ำกัน</div></div>
+    <div class="dim-item"><div class="d-th">6. ความทันเวลา <span class="d-en">· Timeliness</span></div><div class="d-q">ข้อมูลทันสมัยเพียงพอหรือไม่ — ระเบียนล่าสุดเก่ากว่ากำหนดหรือไม่</div></div>
+    <div class="dim-item"><div class="d-th">7. ความสมบูรณ์ของการอ้างอิง <span class="d-en">· Integrity</span></div><div class="d-q">การอ้างอิงข้ามชุดข้อมูลยังคงสมบูรณ์หรือไม่ — เช่น รหัสสินค้าที่ไม่มีอยู่จริง</div></div>
+    <div class="dim-item"><div class="d-th">8. ปริมาณข้อมูล <span class="d-en">· Volume</span></div><div class="d-q">จำนวนแถวอยู่ในกรอบที่คาดหวังหรือไม่ — เช่น ไฟล์ที่หายไปครึ่งหนึ่งโดยไม่ทราบสาเหตุ</div></div>
+    <div class="dim-item" style="grid-column: 1 / -1;"><div class="d-th">9. ความสอดคล้องของสคีมา <span class="d-en">· Schema Conformity</span></div><div class="d-q">โครงสร้างข้อมูลตรงกับสคีมาที่ลงทะเบียนไว้หรือไม่ — เช่น คอลัมน์หายไป หรือชนิดข้อมูลเปลี่ยน</div></div>
+  </div>
+
+  <h3 class="sub">ระดับความรุนแรงของกฎ (Severity)</h3>
+  <p class="body-text">
+    ทุกกฎต้องระบุระดับความรุนแรงเมื่อกฎล้มเหลว ระดับนี้ส่งผลต่อการแจ้งเตือน ลำดับความสำคัญของปัญหา
+    และการคำนวณคะแนนคุณภาพ โดยเฉพาะระดับ <strong>CRITICAL</strong> ที่มีผลลงโทษแบบเท่าตัวตามที่อธิบายในบทที่ 9
+  </p>
+  <div class="card">
+    <p style="margin-bottom:8px">
+      <span class="dot crit"></span><strong>CRITICAL</strong> — กระทบกระบวนการธุรกิจหรือการรายงานต่อหน่วยงานกำกับโดยตรง ต้องดำเนินการทันที
+      และมีผลลงโทษคะแนนรุนแรงที่สุด &nbsp;·&nbsp;
+      <span class="dot high"></span><strong>HIGH</strong> — กระทบการตัดสินใจหรือรายงานภายใน ควรแก้ไนในรอบการทำงานปัจจุบัน
+    </p>
+    <p style="margin-bottom:0">
+      <span class="dot med"></span><strong>MEDIUM</strong> — ควรแก้ไขตามลำดับความสำคัญปกติ &nbsp;·&nbsp;
+      <span class="dot low"></span><strong>LOW</strong> — บันทึกไว้เพื่อปรับปรุงอย่างต่อเนื่อง ไม่เร่งด่วน
+    </p>
+  </div>
+
+  <!-- ===== CHAPTER 2 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 2 · GETTING STARTED</div>
+    <div class="section-title">เริ่มต้นใช้งานระบบ</div>
+    <div class="divider"></div>
+  </div>
+
+  <h3 class="sub">2.1 เข้าสู่ระบบ (Sign In)</h3>
+  <p class="body-text">
+    ระบบใช้การยืนยันตัวตนแบบ Single Sign-On ขององค์กร (มาตรฐาน OIDC/OAuth 2.0)
+    โปรดใช้บัญชีที่องค์กรออกให้ และหากบัญชีของคุณเปิดใช้งาน MFA จะมีขั้นตอนยืนยันตัวตนขั้นที่สอง
+    ขึ้นอัตโนมัติหลังกรอกรหัสผ่าน ระบบจะจำสิทธิ์บทบาทของคุณและแสดงเฉพาะเมนูที่เกี่ยวข้องเท่านั้น
+  </p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body">
+      <div class="s-t">เปิดหน้าแพลตฟอร์มผ่านเบราว์เซอร์ขององค์กร</div>
+      <div class="s-d">ระบบแสดงหน้าเข้าสู่ระบบ (Login) พร้อมรายชื่อผู้ใช้ของหน่วยงาน — ในสภาพแวดล้อมจริงจะเปลี่ยนไปใช้หน้า SSO ขององค์กรโดยตรง</div>
+    </div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body">
+      <div class="s-t">เลือกบัญชีของคุณและยืนยันตัวตน</div>
+      <div class="s-d">หากบัญชีเปิด MFA ให้ยืนยันตามวิธีที่องค์กรกำหนด (แอปยืนยันตัวตน หรืออุปกรณ์ที่จดทะเบียน)</div>
+    </div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body">
+      <div class="s-t">ตรวจสอบภาษาและการแจ้งเตือน</div>
+      <div class="s-d">สลับภาษาไทย/อังกฤษได้จากแถบด้านบนของหน้าจอ และตรวจกราฟการแจ้งเตือน (Notifications) มุมขวาบนเพื่อดูงานที่รอดำเนินการ</div>
+    </div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body">
+      <div class="s-t">ออกจากระบบเมื่อใช้งานเสร็จ</div>
+      <div class="s-d">โดยเฉพาะเมื่อใช้เครื่องส่วนกลาง เซสชันจะสิ้นสุดตามนโยบายความปลอดภัย และทุกกิจกรรมการเข้า–ออกระบบถูกบันทึกลง Audit Log</div>
+    </div></div>
+  </div>
+
+  <h3 class="sub">2.2 โครงสร้างหน้าจอหลัก</h3>
+  <p class="body-text">
+    หลังเข้าสู่ระบบ หน้าจอแบ่งเป็นสามส่วน: <strong>แถบด้านบน</strong> (ค้นหาแบบรวดเร็ว การแจ้งเตือน ภาษา และโปรไฟล์ผู้ใช้),
+    <strong>เมนูด้านซ้าย</strong> (จัดกลุ่มเป็น ภาพรวม · ข้อมูล · คุณภาพข้อมูล · อัจฉริยะภาพ · ธรรมาภิบาลข้อมูล)
+    และ<strong>พื้นที่เนื้อหา</strong>ที่แสดงหน้างานปัจจุบัน เมนูที่คุณไม่มีสิทธิ์จะไม่แสดงเลย
+    เพื่อลดความสับสนและป้องกันการเข้าถึงโดยไม่ได้รับอนุญาต
+  </p>
+  <div class="card">
+    <div class="card-title">กลุ่มเมนูทั้ง 5 กลุ่ม</div>
+    <p style="font-size:13px; margin-bottom:6px">
+      <strong>ภาพรวม</strong> — แดชบอร์ด 5 แบบตามบทบาท (บทที่ 3) &nbsp;|&nbsp;
+      <strong>ข้อมูล</strong> — แหล่งข้อมูล, แคตตาล็อกชุดข้อมูล, การวิเคราะห์ข้อมูล (Profiling) &nbsp;|&nbsp;
+      <strong>คุณภาพข้อมูล</strong> — กฎคุณภาพ, การรันตรวจสอบ, ความผิดปกติ, ปัญหาข้อมูล
+    </p>
+    <p style="font-size:13px; margin-bottom:0">
+      <strong>อัจฉริยะภาพ</strong> — โมเดล ML และการติดตามสถานะโมเดล &nbsp;|&nbsp;
+      <strong>ธรรมาภิบาลข้อมูล</strong> — รายงาน, บันทึกการตรวจสอบ (Audit Logs), การจัดการระบบ (Administration)
+    </p>
+  </div>
+
+  <h3 class="sub">2.3 บทบาทผู้ใช้ทั้ง 8 แบบ</h3>
+  <p class="body-text">
+    สิทธิ์การใช้งานกำหนดตามบทบาท (Role-based Access Control) และขยายความละเอียดอีกชั้นด้วยสิทธิ์ระดับชุดข้อมูล
+    ตารางต่อไปนี้สรุปว่าบทบาทใดเน้นงานส่วนใด ทั้งนี้ผู้ใช้หนึ่งคนมีได้หนึ่งบทบาทหลักตามที่ผู้ดูแลระบบกำหนด
+    และการเปลี่ยนบทบาททุกครั้งต้องอนุมัติผ่านหน้าจัดการระบบพร้อมบันทึกลง Audit Log
+  </p>
+
+  <table class="data">
+    <colgroup><col style="width:26%"><col style="width:44%"><col style="width:30%"></colgroup>
+    <thead><tr><th>บทบาท (Role)</th><th>หน้าที่หลักในแพลตฟอร์ม</th><th>งานเด่นที่ทำได้</th></tr></thead>
+    <tbody>
+      <tr><td><strong>ผู้บริหาร</strong><br><span class="mono">EXECUTIVE</span></td><td>ติดตามภาพรวมสุขภาพข้อมูลขององค์กรและแนวโน้มคะแนน DQ</td><td>ดูแดชบอร์ดผู้บริหาร รายงานสรุป</td></tr>
+      <tr><td><strong>เจ้าของข้อมูล</strong><br><span class="mono">DATA_OWNER</span></td><td>รับผิดชอบชุดข้อมูลที่กำกับ อนุมัติกฎและการยกเว้น</td><td>อนุมัติกฎ กำหนดนโยบายชุดข้อมูล</td></tr>
+      <tr><td><strong>ผู้ดูแลข้อมูล</strong><br><span class="mono">DATA_STEWARD</span></td><td>ดูแลกฎคุณภาพในวงจรชีวิต ตรวจทานความผิดปกติ บริหารปัญหาข้อมูล</td><td>สร้าง/แก้ไขกฎ ตรวจทาน Anomaly</td></tr>
+      <tr><td><strong>วิศวกรข้อมูล</strong><br><span class="mono">DATA_ENGINEER</span></td><td>เชื่อมต่อแหล่งข้อมูล บริหารไพป์ไลน์และสคีมา ตรวจสอบสุขภาพระบบ</td><td>เชื่อมต่อแหล่งข้อมูล ดูแดชบอร์ดวิศวกรรม</td></tr>
+      <tr><td><strong>นักวิเคราะห์ข้อมูล</strong><br><span class="mono">DATA_ANALYST</span></td><td>วิเคราะห์ข้อมูลและใช้ผล Profiling ก่อนลงมือวิเคราะห์จริง</td><td>ดู Profiling ผลตรวจสอบ รายงาน</td></tr>
+      <tr><td><strong>นักวิทยาศาสตร์ข้อมูล</strong><br><span class="mono">DATA_SCIENTIST</span></td><td>ดูแลโมเดล ML ที่ใช้ตรวจจับความผิดปกติและ Drift</td><td>ติดตาม/เปลี่ยนสถานะโมเดล ML</td></tr>
+      <tr><td><strong>ผู้ตรวจสอบ</strong><br><span class="mono">AUDITOR</span></td><td>ตรวจสอบย้อนกลับหลักฐานทั้งหมดแบบอ่านอย่างเดียว</td><td>ดู Audit Logs หลักฐานการตรวจสอบ</td></tr>
+      <tr><td><strong>ผู้ดูแลระบบ</strong><br><span class="mono">SYSTEM_ADMIN</span></td><td>บริหารผู้ใช้ บทบาท สิทธิ์ระดับชุดข้อมูล และพารามิเตอร์นโยบาย</td><td>มอบสิทธิ์ (Grants) ตั้งค่านโยบาย</td></tr>
+    </tbody>
+  </table>
+  <p class="t-note">หมายเหตุ: สิทธิ์จริงของแต่ละบุคคล = บทบาทหลัก บวกสิทธิ์ระดับชุดข้อมูลที่ได้รับมอบหมายเป็นรายชุด (ดูบทที่ 10)</p>
+
+  <!-- ===== CHAPTER 3 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 3 · DASHBOARDS</div>
+    <div class="section-title">แดชบอร์ดทั้ง 5 แบบ</div>
+    <div class="divider"></div>
+  </div>
+
+  <p class="body-text">
+    ระบบไม่ได้ให้ทุกคนดูหน้าจอเดียวกัน แต่ออกแบบแดชบอร์ดแยกตามมุมมองงาน 5 แบบ
+    แต่ละแบบตอบคำถามหลักของบทบาทนั้นโดยตรง คุณจะเห็นเฉพาะแดชบอร์ดที่เกี่ยวข้องกับบทบาทและชุดข้อมูลของคุณ
+    และทุกตัวเลขบนแดชบอร์ดคำนวณจากผลการตรวจสอบล่าสุดของชุดข้อมูลที่คุณมีสิทธิ์เข้าถึงเท่านั้น
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-en">OVERVIEW · EXECUTIVE</div>
+      <div class="card-title">1) แดชบอร์ดผู้บริหาร (Executive)</div>
+      <p style="font-size:13px; color:var(--c-muted); margin-bottom:0">ตอบคำถาม "ข้อมูลขององค์กรสุขภาพดีแค่ไหน"
+      แสดงคะแนน DQ รวม แนวโน้มรายเดือน ชุดข้อมูลวิกฤตที่คะแนนตก และสรุปปัญหาที่ยังไม่ปิด
+      เหมาะสำหรับการนำเสนอในที่ประชุมผู้บริหารหรือคณะกรรมการธรรมาภิบาลข้อมูล</p>
+    </div>
+    <div class="card">
+      <div class="card-en">OVERVIEW · OPERATIONAL</div>
+      <div class="card-title">2) แดชบอร์ดปฏิบัติการ (Operational)</div>
+      <p style="font-size:13px; color:var(--c-muted); margin-bottom:0">ตอบคำถาม "วันนี้มีอะไรต้องแก้บ้าง"
+      แสดงกฎที่ล้มเหลวล่าสุด อัตราผ่านตามชุดข้อมูล งานรันที่ยังค้างหรือล้มเหลว
+      และคิวงานปัญหาที่รอดำเนินการ เหมาะสำหรับ Data Steward ใช้เป็นหน้าจอหลักประจำวัน</p>
+    </div>
+    <div class="card">
+      <div class="card-en">OVERVIEW · DATA ENGINEERING</div>
+      <div class="card-title">3) แดชบอร์ดวิศวกรรมข้อมูล (Data Engineering)</div>
+      <p style="font-size:13px; color:var(--c-muted); margin-bottom:0">ตอบคำถาม "ท่อข้อมูลและสคีมาแข็งแรงไหม"
+      แสดงสถานะการเชื่อมต่อแหล่งข้อมูล การเปลี่ยนแปลงสคีมา (Schema Drift)
+      สถิติงานรัน ความล่าช้า และปัญหาด้านโครงสร้าง เหมาะสำหรับวิศวกรข้อมูลเฝ้าระวังภาวะผิดปกติของระบบต้นทาง</p>
+    </div>
+    <div class="card">
+      <div class="card-en">OVERVIEW · ML MONITORING</div>
+      <div class="card-title">4) แดชบอร์ดติดตามโมเดล ML (ML Monitoring)</div>
+      <p style="font-size:13px; color:var(--c-muted); margin-bottom:0">ตอบคำถาม "โมเดลตรวจจับยังเชื่อถือได้ไหม"
+      แสดงจำนวนสัญญาณที่ตรวจพบ อัตราที่มนุษย์ยืนยันจริง (Precision โดยประมาณ)
+      และการเปลี่ยนแปลงของการกระจายข้อมูล (Drift) ที่มีผลต่อความแม่นยำของโมเดล</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-en">OVERVIEW · AUDIT</div>
+    <div class="card-title">5) แดชบอร์ดการตรวจสอบ (Audit)</div>
+    <p style="font-size:13px; color:var(--c-muted); margin-bottom:0">
+      ตอบคำถาม "ใครทำอะไร กับชุดข้อมูลใด เมื่อไร" รวบรวมกิจกรรมสำคัญ เช่น การสร้าง/อนุมัติกฎ
+      การเปลี่ยนสิทธิ์ การตรวจทานสัญญาณ ML และการส่งออกรายงาน พร้อมกรองตามช่วงเวลา บทบาท และชุดข้อมูล
+      ออกแบบมาเพื่อผู้ตรวจสอบภายใน (Auditor) และการปฏิบัติตามกฎเกณฑ์ โดยเนื้อหาที่เป็น PII จะถูกปกปิดเช่นเดียวกับหน้าจออื่น
+    </p>
+  </div>
+
+  <div class="callout">
+    <span class="c-label">เคล็ดลับ</span>
+    ใช้ช่องค้นหาด้านบนเพื่อกระโดดไปยังชุดข้อมูล กฎ หรืองานรันได้ทันทีโดยไม่ต้องไล่เมนู
+    ผลค้นหาแสดงเฉพาะรายการที่คุณมีสิทธิ์เข้าถึงเท่านั้น
+  </div>
+
+  <!-- ===== CHAPTER 4 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 4 · DATA</div>
+    <div class="section-title">แหล่งข้อมูล แคตตาล็อก และการวิเคราะห์ข้อมูล</div>
+    <div class="divider"></div>
+  </div>
+
+  <h3 class="sub">4.1 เชื่อมต่อแหล่งข้อมูล (Data Sources)</h3>
+  <p class="body-text">
+    หน้า <strong>แหล่งข้อมูล (Data Sources)</strong> คือจุดเริ่มต้นของทุกอย่าง ระบบรองรับสองรูปแบบ:
+    <strong>อัปโหลดไฟล์</strong> (CSV, Excel) และ<strong>เชื่อมต่อแหล่งข้อมูลองค์กร</strong>
+    (PostgreSQL, MS SQL Server, REST API) เมื่อเชื่อมต่อสำเร็จ ระบบจะลงทะเบียนชุดข้อมูล (Dataset)
+    ให้อัตโนมัติ พร้อมโปรไฟล์เริ่มต้นและสคีมาอ้างอิงสำหรับใช้ตรวจ Schema Conformity
+  </p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body">
+      <div class="s-t">เปิดเมนู ข้อมูล → แหล่งข้อมูล แล้วกด "เพิ่มแหล่งข้อมูล"</div>
+      <div class="s-d">เลือกชนิดของแหล่งข้อมูลที่ต้องการ ไฟล์อัปโหลดหรือการเชื่อมต่อฐานข้อมูล/API</div>
+    </div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body">
+      <div class="s-t">อัปโหลดไฟล์ หรือกรอกพารามิเตอร์การเชื่อมต่อ</div>
+      <div class="s-d">สำหรับฐานข้อมูล ระบบขอ Host, Port, ชื่อฐานข้อมูล และบัญชีบริการแบบสิทธิ์อ่านอย่างเดียวเท่านั้น — ห้ามใช้บัญชีที่มีสิทธิ์เขียนโดยเด็ดขาด</div>
+    </div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body">
+      <div class="s-t">ตั้งชื่อ คำอธิบาย และผู้รับผิดชอบของชุดข้อมูล</div>
+      <div class="s-d">ตั้งค่าตัวระบุคอลัมน์ PII ให้ครบถ้วน เพื่อให้ระบบปกปิดข้อมูลส่วนบุคคลได้ถูกต้องตั้งแต่ต้น</div>
+    </div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body">
+      <div class="s-t">ตรวจสอบสถานะการเชื่อมต่อและยืนยัน</div>
+      <div class="s-d">ระบบทดสอบการเชื่อมต่อ อ่านโครงสร้างตัวอย่าง แล้วเพิ่มชุดข้อมูลเข้าแคตตาล็อก — หากล้มเหลว ให้ตรวจสอบพารามิเตอร์และไฟร์วอลล์ขององค์กร</div>
+    </div></div>
+  </div>
+
+  <div class="callout warn">
+    <span class="c-label">ความปลอดภัยการอัปโหลดไฟล์</span>
+    ระบบยอมรับเฉพาะไฟล์นามสกุลที่อนุญาต (CSV/XLSX) ตรวจชนิดไฟล์จริงจากเนื้อหา (MIME/Signature)
+    เปลี่ยนชื่อไฟล์เป็นรหัสภายใน และล้างค่าที่อาจก่อสูตรคำนวณ (Formula Injection) ก่อนประมวลผล
+    ไฟล์ใดไม่ผ่านการตรวจจะถูกเก็บแยกในสถานะ <strong>Quarantine</strong> ทันทีและแจ้งเตือนผู้ดูแลระบบ
+    ไม่นำเข้าระบบโดยเด็ดขาด
+  </div>
+
+  <h3 class="sub">4.2 แคตตาล็อกชุดข้อมูล (Dataset Catalogue)</h3>
+  <p class="body-text">
+    หน้า <strong>แคตตาล็อกชุดข้อมูล</strong> รวมชุดข้อมูลทั้งหมดที่คุณมีสิทธิ์เข้าถึง ค้นหาได้ตามชื่อ เจ้าของ หรือคำอธิบาย
+    เมื่อเลือกชุดข้อมูลหนึ่ง ระบบจะเปิดหน้ารายละเอียดแบบหลายแท็บ: โครงสร้าง (Schema), โปรไฟล์ (Profile),
+    กฎคุณภาพที่ผูกอยู่, ผลการตรวจสอบล่าสุด และปัญหาที่เปิดอยู่ คุณยังดูประวัติการเปลี่ยนแปลงของสคีมาย้อนหลังได้
+    ซึ่งช่วยให้จับได้เร็วเมื่อระบบต้นทางแก้โครงสร้างโดยไม่แจ้งมา
+  </p>
+
+  <h3 class="sub">4.3 การวิเคราะห์ข้อมูล (Profiling)</h3>
+  <p class="body-text">
+    <strong>Profiling</strong> คือการสำรวจข้อมูลก่อนสร้างกฎ ระบบสรุปสถิติของทุกคอลัมน์ เช่น จำนวนค่าว่าง
+    จำนวนค่าไม่ซ้ำ ค่าต่ำสุด–สูงสุด ค่าเฉลี่ย การกระจายตัว และตัวอย่างค่าที่พบบ่อย
+    ใช้ข้อมูลนี้ตัดสินว่าคอลัมน์ใดควรมีกฎแบบใด เช่น คอลัมน์ที่มีค่าว่าง 12% ควรมีกฎ NOT_NULL
+    หรือคอลัมน์รหัสที่มีรูปแบบชัดเจนควรมีกฎ REGEX ทั้งนี้คอลัมน์ PII จะแสดงเฉพาะสถิติรวม
+    โดยไม่เปิดเผยค่าจริงใด ๆ
+  </p>
+
+  <!-- ===== CHAPTER 5 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 5 · RULE BUILDER</div>
+    <div class="section-title">สร้างกฎคุณภาพด้วย Rule Builder</div>
+    <div class="divider"></div>
+  </div>
+
+  <p class="body-text">
+    หัวใจของแพลตฟอร์มคือ <strong>ตัวสร้างกฎ (Rule Builder)</strong> ที่ช่วยให้ผู้ไม่ใช่โปรแกรมเมอร์
+    นิยามกฎคุณภาพได้เองโดยไม่ต้องเขียนโค้ด กฎทุกข้อถูกแปลงเป็นประโยคมาตรฐานเดียวกัน
+    อ่านเข้าใจได้ทั้งภาษาไทยและอังกฤษ ทำให้ผู้มีส่วนได้ส่วนเสียตรวจสอบความหมายของกฎได้ก่อนอนุมัติเสมอ
+  </p>
+
+  <div class="grammar">
+    <div class="g-tag">โครงสร้างประโยคกฎมาตรฐาน · RULE GRAMMAR</div>
+    <div class="g-line">
+      For <span class="g-slot">[Dataset]</span>, <span class="g-slot">[Column]</span> must <span class="g-slot">[Condition]</span>
+      using <span class="g-slot">[Parameters]</span> when <span class="g-slot">[Optional filter]</span>,
+      otherwise mark as <span class="g-slot">[Severity]</span>.
+    </div>
+    <div class="g-note">
+      รูปภาษาไทย: <strong>"สำหรับ [ชุดข้อมูล] [คอลัมน์] ต้อง [เงื่อนไข] โดยใช้ [พารามิเตอร์] เมื่อ [ตัวกรองเสริม] มิฉะนั้นทำเครื่องหมายว่า [ความรุนแรง]"</strong>
+      — ตัวอย่าง: For ลูกค้า_Master, อีเมล must match the pattern <span class="chip teal">^[^@\s]+@[^@\s]+\.[^@\s]+$</span>, otherwise mark as <span class="chip teal">HIGH</span>.
+    </div>
+  </div>
+
+  <h3 class="sub">5.1 สร้างกฎใน 4 ขั้นตอน</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body">
+      <div class="s-t">เลือกชุดข้อมูลและคอลัมน์เป้าหมาย</div>
+      <div class="s-d">ดึงข้อมูลจากรายการชุดข้อมูลที่คุณมีสิทธิ์ บางเทมเพลต (เช่น ROW_COUNT) ใช้ระดับชุดข้อมูลโดยไม่ต้องเลือกคอลัมน์</div>
+    </div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body">
+      <div class="s-t">เลือกเทมเพลตเงื่อนไขและมิติคุณภาพ</div>
+      <div class="s-d">ระบบตั้งมิติคุณภาพให้อัตโนมัติตามชนิดเทมเพลต แต่ปรับได้ตามบริบทธุรกิจของคุณ</div>
+    </div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body">
+      <div class="s-t">กรอกพารามิเตอร์ ตัวกรองเสริม และความรุนแรง</div>
+      <div class="s-d">เช่น ช่วง min–max, ชุดค่าที่อนุญาต, รูปแบบ regex หรือจำนวนชั่วโมงสูงสุด — พร้อมเลือก CRITICAL/HIGH/MEDIUM/LOW และกรองให้ตรวจเฉพาะแถวย่อย (เช่น สาขาใดสาขาหนึ่ง) ได้</div>
+    </div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body">
+      <div class="s-t">ตรวจประโยคกฎแล้วกด "สร้างและส่งขออนุมัติ"</div>
+      <div class="s-d">ระบบสร้างกฎเวอร์ชัน 1 ในสถานะรออนุมัติ บันทึกลง Audit Trail และแจ้งเตือนเจ้าของข้อมูลให้พิจารณา</div>
+    </div></div>
+  </div>
+
+  <h3 class="sub">5.2 เทมเพลตกฎทั้ง 10 แบบ</h3>
+  <table class="data">
+    <colgroup><col style="width:27%"><col style="width:22%"><col style="width:51%"></colgroup>
+    <thead><tr><th>เทมเพลต</th><th>มิติคุณภาพ</th><th>ใช้เมื่อไร</th></tr></thead>
+    <tbody>
+      <tr><td><strong>ต้องไม่ว่าง</strong> <span class="mono">NOT_NULL</span></td><td>Completeness</td><td>ฟิลด์สำคัญต้องมีค่าทุกแถว เช่น รหัสลูกค้า วันที่ทำรายการ</td></tr>
+      <tr><td><strong>รูปแบบถูกต้อง</strong> <span class="mono">REGEX</span></td><td>Validity</td><td>ค่าต้องตรงรูปแบบ เช่น อีเมล เลขประจำตัว รหัสไปรษณีย์ 5 หลัก</td></tr>
+      <tr><td><strong>ขอบเขตสมเหตุสมผล</strong> <span class="mono">RANGE</span></td><td>Accuracy</td><td>ค่าตัวเลขต้องอยู่ในช่วง เช่น อายุ 0–120 ยอดขาย ≥ 0</td></tr>
+      <tr><td><strong>อยู่ในชุดที่กำหนด</strong> <span class="mono">IN_SET</span></td><td>Validity</td><td>ค่าต้องเป็นหนึ่งในรายการ เช่น สถานะ {ACTIVE, CLOSED}</td></tr>
+      <tr><td><strong>ไม่ซ้ำกัน</strong> <span class="mono">UNIQUE</span></td><td>Uniqueness</td><td>ค่าห้ามซ้ำทั้งชุด เช่น เลขบัตร รหัสสัญญา หมายเลขใบแจ้งหนี้</td></tr>
+      <tr><td><strong>ความทันเวลา</strong> <span class="mono">FRESHNESS</span></td><td>Timeliness</td><td>ระเบียนล่าสุดต้องไม่เก่ากว่า N ชั่วโมง เช่น ข้อมูลราคาทุกวัน</td></tr>
+      <tr><td><strong>กรอบปริมาณข้อมูล</strong> <span class="mono">ROW_COUNT</span></td><td>Volume</td><td>จำนวนแถวต้องอยู่ในกรอบคาดการณ์ เช่น 9,500–10,500 แถวต่อวัน</td></tr>
+      <tr><td><strong>ความสอดคล้องระหว่างคอลัมน์</strong> <span class="mono">CROSS_FIELD</span></td><td>Consistency</td><td>เทียบสองคอลัมน์หรือคอลัมน์กับค่าคงที่ เช่น วันสิ้นสุด ≥ วันเริ่มต้น</td></tr>
+      <tr><td><strong>ความสมบูรณ์อ้างอิง</strong> <span class="mono">REFERENTIAL</span></td><td>Integrity</td><td>ค่าต้องมีอยู่ในชุดข้อมูลอ้างอิง เช่น รหัสสาขาต้องมีในตารางสาขา</td></tr>
+      <tr><td><strong>สอดคล้องสคีมา</strong> <span class="mono">SCHEMA_MATCH</span></td><td>Schema Conformity</td><td>โครงสร้างจริงต้องตรงสคีมาที่ลงทะเบียน ใช้จับคอลัมน์หาย/ชนิดเปลี่ยน</td></tr>
+    </tbody>
+  </table>
+
+  <h3 class="sub">5.3 วงจรชีวิตของกฎ (Rule Lifecycle)</h3>
+  <p class="body-text">
+    กฎไม่มีทางเริ่มบังคับใช้ทันทีที่สร้าง — ทุกกฎต้องผ่านการอนุมัติตามกรอบธรรมาภิบาลข้อมูล
+    เพื่อป้องกันกฎที่ผิดความหมายหรือกดคะแนนโดยไม่จำเป็น และการแก้ไขกฎเดิมจะสร้าง
+    <strong>เวอร์ชันใหม่</strong>เสมอ โดยเวอร์ชันเก่ายังถูกเก็บไว้เป็นหลักฐานอ้างอิงได้เต็มรูปแบบ
+  </p>
+  <div class="flow">
+    <div class="flow-node"><div class="f-t">ร่างกฎ (Draft)</div><div class="f-d">ประกอบประโยคกฎใน Rule Builder</div></div>
+    <div class="flow-node"><div class="f-t">รออนุมัติ (Pending)</div><div class="f-d">เจ้าของข้อมูล/ผู้ดูแลข้อมูลตรวจความหมาย</div></div>
+    <div class="flow-node"><div class="f-t">อนุมัติ (Approved)</div><div class="f-d">บันทึกผู้อนุมัติและเวลาใน Audit Trail</div></div>
+    <div class="flow-node"><div class="f-t">เปิดใช้งาน (Active)</div><div class="f-d">ถูกรวมในการรันตรวจสอบทุกครั้ง</div></div>
+    <div class="flow-node"><div class="f-t">ปิดใช้งาน (Inactive)</div><div class="f-d">พักการใช้งานโดยไม่ลบประวัติ</div></div>
+  </div>
+
+  <!-- ===== CHAPTER 6 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 6 · VALIDATION RUNS</div>
+    <div class="section-title">รันการตรวจสอบและอ่านผลลัพธ์</div>
+    <div class="divider"></div>
+  </div>
+
+  <p class="body-text">
+    หน้า <strong>การรันตรวจสอบ (Validation Runs)</strong> คือที่ที่กฎทั้งหมดถูกนำไปใช้จริง
+    การรันหนึ่งครั้งจะประเมินกฎที่เปิดใช้งานทั้งหมดของชุดข้อมูลเป้าหมาย แล้วสรุปอัตราผ่านต่อกฎ
+    ต่อมิติคุณภาพ และคะแนนรวมของชุดข้อมูล การรันทำงานแบบ<strong>อะซิงโครนัส</strong>ในพื้นหลัง
+    คุณจึงปิดหน้าจอได้และจะได้รับการแจ้งเตือนเมื่อเสร็จ
+  </p>
+
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body">
+      <div class="s-t">เลือกชุดข้อมูลและกฎที่ต้องการตรวจ</div>
+      <div class="s-d">เลือกทั้งหมดที่เปิดใช้งาน หรือเจาะจงเฉพาะกฎที่สนใจ พร้อมระบุชื่องานรันให้สื่อความ เช่น "ตรวจลูกค้าประจำวันที่ 15"</div>
+    </div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body">
+      <div class="s-t">กดรันแล้วติดตามสถานะ</div>
+      <div class="s-d">สถานะเดินตามคิว: รอคิว (Queued) → กำลังรัน (Running) → เสร็จสิ้น (Succeeded) หรือล้มเหลว (Failed)</div>
+    </div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body">
+      <div class="s-t">เปิดดูผลลัพธ์รายกฎ</div>
+      <div class="s-d">แต่ละกฎแสดงจำนวนแถวที่ประเมิน จำนวนที่ล้มเหลว อัตราผ่าน และตัวอย่างแถวที่ผิด (สูงสุด 5 แถว) พร้อมเหตุผลเป็นภาษาไทย/อังกฤษ</div>
+    </div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body">
+      <div class="s-t">สร้างปัญหาข้อมูลจากกฎที่ล้มเหลว</div>
+      <div class="s-d">กฎ CRITICAL/HIGH ที่ล้มเหลวจะถูกผลักเป็นปัญหาข้อมูล (Issue) อัตโนมัติเพื่อให้ทีมรับงานแก้ไขต่อ (บทที่ 8)</div>
+    </div></div>
+  </div>
+
+  <h3 class="sub">สถานะงานรันและความน่าเชื่อถือ</h3>
+  <p class="body-text">
+    ทุกงานรันมีรหัสประจำตัว (Idempotency Key) เพื่อกันการรันซ้ำ หากระบบขัดข้องระหว่างทาง
+    งานจะถูก<strong>ลองใหม่อัตโนมัติ</strong>ด้วยช่วงเวลาที่ยืดขึ้นเรื่อย ๆ (Exponential Backoff)
+    หากลองครบจำนวนครั้งแล้วยังไม่สำเร็จ งานจะถูกย้ายไปคิว <strong>Dead-Letter</strong>
+    พร้อมสถานะ DEAD เพื่อให้ทีมวิศวกรข้อมูลวิเคราะห์สาเหตุ และคุณสามารถยกเลิกงานที่ยังรันอยู่ได้เองจากหน้ารายการ
+  </p>
+  <div class="card">
+    <div class="card-title">ความหมายของสถานะ</div>
+    <p style="font-size:13px; margin-bottom:0">
+      <span class="pill">QUEUED</span> อยู่ในคิวรอ &nbsp;
+      <span class="pill">RUNNING</span> กำลังประเมินกฎ &nbsp;
+      <span class="pill">SUCCEEDED</span> รันสำเร็จ มีผลลัพธ์ให้ดู &nbsp;
+      <span class="pill">FAILED</span> ล้มเหลว ระบบจะลองใหม่อัตโนมัติ &nbsp;
+      <span class="pill">DEAD</span> ลองใหม่ครบแล้วยังล้มเหลว ต้องให้วิศวกรตรวจ &nbsp;
+      <span class="pill">CANCELLED</span> ถูกยกเลิกโดยผู้ใช้ &nbsp;
+      <span class="pill">SKIPPED</span> ไม่มีแถวที่ตรงเงื่อนไขกรอง
+    </p>
+  </div>
+
+  <div class="callout">
+    <span class="c-label">หลักฐานอ้างอิง (Evidence)</span>
+    แถวตัวอย่างที่ล้มเหลวจะแสดงพร้อมค่าที่<strong>ปกปิด PII แล้ว</strong> เหตุผลความผิดพลาดสองภาษา
+    และเลขแถวอ้างอิงกลับไปยังต้นทาง ทำให้ทีมแก้ไขตามได้เร็วโดยไม่ต้องเปิดดูข้อมูลส่วนบุคคลจริง
+  </div>
+
+  <!-- ===== CHAPTER 7 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 7 · MACHINE LEARNING</div>
+    <div class="section-title">ความผิดปกติและโมเดล Machine Learning</div>
+    <div class="divider"></div>
+  </div>
+
+  <p class="body-text">
+    นอกจากกฎที่นิยามล่วงหน้า ระบบยังฝังโมเดล Machine Learning สามกลุ่มเพื่อจับปัญหาที่
+    "มองไม่เห็นด้วยกฎ" ย้ำอีกครั้งว่าผลเหล่านี้เป็น<strong>สัญญาณเพื่อการตรวจทาน</strong> —
+    ระบบจะไม่ตัดสินว่าข้อมูลผิดพลาดเอง และไม่แก้ไขข้อมูลแทนคุณ
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-en">ISOLATION FOREST</div>
+      <div class="card-title">ตรวจจับค่าผิดปกติ (Anomaly Detection)</div>
+      <p style="font-size:13px; color:var(--c-muted); margin-bottom:0">โมเดล Isolation Forest ให้คะแนนความผิดปกติของแต่ละระเบียนเทียบกับข้อมูลส่วนใหญ่
+      พร้อมชี้ "ค่าที่มีส่วนทำให้ผิดปกติ" ของแต่ละฟิลด์ เช่น ยอดซื้อสูงผิดปกติ 30 เท่าของค่ามัธยฐาน</p>
+    </div>
+    <div class="card">
+      <div class="card-en">RECORD LINKAGE</div>
+      <div class="card-title">ค้นหาระเบียนซ้ำ (Duplicate Detection)</div>
+      <p style="font-size:13px; color:var(--c-muted); margin-bottom:0">ใช้การเทียบความคล้ายข้อความ (Jaro-Winkler) แบบแบ่งบล็อกเพื่อลดเวลาคำนวณ
+      จับกรณี "ซ้ำแบบไม่เท่ากันเป๊ะ" เช่น สะกดชื่อต่างกันเล็กน้อยแต่เป็นบุคคลเดียวกัน แล้วจัดกลุ่มซ้ำให้ตรวจทาน</p>
+    </div>
+    <div class="card">
+      <div class="card-en">PSI + Z-TEST</div>
+      <div class="card-title">ตรวจจับ Drift ของข้อมูล</div>
+      <p style="font-size:13px; color:var(--c-muted); margin-bottom:0">เทียบการกระจายข้อมูลปัจจุบันกับช่วงอ้างอิงด้วย PSI (ตัวเลขและหมวดหมู่)
+      และการทดสอบเปลี่ยนค่าเฉลี่ย (Mean-Shift) เพื่อเตือนว่าข้อมูลต้นทางกำลังเปลี่ยนพฤติกรรม เช่น สัดส่วนสาขาเปลี่ยนผิดปกติ</p>
+    </div>
+    <div class="card">
+      <div class="card-en">HUMAN-IN-THE-LOOP</div>
+      <div class="card-title">การตรวจทานโดยมนุษย์ (Review)</div>
+      <p style="font-size:13px; color:var(--c-muted); margin-bottom:0">ทุกสัญญาณต้องถูกตัดสินโดยผู้ดูแลข้อมูล:
+      <strong>ยืนยัน</strong> (เป็นความผิดปกติจริง — ระบบจะผลักต่อเป็นปัญหาข้อมูล) หรือ
+      <strong>ปัดทิ้ง</strong> (False Positive) พร้อมเหตุผล การตัดสินทั้งหมดบันทึกลง Audit Trail</p>
+    </div>
+  </div>
+
+  <h3 class="sub">7.1 ขั้นตอนตรวจทานสัญญาณความผิดปกติ</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body">
+      <div class="s-t">เปิดเมนู คุณภาพข้อมูล → ความผิดปกติ (Anomalies)</div>
+      <div class="s-d">แสดงรายการสัญญาณล่าสุดจัดเรียงตามคะแนนความผิดปกติ พร้อมสถานะการตรวจทานของแต่ละรายการ</div>
+    </div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body">
+      <div class="s-t">สแกนหาสัญญาณใหม่ (ปุ่ม Scan) เมื่อข้อมูลอัปเดต</div>
+      <div class="s-d">ระบบจะรันโมเดลบนชุดข้อมูลที่คุณเลือกแบบเป็นงานพื้นหลัง และแจ้งเตือนเมื่อสแกนเสร็จ</div>
+    </div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body">
+      <div class="s-t">เปิดรายการแล้วอ่านบริบทก่อนตัดสิน</div>
+      <div class="s-d">ดูคะแนน ฟิลด์ที่มีผล และค่าที่ถูกปกปิดแล้ว เทียบกับสถิติรวมของคอลัมน์เพื่อประกอบการตัดสิน</div>
+    </div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body">
+      <div class="s-t">กด "ยืนยัน" หรือ "ปัดทิ้ง" พร้อมใส่เหตุผล</div>
+      <div class="s-d">รายการที่ยืนยันจะกลายเป็นปัญหาข้อมูลที่ติดตามได้ ส่วนการปัดทิ้งช่วยให้ระบบแสดงอัตราสัญญาณเท็จบนแดชบอร์ด ML Monitoring</div>
+    </div></div>
+  </div>
+
+  <h3 class="sub">7.2 หน้าโมเดล ML (ML Models)</h3>
+  <p class="body-text">
+    หน้า <strong>โมเดล ML</strong> ในกลุ่มเมนูอัจฉริยะภาพ รวมโมเดลที่แพลตฟอร์มใช้งานทั้งหมด
+    แสดงเวอร์ชัน สถานะการเผยแพร่ และสถิติการใช้งาน ผู้มีสิทธิ์ (โดยทั่วไปคือนักวิทยาศาสตร์ข้อมูล
+    ร่วมกับผู้ดูแลระบบ) สามารถเปลี่ยนสถานะโมเดล (Staging) เช่น จากสถานะทดลองเป็นใช้งานจริง
+    การเปลี่ยนสถานะทุกครั้งถูกบันทึกลง Audit Trail พร้อมผู้ทำรายการและเวลา
+    เพื่อให้ผลการตรวจจับทุกชิ้นย้อนกลับไปหาโมเดลเวอร์ชันที่ใช้ได้เสมอ
+  </p>
+
+  <!-- ===== CHAPTER 8 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 8 · ISSUES</div>
+    <div class="section-title">ติดตามปัญหาข้อมูล (Issues)</div>
+    <div class="divider"></div>
+  </div>
+
+  <p class="body-text">
+    <strong>ปัญหาข้อมูล (Issues)</strong> คือศูนย์รวมงานแก้ไขที่เกิดจากกฎล้มเหลวหรือสัญญาณ ML ที่ยืนยันแล้ว
+    แต่ละปัญหาระบุชุดข้อมูล กฎหรือแหล่งที่มา ระดับความรุนแรง จำนวนระเบียนที่กระทบ
+    และลิงก์กลับไปยังหลักฐานอ้างอิง ทีมสามารถมอบหมายผู้รับผิดชอบ ปรับสถานะ และบันทึกบทสรุปการแก้ไข
+    เพื่อให้ทุกปัญหามีจุดเริ่มและจุดปิดที่ชัดเจนและตรวจสอบย้อนหลังได้
+  </p>
+
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body">
+      <div class="s-t">เปิดเมนู คุณภาพข้อมูล → ปัญหาข้อมูล (Issues)</div>
+      <div class="s-d">กรองตามสถานะ ความรุนแรง หรือชุดข้อมูล เพื่อเลือกงานที่รับผิดชอบในแต่ละวัน</div>
+    </div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body">
+      <div class="s-t">เปิดปัญหาแล้วศึกษาหลักฐาน</div>
+      <div class="s-d">ดูแถวตัวอย่างที่ล้มเหลว (ค่าปกปิดแล้ว) เหตุผล และประวัติการรันที่พบ — ตรวจว่าเป็นปัญหาข้อมูลจริงหรือกฎที่ออกแบบไม่เหมาะสม</div>
+    </div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body">
+      <div class="s-t">อัปเดตสถานะและมอบหมายผู้รับผิดชอบ</div>
+      <div class="s-d">เดินสถานะตามกระบวนการของทีม เช่น เปิด → กำลังดำเนินการ → รอตรวจยืนยัน → ปิดงาน พร้อมความเห็นสรุปทุกครั้ง</div>
+    </div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body">
+      <div class="s-t">ปิดปัญหาเมื่อข้อมูลจริงถูกแก้ที่ต้นทางแล้ว</div>
+      <div class="s-d">ยืนยันด้วยการรันตรวจสอบซ้ำให้กฎผ่าน จากนั้นปิดปัญหา — ระบบเก็บประวัติไว้เป็นหลักฐานการปรับปรุงคุณภาพ</div>
+    </div></div>
+  </div>
+
+  <div class="callout">
+    <span class="c-label">ข้อควรจำ</span>
+    การปิดปัญหาในแพลตฟอร์มไม่ได้แปลว่าข้อมูลถูกแก้แล้ว — ข้อมูลต้นทางถูกแก้โดยเจ้าของระบบตามกระบวนการขององค์กร
+    แพลตฟอร์มมีหน้าที่ตรวจยืนยันด้วยการรันกฎซ้ำเท่านั้น
+  </div>
+
+  <!-- ===== CHAPTER 9 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 9 · REPORTS & SCORE</div>
+    <div class="section-title">รายงานและคะแนนคุณภาพข้อมูล</div>
+    <div class="divider"></div>
+  </div>
+
+  <h3 class="sub">9.1 คะแนนคุณภาพข้อมูล (DQ Score)</h3>
+  <p class="body-text">
+    ระบบสรุปคุณภาพเป็นคะแนน 0–100 ต่อชุดข้อมูล คำนวณจาก<strong>อัตราผ่านเฉลี่ยของกฎในแต่ละมิติ
+    คูณน้ำหนักของมิติ</strong>แล้วรวมกันทั้ง 9 มิติ กฎแต่ละข้อมีน้ำหนักตามความรุนแรงที่กำหนดไว้
+    ทำให้คะแนนสะท้อนความสำคัญทางธุรกิจ ไม่ใช่แค่สัดส่วนแถวผ่านเฉย ๆ
+  </p>
+  <div class="grammar">
+    <div class="g-tag">สูตรคะแนน · DQ SCORE FORMULA</div>
+    <div class="g-line">DQ Score = Σ ( น้ำหนักมิติ × อัตราผ่านเฉลี่ยของกฎในมิตินั้น )</div>
+    <div class="g-note">
+      <strong>เกราะป้องกันการเกมกติญา (Anti-Gaming Guardrails):</strong>
+      ① กฎระดับ CRITICAL ที่ล้มเหลวจะถูกลงโทษหนักเป็นสองเท่า (ผลผ่านของกฎนั้นถูกหารสองก่อนรวม)
+      ② หากความครอบคลุมของข้อมูลวิกฤต (CDE Coverage) ต่ำกว่า 60% คะแนนรวมจะถูกจำกัดไม่เกิน 70
+      เพื่อป้องกันการได้คะแนนสูงโดยการสร้างกฎเฉพาะคอลัมน์ง่าย ๆ แล้วละเลยฟิลด์สำคัญ
+    </div>
+  </div>
+
+  <h3 class="sub">9.2 สร้างและส่งออกรายงาน</h3>
+  <p class="body-text">
+    หน้า <strong>รายงาน (Reports)</strong> ให้สร้างรายงานผลการประเมินคุณภาพตามชุดข้อมูลและช่วงเวลา
+    พร้อมสรุปคะแนน มิติที่อ่อน และปัญหาที่เกี่ยวข้อง เมื่อสร้างแล้วสามารถ<strong>ส่งออกไฟล์</strong>
+    เพื่อแนบในการประชุมคณะกรรมการธรรมาภิบาลข้อมูล หรือใช้เป็นหลักฐานการปฏิบัติตามกฎเกณฑ์
+    ข้อควรรู้คือข้อมูล PII ในไฟล์ที่ส่งออกถูกปกปิดตามนโยบายเดียวกับหน้าจอเสมอ
+    และทุกการส่งออกถูกบันทึกลง Audit Log เพื่อความโปร่งใส
+  </p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body">
+      <div class="s-t">เลือกชุดข้อมูลและช่วงเวลาที่ต้องการรายงาน</div>
+      <div class="s-d">ระบบสรุปจากผลการรันตรวจสอบที่เก็บไว้ในช่วงนั้น ไม่ใช่แค่ผลล่าสุด</div>
+    </div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body">
+      <div class="s-t">สร้างรายงานและตรวจทานเนื้อหา</div>
+      <div class="s-d">ตรวจสอบคะแนนรายมิติ รายการปัญหา และแนวโน้มเทียบช่วงก่อนหน้า</div>
+    </div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body">
+      <div class="s-t">ส่งออกและดาวน์โหลดไฟล์</div>
+      <div class="s-d">ดาวน์โหลดได้จากหน้ารายงาน ไฟล์ทั้งหมดถูกบันทึกการส่งออก (ใคร อะไร เมื่อไร) ใน Audit Log</div>
+    </div></div>
+  </div>
+
+  <!-- ===== CHAPTER 10 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 10 · GOVERNANCE & SECURITY</div>
+    <div class="section-title">ธรรมาภิบาล ความปลอดภัย และการตรวจสอบย้อนกลับ</div>
+    <div class="divider"></div>
+  </div>
+
+  <h3 class="sub">10.1 สิทธิ์ระดับชุดข้อมูล (Dataset Grants)</h3>
+  <p class="body-text">
+    ผู้ดูแลระบบจัดสิทธิ์ในหน้า <strong>การจัดการระบบ (Administration)</strong> สองส่วน:
+    <strong>ผู้ใช้และบทบาท</strong> — กำหนดบทบาทหลักของแต่ละบัญชี และ
+    <strong>การมอบสิทธิ์ชุดข้อมูล (Grants)</strong> — ระบุว่าใครเข้าถึงชุดข้อมูลใดได้
+    หลักการสำคัญคือ "ไม่ได้รับอนุญาต = มองไม่เห็น" ผู้ใช้ที่ไม่มีสิทธิ์จะไม่เห็นชุดข้อมูลนั้นในทุกจุดของระบบ
+    ไม่ว่าจะเป็นแคตตาล็อก ผลค้นหา รายงาน หรือผลการตรวจสอบ การมอบและถอนสิทธิ์ทุกรายการบันทึกลง Audit Log
+  </p>
+
+  <h3 class="sub">10.2 การปกปิดข้อมูลส่วนบุคคล (PII Masking)</h3>
+  <p class="body-text">
+    ระบบรู้จัก PII ห้าประเภทหลักและปกปิดอัตโนมัติในทุกช่องทาง — หน้าจอ หลักฐานอ้างอิง
+    บันทึกข้อผิดพลาด และไฟล์ส่งออก ตัวอย่างเชิงหน้าที่มีดังนี้ (รูปแบบจริงอาจต่างเล็กน้อยตามประเภทข้อมูล):
+  </p>
+  <table class="data">
+    <colgroup><col style="width:24%"><col style="width:34%"><col style="width:42%"></colgroup>
+    <thead><tr><th>ประเภท PII</th><th>ตัวอย่างค่าจริง</th><th>แสดงผลเมื่อถูกปกปิด (ตัวอย่างเชิงหน้าที่)</th></tr></thead>
+    <tbody>
+      <tr><td>อีเมล <span class="mono">EMAIL</span></td><td>somchai.j@company.co.th</td><td>แสดงบางส่วน เช่น s***@company.co.th</td></tr>
+      <tr><td>เบอร์โทร <span class="mono">PHONE</span></td><td>081-234-5678</td><td>แสดงบางส่วน เช่น 081-***-5678</td></tr>
+      <tr><td>ชื่อ-นามสกุล <span class="mono">NAME</span></td><td>สมชาย ใจดี</td><td>ปกปิดส่วนหนึ่งของชื่อ เช่น ส*** ใ**</td></tr>
+      <tr><td>เลขบัตรประชาชน <span class="mono">ID_CARD</span></td><td>1-2345-67890-12-3</td><td>แสดงเฉพาะหลักท้าย เช่น ***-***-***-12-3</td></tr>
+      <tr><td>เลขบัญชี <span class="mono">ACCOUNT</span></td><td>123-4-56789-0</td><td>แสดงเฉพาะหลักท้าย เช่น ***-****-0</td></tr>
+    </tbody>
+  </table>
+  <p class="t-note">หมายเหตุ: ตัวอย่างเหนือแสดงเพื่ออธิบายหลักการปกปิดแบบคงความอ่านง่าย (Human-readable) ไม่ใช่รูปแบบอักขระแบบตายตัวของระบบ</p>
+
+  <h3 class="sub">10.3 บันทึกการตรวจสอบ (Audit Logs)</h3>
+  <p class="body-text">
+    ทุกเหตุการณ์สำคัญ — เข้าสู่ระบบ สร้าง/อนุมัติ/ปิดใช้งานกฎ รันตรวจสอบ ตรวจทานสัญญาณ ML
+    เปลี่ยนสิทธิ์ ส่งออกรายงาน — ถูกเขียนลง <strong>Audit Log แบบไม่สามารถแก้ไขได้ (Immutable)</strong>
+    หน้าจอผู้ตรวจสอบสามารถกรองตามช่วงเวลา ผู้ใช้ ประเภทเหตุการณ์ และชุดข้อมูล
+    รวมถึงส่งออกรายการเป็นหลักฐาน ซึ่งตอบโจทย์ทั้งการตรวจสอบภายในและข้อกำหนด
+    PDPA และแนวปฏิบัติการกำกับดูแลข้อมูลของหน่วยงานที่เกี่ยวข้อง
+  </p>
+
+  <div class="callout warn">
+    <span class="c-label">ข้อห้ามสำคัญ</span>
+    ห้ามนำข้อมูลจริงออกจากแพลตฟอร์มผ่านวิธีใด ๆ เพื่อเลี่ยงการปกปิด PII — ทุกช่องทางส่งออกของระบบ
+    ออกแบบให้ปกปิดตามนโยบายแล้ว และการพยายามเข้าถึงชุดข้อมูลที่ไม่มีสิทธิ์จะถูกปฏิเสธพร้อมบันทึกเหตุการณ์ไว้ตรวจสอบ
+  </div>
+
+  <!-- ===== CHAPTER 11 ===== -->
+  <div class="chapter-header">
+    <div class="section-tag">บทที่ 11 · FAQ</div>
+    <div class="section-title">คำถามที่พบบ่อย</div>
+    <div class="divider"></div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qmark">Q1</span>ทำไมฉันจึงไม่เห็นชุดข้อมูลของทีมอื่นในแคตตาล็อก?</div>
+    <div class="a">นี่คือพฤติกรรมตามการออกแบบ ไม่ใช่ข้อผิดพลาด — ระบบแสดงเฉพาะชุดข้อมูลที่คุณได้รับมอบสิทธิ์เท่านั้น
+    หากต้องการเข้าถึงชุดข้อมูลเพิ่ม ให้ยื่นคำขอต่อผู้ดูแลระบบเพื่อพิจารณามอบสิทธิ์ผ่านหน้า Administration โดยการมอบสิทธิ์จะถูกบันทึกลง Audit Log</div>
+  </div>
+  <div class="qa">
+    <div class="q"><span class="qmark">Q2</span>กฎที่ฉันสร้างยังไม่ถูกใช้ตอนรันตรวจสอบ ต้องทำอย่างไร?</div>
+    <div class="a">กฎใหม่จะอยู่ในสถานะ<strong>รออนุมัติ</strong>จนกว่าเจ้าของข้อมูลจะอนุมัติและเปิดใช้งาน
+    ตรวจสถานะเวอร์ชันล่าสุดในหน้ากฎคุณภาพ และหากต้องการเร่งความ ให้ติดต่อผู้อนุมัติของชุดข้อมูลนั้นโดยตรง</div>
+  </div>
+  <div class="qa">
+    <div class="q"><span class="qmark">Q3</span>ทำไมค่าในแถวตัวอย่างที่ล้มเหลวถึงเป็นเครื่องหมาย *** ?</div>
+    <div class="a">เพราะคอลัมน์นั้นถูกระบุเป็น PII ระบบปกปิดค่าจริงก่อนแสดงเสมอ เพื่อให้ทีมแก้ปัญหายังวิเคราะห์รูปแบบความผิดพลาดได้
+    โดยไม่เปิดเผยข้อมูลส่วนบุคคล สอดคล้องกับนโยบายความเป็นส่วนตัวและ PDPA</div>
+  </div>
+  <div class="qa">
+    <div class="q"><span class="qmark">Q4</span>งานรันตรวจสอบขึ้นสถานะ FAILED แล้ว DEAD ควรทำอย่างไร?</div>
+    <div class="a">FAILED หมายถึงล้มเหลวครั้งแรกและระบบกำลังลองใหม่อัตโนมัติ แต่ DEAD หมายถึงลองครบจำนวนครั้งแล้วยังไม่สำเร็จ
+    ให้แจ้งวิศวกรข้อมูลตรวจสอบแหล่งข้อมูลต้นทาง (การเชื่อมต่อ สิทธิ์ หรือไฟล์) จากนั้นรันใหม่อีกครั้งเมื่อแหล่งข้อมูลกลับมาปกติ</div>
+  </div>
+  <div class="qa">
+    <div class="q"><span class="qmark">Q5</span>ML บอกว่าแถวนี้ผิดปกติ — ระบบแก้ให้เลยได้ไหม?</div>
+    <div class="a">ไม่ได้ ตามหลักการออกแบบ ผล ML เป็นเพียงสัญญาณ ผู้ดูแลข้อมูลต้องตรวจทานแล้วเลือก "ยืนยัน" หรือ "ปัดทิ้ง"
+    กรณียืนยัน ระบบจะเปิดปัญหาข้อมูลให้ทีมดำเนินการตามกระบวนการ — ระบบไม่แก้ไขหรือลบข้อมูลต้นทางโดยอัตโนมัติ</div>
+  </div>
+  <div class="qa">
+    <div class="q"><span class="qmark">Q6</span>อัปโหลดไฟล์แล้วขึ้นสถานะ Quarantine หมายความว่าอย่างไร?</div>
+    <div class="a">ไฟล์ของคุณไม่ผ่านการตรวจความปลอดภัย เช่น นามสกุลไม่อยู่ในรายการอนุญาต ชนิดไฟล์จริงไม่ตรงกับนามสกุล
+    หรือพบเนื้อหาที่อาจก่อสูตรคำนวณ ระบบเก็บไฟล์แยกโดยไม่นำเข้าข้อมูลเพื่อป้องกันความเสี่ยง
+    ให้ตรวจไฟล์แล้วอัปโหลดใหม่ หรือติดต่อผู้ดูแลระบบหากถือว่าเป็นข้อผิดพลาด</div>
+  </div>
+  <div class="qa">
+    <div class="q"><span class="qmark">Q7</span>คะแนน DQ ของชุดข้อมูลหล่นฮวบทั้งที่กฎผ่านเกือบหมด เกิดอะไรขึ้น?</div>
+    <div class="a">ตรวจสองอย่างนี้ก่อน: ① มีกฎระดับ <strong>CRITICAL</strong> ล้มเหลวหรือไม่ — กฎกลุ่มนี้ถูกลงโทษเป็นสองเท่า
+    ② ความครอบคลุมข้อมูลวิกฤต (CDE Coverage) ต่ำกว่า 60% หรือไม่ — คะแนนจะถูกจำกัดไม่เกิน 70
+    ทั้งสองกลไกออกแบบมาเพื่อไม่ให้คะแนนสูงได้โดยเลี่ยงฟิลด์สำคัญ</div>
+  </div>
+  <div class="qa">
+    <div class="q"><span class="qmark">Q8</span>ระบบตรวจพบสคีมาเปลี่ยน (Schema Drift) ต้องรีบทำอะไร?</div>
+    <div class="a">สคีมาเปลี่ยนแปลงหมายถึงระบบต้นทางแก้โครงสร้างโดยไม่มีการสื่อสาร เช่น คอลัมน์หาย ชนิดข้อมูลเปลี่ยน
+    หรือเพิ่มคอลัมน์ใหม่ ให้วิศวกรข้อมูลประเมินผลกระทบต่อกฎและรายงานที่ใช้คอลัมน์นั้น
+    ปรับสคีมาที่ลงทะเบียนให้ตรงกับความจริง และแจ้งผู้ใช้ที่ได้รับผลกระทบผ่านปัญหาข้อมูล</div>
+  </div>
+
+</div><!-- /main-content -->
+
+<!-- ================= ENDING ================= -->
+<div class="ending">
+  <div class="ending-big">คุณภาพข้อมูล<br>คือความรับผิดชอบร่วมกัน</div>
+  <div class="ending-sub">
+    Data quality is a team sport. แพลตฟอร์มนี้มอบเครื่องมือ แต่ผลลัพธ์เกิดจากการทำงานร่วมกันของ
+    เจ้าของข้อมูล ผู้ดูแลข้อมูล วิศวกร นักวิเคราะห์ และผู้บริหาร — เริ่มจากกฎเล็ก ๆ ที่ถูกต้อง
+    แล้วขยายความครอบคลุมทีละขั้นอย่างมีวินัย
+  </div>
+
+  <div class="end-docs">
+    <div class="e-title">เอกสารประกอบฉบับอื่น · RELATED DOCUMENTS</div>
+    <div class="end-doc"><div class="d-name">ARCHITECTURE.md</div><div class="d-desc">สถาปัตยกรรมระบบและข้อตกลงทางเทคนิค</div></div>
+    <div class="end-doc"><div class="d-name">GOVERNANCE.md</div><div class="d-desc">กรอบธรรมาภิบาลข้อมูลและวงจรอนุมัติกฎ</div></div>
+    <div class="end-doc"><div class="d-name">RUNBOOK.md</div><div class="d-desc">คู่มือเฝ้าระวังและแก้ไขเหตุขัดข้องสำหรับทีมปฏิบัติการ</div></div>
+    <div class="end-doc"><div class="d-name">DEPLOYMENT.md</div><div class="d-desc">แนวทางติดตั้งและปรับใช้ระบบ</div></div>
+  </div>
+
+  <div class="ending-foot">
+    <div style="font-weight:700; letter-spacing:1px;">ENTERPRISE DATA QUALITY PLATFORM</div>
+    <div>คู่มือการใช้งาน · เวอร์ชัน 1.0 · 15 ตุลาคม 2569</div>
+  </div>
+</div>
+
+</body>
+</html>

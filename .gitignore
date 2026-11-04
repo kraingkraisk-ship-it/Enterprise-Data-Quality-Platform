@@ -67,3 +67,8 @@ mini-services/ml-engine/models/
 
 # E2E smoke-test screenshots (agent-browser) — never commit
 tmp/
+
+# verification screenshots & runtime artifacts — never commit
+/.verify/
+/db/exports/
+/uploads/
